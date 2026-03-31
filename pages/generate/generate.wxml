@@ -1,0 +1,128 @@
+<view class="container">
+
+  <!-- 重新选择图片 -->
+  <view class="reselect-bar">
+    <view class="btn-reselect-top" bindtap="onChooseImage">重新选择图片</view>
+  </view>
+
+  <!-- 辅助提示 -->
+  <view class="hints-row">
+    <text class="hint-gray">双指缩放</text>
+    <view class="hints-right">
+      <text class="hint-orange">智能调整</text>
+    </view>
+  </view>
+
+  <!-- 图片预览区 -->
+  <view class="preview-zone">
+    <view class="preview-box">
+      <image wx:if="{{imageUrl}}" class="preview-img" src="{{imageUrl}}" mode="aspectFit" bindtap="onPreviewOriginal"/>
+      <view wx:else class="preview-placeholder">
+        <text class="ph-icon">🖼</text>
+        <text class="ph-text">点击下方选择图片</text>
+      </view>
+      <view wx:if="{{imageUrl}}" class="grid-overlay">
+        <view class="grid-line h" style="top:33.3%"></view>
+        <view class="grid-line h" style="top:66.6%"></view>
+        <view class="grid-line v" style="left:33.3%"></view>
+        <view class="grid-line v" style="left:66.6%"></view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 设置面板 -->
+  <view class="settings-panel">
+    <view class="panel-handle"></view>
+
+    <!-- 尺寸选择 -->
+    <view class="setting-section">
+      <text class="setting-label">图纸尺寸</text>
+      <view class="size-row">
+        <!-- 预设 picker -->
+        <picker wx:if="{{!customMode && !customConfirmed}}" mode="selector" range="{{gridSizeOptions}}" range-key="label"
+          value="{{gridSizeIndex}}" bindchange="onGridSizeChange" style="flex:1;min-width:0;">
+          <view class="size-half-box">
+            <text class="picker-val">{{gridSizeOptions[gridSizeIndex].label}}</text>
+            <text class="picker-arrow">▾</text>
+          </view>
+        </picker>
+        <!-- 自定义已确认：显示值 -->
+        <view wx:if="{{!customMode && customConfirmed}}" class="size-half-box size-picker--active" bindtap="onEditCustom">
+          <text class="picker-val">{{customSizeVal}}×{{customSizeVal}}</text>
+          <text class="picker-arrow">✎</text>
+        </view>
+        <!-- 输入框 -->
+        <view wx:if="{{customMode}}" class="size-half-box size-picker--active">
+          <input class="custom-size-input" type="number"
+            value="{{customSizeVal}}" bindinput="onCustomSizeInput" bindblur="onCustomSizeBlur"
+            focus="{{customMode}}" placeholder="N"/>
+        </view>
+        <view class="size-half-box size-confirm-btn {{customMode?'size-picker--active':''}}"
+          bindtap="onCustomMode">
+          <text wx:if="{{!customMode && !customConfirmed}}">自定义</text>
+          <text wx:elif="{{customMode}}">确定</text>
+          <text wx:else>重设</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 品牌 + 色号 + 镜像 -->
+    <view class="setting-row-3col">
+      <view class="setting-col">
+        <text class="setting-label">品牌</text>
+        <picker mode="selector" range="{{brandList}}" value="{{brandIndex}}" bindchange="onBrandChange">
+          <view class="picker-row">
+            <text class="picker-val">{{brandList[brandIndex]||'MARD'}}</text>
+            <text class="picker-arrow">▾</text>
+          </view>
+        </picker>
+      </view>
+      <view class="setting-col">
+        <text class="setting-label">色号</text>
+        <view class="picker-row" bindtap="onShowColorSheet">
+          <text class="picker-val">{{colorCountLabel}}</text>
+          <text class="picker-arrow">▾</text>
+        </view>
+      </view>
+      <view class="setting-col">
+        <text class="setting-label">镜像</text>
+        <view class="mirror-btn {{mirrorOn?'mirror-btn--on':''}}" bindtap="onMirrorToggle">
+          <text>{{mirrorOn?'开':'关'}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 生成按钮 -->
+    <view class="btn-generate" bindtap="onGenerate">立即生成图纸</view>
+  </view>
+
+  <!-- 色号底部弹窗 -->
+  <view wx:if="{{showColorSheet}}" class="sheet-mask" bindtap="onHideColorSheet"></view>
+  <view class="color-sheet {{showColorSheet?'color-sheet--show':''}}">
+    <view class="sheet-list">
+      <view wx:for="{{colorCountOptions}}" wx:key="value"
+        class="sheet-item {{colorCountLabel===item.label?'sheet-item--active':''}}"
+        bindtap="onSelectColorCount" data-label="{{item.label}}" data-value="{{item.value}}">
+        {{item.label}}
+      </view>
+    </view>
+    <view class="sheet-btns">
+      <view class="sheet-btn-cancel" bindtap="onHideColorSheet">取消</view>
+      <view class="sheet-btn-confirm" bindtap="onHideColorSheet">确定</view>
+    </view>
+  </view>
+
+  <!-- 离屏 Canvas -->
+  <canvas canvas-id="gen-sample-canvas"  class="offscreen-canvas" style="width:320px;height:320px;"/>
+  <canvas canvas-id="gen-result-canvas"  class="offscreen-canvas" style="width:624px;height:624px;"/>
+  <canvas canvas-id="gen-pattern-canvas" class="offscreen-canvas" style="width:1900px;height:3000px;"/>
+
+  <!-- 加载蒙层 -->
+  <view wx:if="{{loading}}" class="loading-mask">
+    <view class="loading-box">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">{{loadingText}}</text>
+    </view>
+  </view>
+
+</view>

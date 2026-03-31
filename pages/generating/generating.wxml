@@ -1,0 +1,31 @@
+<view class="container">
+
+  <view wx:if="{{!isTimeout}}" class="main">
+    <view class="anim-wrap">
+      <view class="ring ring1"></view>
+      <view class="ring ring2"></view>
+      <view class="center-box">
+        <view class="spinner"></view>
+      </view>
+    </view>
+    <text class="title">正在施展魔法</text>
+    <text class="sub">正在生成图纸，预计10秒内完成...</text>
+  </view>
+
+  <view wx:else class="main">
+    <view class="anim-wrap">
+      <view class="ring ring1"></view>
+      <view class="ring ring2"></view>
+      <view class="center-box">
+        <view class="spinner"></view>
+      </view>
+    </view>
+    <text class="title">仍在生成中</text>
+    <text class="sub">图片较为复杂，可稍后在「我的图纸」查看</text>
+    <view class="btn-row">
+      <view class="btn-outline" bindtap="onGoMyPatterns">去我的图纸</view>
+      <view class="btn-primary" bindtap="onKeepWaiting">继续等待</view>
+    </view>
+  </view>
+
+</view>

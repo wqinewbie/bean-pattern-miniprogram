@@ -1,0 +1,124 @@
+/* generating.wxss */
+.container {
+  min-height: 100vh;
+  background: #FFF9ED;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 60rpx;
+}
+
+.anim-wrap {
+  width: 256rpx;
+  height: 256rpx;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 60rpx;
+}
+
+.ring {
+  position: absolute;
+  border-radius: 50%;
+  background: #FFE082;
+}
+
+.ring1 {
+  width: 256rpx; height: 256rpx;
+  opacity: 0.2;
+  animation: ping 1.5s cubic-bezier(0,0,0.2,1) infinite;
+}
+
+.ring2 {
+  width: 192rpx; height: 192rpx;
+  opacity: 0.3;
+  animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite;
+}
+
+@keyframes ping {
+  0%   { transform: scale(0.8); opacity: 0.3; }
+  80%, 100% { transform: scale(1.2); opacity: 0; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 0.5; }
+}
+
+.center-box {
+  width: 128rpx; height: 128rpx;
+  background: #fff;
+  border-radius: 32rpx;
+  box-shadow: 0 8rpx 30rpx rgba(0,0,0,0.1);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; z-index: 1;
+}
+
+.spinner {
+  width: 64rpx; height: 64rpx;
+  border: 8rpx solid #FFF4DC;
+  border-top-color: #FFD54F;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.title {
+  display: block;
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #5D4037;
+  margin-bottom: 16rpx;
+  text-align: center;
+}
+
+.sub {
+  display: block;
+  font-size: 26rpx;
+  color: #A1887F;
+  text-align: center;
+  line-height: 1.6;
+  margin-bottom: 60rpx;
+}
+
+.btn-row {
+  display: flex;
+  gap: 24rpx;
+  width: 100%;
+}
+
+.btn-outline {
+  flex: 1;
+  height: 96rpx;
+  border-radius: 48rpx;
+  border: 2rpx solid #E0E0E0;
+  background: #fff;
+  color: #5D4037;
+  font-size: 28rpx;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.btn-outline:active { opacity: 0.7; }
+
+.btn-primary {
+  flex: 1;
+  height: 96rpx;
+  border-radius: 48rpx;
+  background: #FFD54F;
+  color: #3E2723;
+  font-size: 28rpx;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4rpx 16rpx rgba(255,213,79,0.4);
+}
+
+.btn-primary:active { opacity: 0.85; }

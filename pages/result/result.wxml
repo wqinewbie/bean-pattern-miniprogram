@@ -1,0 +1,71 @@
+<view class="container">
+
+  <!-- 顶部导航 -->
+  <page-nav-bar title="图纸预览" subtitle="{{brandName}} · {{currentSize}}×{{currentSize}}" nav-top="{{navTop}}" bind:back="onBack"/>
+
+  <scroll-view scroll-y class="scroll-body">
+
+    <!-- 图纸大图预览区 -->
+    <view class="preview-card">
+      <view class="preview-wrap">
+        <image wx:if="{{activeTab==='original' && originalUrl}}" class="preview-img" src="{{originalUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+        <image wx:elif="{{activeTab==='result' && resultUrl}}" class="preview-img" src="{{resultUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+        <image wx:elif="{{activeTab==='pattern' && patternUrl}}" class="preview-img" src="{{patternUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+        <view wx:else class="image-placeholder">
+          <text class="ph-icon">🖼️</text>
+          <text class="ph-text">暂无图片</text>
+        </view>
+        <!-- 生成中遮罩 -->
+        <view wx:if="{{saving}}" class="preview-loading">
+          <view class="preview-spinner"></view>
+          <text class="preview-loading-text">处理中...</text>
+        </view>
+      </view>
+
+      <!-- 标签切换 -->
+      <view class="tab-bar">
+        <view class="tab {{activeTab==='original'?'tab--active':''}}" bindtap="onTabChange" data-tab="original">原图</view>
+        <view class="tab {{activeTab==='result'?'tab--active':''}}" bindtap="onTabChange" data-tab="result">效果图</view>
+        <view class="tab {{activeTab==='pattern'?'tab--active':''}}" bindtap="onTabChange" data-tab="pattern">色号图</view>
+      </view>
+
+      <!-- 保存到相册 -->
+      <view class="save-img-btn" bindtap="onSaveImage">💾 保存当前图片到相册</view>
+    </view>
+
+    <!-- 色号清单 -->
+    <view wx:if="{{colorStats.length>0}}" class="stats-card">
+      <view class="stats-header">
+        <view class="stats-title-row">
+          <view class="stats-bar"></view>
+          <text class="stats-title">所需色号清单</text>
+        </view>
+        <text class="stats-count">共 {{colorStats.length}} 色 / {{totalBeads}} 颗</text>
+      </view>
+      <view class="stats-grid">
+        <view wx:for="{{colorStats}}" wx:key="id" class="stat-item" bindtap="onColorTap"
+          data-name="{{item.name}}" data-id="{{item.id}}" data-count="{{item.count}}">
+          <view class="stat-left">
+            <text class="stat-idx">{{index+1}}.</text>
+            <view class="stat-dot" style="background:rgb({{item.r}},{{item.g}},{{item.b}})"></view>
+            <view class="stat-info">
+              <text class="stat-id">{{item.id}}</text>
+              <text class="stat-name">{{item.name}}</text>
+            </view>
+          </view>
+          <text class="stat-count">x{{item.count}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view style="height:200rpx"></view>
+  </scroll-view>
+
+  <!-- 底部操作按钮 -->
+  <view class="bottom-bar">
+    <view class="btn-save {{isSaved?'btn-saved':''}}" bindtap="onSaveToMyPatterns">
+      <text>{{isSaved ? '✓ 已保存图纸' : '📁 保存图纸'}}</text>
+    </view>
+  </view>
+
+</view>

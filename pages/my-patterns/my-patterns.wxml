@@ -1,0 +1,63 @@
+<view class="container">
+  
+  <!-- 顶部导航 -->
+  <page-nav-bar title="我的魔法图纸" nav-top="{{navTop}}" bind:back="onBack">
+    <view slot="right" class="nav-add" bindtap="onAdd">+</view>
+  </page-nav-bar>
+
+  <!-- 搜索框 -->
+  <view class="search-wrap">
+    <view class="search-box">
+      <text class="search-icon">🔍</text>
+      <input class="search-input" type="text" placeholder="搜索图纸..." placeholder-class="search-placeholder" bindinput="onSearchInput"/>
+    </view>
+  </view>
+
+  <!-- 内容区 -->
+  <scroll-view scroll-y class="scroll-body">
+    <view wx:if="{{patterns.length===0}}" class="empty-state">
+      <view class="empty-icon-wrap">
+        <text class="empty-icon">📁</text>
+      </view>
+      <text class="empty-text">还没有施展过魔法哦</text>
+      <text class="empty-sub">生成图纸后点击「保存到我的图纸」</text>
+    </view>
+
+    <view class="list">
+      <view wx:for="{{patterns}}" wx:key="taskId" class="pattern-item">
+        <view class="item-thumb" bindtap="onItemTap" data-item="{{item}}">
+          <image wx:if="{{item.patternUrl}}" class="thumb-img" src="{{item.patternUrl}}" mode="aspectFill"/>
+          <image wx:elif="{{item.resultUrl}}" class="thumb-img" src="{{item.resultUrl}}" mode="aspectFill"/>
+          <view wx:else class="thumb-ph">🖼</view>
+        </view>
+        <view class="item-info" bindtap="onItemTap" data-item="{{item}}">
+          <text class="item-title">未命名作品</text>
+          <text class="item-meta">拼豆图纸 · {{item.createdAt}}</text>
+        </view>
+        <view class="item-del" bindtap="onDelete" data-taskid="{{item.taskId}}">🗑</view>
+      </view>
+    </view>
+    <view style="height:120rpx"></view>
+  </scroll-view>
+
+  <!-- 底部导航 -->
+  <view class="bottom-nav">
+    <view class="nav-item" bindtap="onNavHome">
+      <text class="nav-icon">🏠</text>
+      <text class="nav-label">首页</text>
+    </view>
+    <view class="nav-item" bindtap="onNavPatterns">
+      <text class="nav-icon">📋</text>
+      <text class="nav-label">转图纸</text>
+    </view>
+    <view class="nav-item" bindtap="onNavAI">
+      <text class="nav-icon">✨</text>
+      <text class="nav-label">AI生成</text>
+    </view>
+    <view class="nav-item nav-item--active" bindtap="onNavProfile">
+      <text class="nav-icon">👤</text>
+      <text class="nav-label">我的</text>
+    </view>
+  </view>
+
+</view>

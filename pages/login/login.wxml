@@ -1,0 +1,49 @@
+<view class="container">
+  <view class="card">
+    <text class="page-title">完善个人信息</text>
+    <text class="page-sub">昵称和头像仅用于展示</text>
+
+    <!-- 头像选择（微信官方 chooseAvatar）-->
+    <view class="avatar-wrap">
+      <button
+        class="avatar-btn"
+        open-type="chooseAvatar"
+        bindchooseavatar="onChooseAvatar"
+      >
+        <image
+          wx:if="{{avatarUrl}}"
+          class="avatar-img"
+          src="{{avatarUrl}}"
+          mode="aspectFill"
+        />
+        <view wx:else class="avatar-placeholder">
+          <text class="avatar-icon">👤</text>
+          <text class="avatar-hint">点击选择头像</text>
+        </view>
+      </button>
+      <text class="avatar-tip">可同步微信头像</text>
+    </view>
+
+    <!-- 昵称输入（type="nickname" 支持一键填入微信名）-->
+    <view class="input-wrap">
+      <text class="input-label">昵称</text>
+      <input
+        class="nick-input"
+        type="nickname"
+        placeholder="输入昵称，或一键使用微信名"
+        value="{{nickName}}"
+        bindinput="onNickNameInput"
+        maxlength="20"
+      />
+    </view>
+
+    <!-- 确认按钮（不可跳过）-->
+    <button
+      class="btn-confirm"
+      bindtap="onSubmit"
+      disabled="{{submitting}}"
+    >
+      {{submitting ? '保存中...' : '确认进入'}}
+    </button>
+  </view>
+</view>

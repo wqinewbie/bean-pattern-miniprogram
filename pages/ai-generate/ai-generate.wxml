@@ -1,0 +1,67 @@
+<view class="container">
+
+  <!-- 标题区 -->
+  <view class="header" style="padding-top:{{statusBarHeight + 24}}px">
+    <view class="header-icon">✨</view>
+    <view class="header-texts">
+      <text class="header-title">AI 一键生成</text>
+      <text class="header-sub">描述画面，AI帮你画图纸</text>
+    </view>
+  </view>
+
+  <scroll-view scroll-y style="height:{{scrollHeight}}px" class="scroll-body">
+
+    <!-- 输入区 -->
+    <view class="input-card">
+      <textarea class="prompt-input"
+        placeholder="例如：戴围巾的橘猫，旁边有一杯热咖啡..."
+        value="{{prompt}}"
+        bindinput="onPromptInput"
+        maxlength="100"
+        auto-height
+      />
+      <view class="input-footer">
+        <view class="random-btn" bindtap="onRandom">✨ 随便试试</view>
+        <text class="char-count">{{prompt.length}}/100</text>
+      </view>
+    </view>
+
+    <!-- 风格选择 -->
+    <view class="section">
+      <text class="section-title">🎨 选择魔法风格</text>
+      <view class="style-list">
+        <view wx:for="{{styles}}" wx:key="*this"
+          class="style-item {{selectedStyle===item?'style-item--active':''}}"
+          bindtap="onStyleTap" data-style="{{item}}">
+          {{item}}
+        </view>
+      </view>
+    </view>
+
+    <!-- 尺寸选择 -->
+    <view class="section">
+      <text class="section-title">⊞ 图纸尺寸（格）</text>
+      <view class="size-grid">
+        <view wx:for="{{sizes}}" wx:key="*this"
+          class="size-item {{selectedSize===item?'size-item--active':''}}"
+          bindtap="onSizeTap" data-size="{{item}}">
+          {{item}}
+        </view>
+      </view>
+    </view>
+
+    <!-- 生成按钮 -->
+    <view class="generate-btn {{(!prompt||isGenerating)?'generate-btn--disabled':''}}" bindtap="onGenerate">
+      <view wx:if="{{isGenerating}}" class="btn-loading">
+        <view class="spinner"></view>
+        <text>施法中...</text>
+      </view>
+      <text wx:else>✨ 立即施展魔法</text>
+    </view>
+
+    <text class="energy-hint">本次消耗 1 次魔法能量（剩余 3 次）</text>
+
+    <view style="height:60rpx"></view>
+  </scroll-view>
+
+</view>

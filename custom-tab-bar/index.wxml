@@ -1,0 +1,33 @@
+<view class="tab-bar">
+  <view class="tab-item {{selected===0?'tab-item--active':''}}" bindtap="onTab" data-index="0" data-url="/pages/home/home">
+    <view class="tab-icon-wrap">
+      <view class="tab-glow tab-glow--orange {{selected===0?'tab-glow--show':''}}"></view>
+      <text class="tab-emoji">🏠</text>
+    </view>
+    <text class="tab-label {{selected===0?'tab-label--active tab-label--orange':''}}">首页</text>
+  </view>
+
+  <view class="tab-item {{selected===1?'tab-item--active':''}}" bindtap="onTab" data-index="1" data-url="/pages/convert/convert">
+    <view class="tab-icon-wrap">
+      <view class="tab-glow tab-glow--red {{selected===1?'tab-glow--show':''}}"></view>
+      <text class="tab-emoji">🖼</text>
+    </view>
+    <text class="tab-label {{selected===1?'tab-label--active tab-label--red':''}}">转图纸</text>
+  </view>
+
+  <view class="tab-item {{selected===2?'tab-item--active':''}}" bindtap="onTab" data-index="2" data-url="/pages/ai-generate/ai-generate">
+    <view class="tab-icon-wrap">
+      <view class="tab-glow tab-glow--purple {{selected===2?'tab-glow--show':''}}"></view>
+      <text class="tab-emoji">✨</text>
+    </view>
+    <text class="tab-label {{selected===2?'tab-label--active tab-label--purple':''}}">AI生成</text>
+  </view>
+
+  <view class="tab-item {{selected===3?'tab-item--active':''}}" bindtap="onTab" data-index="3" data-url="/pages/profile/profile">
+    <view class="tab-icon-wrap">
+      <view class="tab-glow tab-glow--green {{selected===3?'tab-glow--show':''}}"></view>
+      <text class="tab-emoji">👤</text>
+    </view>
+    <text class="tab-label {{selected===3?'tab-label--active tab-label--green':''}}">我的</text>
+  </view>
+</view>

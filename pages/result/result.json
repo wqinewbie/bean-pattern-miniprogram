@@ -1,0 +1,7 @@
+{
+  "navigationStyle": "custom",
+  "navigationBarTitleText": "图纸预览",
+  "usingComponents": {
+    "page-nav-bar": "/components/page-nav-bar/index"
+  }
+}

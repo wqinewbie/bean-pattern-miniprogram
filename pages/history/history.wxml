@@ -1,0 +1,52 @@
+<view class="container">
+
+  <!-- 顶部导航 -->
+  <page-nav-bar title="时光机" nav-top="{{navTop}}" bind:back="onBack">
+    <view slot="right" class="nav-clear" bindtap="onClear">清空</view>
+  </page-nav-bar>
+
+  <text class="hint">只保留近30天的魔法记忆哦</text>
+
+  <scroll-view scroll-y class="scroll-body">
+    <view wx:if="{{history.length===0}}" class="empty-state">
+      <text class="empty-icon">🕐</text>
+      <text class="empty-text">还没有施展过魔法哦</text>
+    </view>
+
+    <view class="list">
+      <view wx:for="{{history}}" wx:key="taskId" class="history-item" bindtap="onItemTap" data-item="{{item}}">
+        <view class="item-thumb">
+          <image wx:if="{{item.resultUrl}}" class="thumb-img" src="{{item.resultUrl}}" mode="aspectFill"/>
+          <view wx:else class="thumb-ph">🖼</view>
+        </view>
+        <view class="item-info">
+          <text class="item-title">恢复编辑 {{item.gridSize}}格</text>
+          <text class="item-time">{{item.createdAt}}</text>
+        </view>
+        <view class="item-btn">继续</view>
+      </view>
+    </view>
+    <view style="height:120rpx"></view>
+  </scroll-view>
+
+  <!-- 底部导航 -->
+  <view class="bottom-nav">
+    <view class="nav-item" bindtap="onNavHome">
+      <text class="nav-icon">🏠</text>
+      <text class="nav-label">首页</text>
+    </view>
+    <view class="nav-item" bindtap="onNavPatterns">
+      <text class="nav-icon">📋</text>
+      <text class="nav-label">转图纸</text>
+    </view>
+    <view class="nav-item" bindtap="onNavAI">
+      <text class="nav-icon">✨</text>
+      <text class="nav-label">AI生成</text>
+    </view>
+    <view class="nav-item" bindtap="onNavProfile">
+      <text class="nav-icon">👤</text>
+      <text class="nav-label">我的</text>
+    </view>
+  </view>
+
+</view>

@@ -1,0 +1,61 @@
+/* page-nav-bar 组件样式 */
+.nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 20rpx;
+  padding-left: 32rpx;
+  padding-right: 32rpx;
+  background: #FFEBB5;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.nav-back {
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nav-back-arrow {
+  font-size: 40rpx;
+  color: #8C6B4B;
+}
+
+.nav-placeholder {
+  width: 72rpx;
+  height: 72rpx;
+  flex-shrink: 0;
+}
+
+.nav-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+}
+
+.nav-title {
+  font-size: 32rpx;
+  font-weight: 800;
+  color: #5D4037;
+}
+
+.nav-sub {
+  font-size: 22rpx;
+  color: #A1887F;
+  font-weight: 700;
+}
+
+.nav-right {
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}

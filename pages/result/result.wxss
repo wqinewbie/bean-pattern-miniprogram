@@ -1,0 +1,239 @@
+/* result.wxss - 图纸预览页样式 */
+
+.container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #FFF9ED;
+}
+
+/* ─── 滚动区 ─── */
+.scroll-body {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ─── 图纸大图预览卡片 ─── */
+.preview-card {
+  margin: 28rpx 32rpx 0;
+  background: #fff;
+  border-radius: 48rpx;
+  padding: 28rpx;
+  box-shadow: 0 8rpx 30rpx rgba(140,107,75,0.06);
+  border: 4rpx solid #FFF4DC;
+}
+
+.preview-wrap {
+  width: 100%;
+  aspect-ratio: 1;
+  background: #F5F5F5;
+  border-radius: 32rpx;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin-bottom: 24rpx;
+}
+
+.preview-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 32rpx;
+}
+
+.image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+}
+.ph-icon { font-size: 80rpx; }
+.ph-text  { font-size: 28rpx; color: #aaa; }
+
+/* 加载遮罩 */
+.preview-loading {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  border-radius: 32rpx;
+  z-index: 5;
+}
+.preview-spinner {
+  width: 64rpx; height: 64rpx;
+  border: 8rpx solid #FFF4DC;
+  border-top-color: #FF9800;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.preview-loading-text { font-size: 26rpx; font-weight: 700; color: #8C6B4B; }
+
+/* ─── 标签切换 ─── */
+.tab-bar {
+  display: flex;
+  background: #FFF9ED;
+  border-radius: 24rpx;
+  padding: 8rpx;
+  gap: 8rpx;
+  margin-bottom: 24rpx;
+}
+
+.tab {
+  flex: 1;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #A1887F;
+  border-radius: 18rpx;
+  transition: all 0.2s;
+}
+
+.tab--active {
+  background: #fff;
+  color: #5D4037;
+  box-shadow: 0 4rpx 12rpx rgba(140,107,75,0.1);
+}
+
+/* ─── 保存到相册按钮 ─── */
+.save-img-btn {
+  height: 80rpx;
+  border-radius: 20rpx;
+  background: #FFF4DC;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #8C6B4B;
+}
+.save-img-btn:active { opacity: 0.7; }
+
+/* ─── 色号清单 ─── */
+.stats-card {
+  margin: 24rpx 32rpx 0;
+  background: #fff;
+  border-radius: 48rpx;
+  padding: 40rpx;
+  box-shadow: 0 8rpx 30rpx rgba(140,107,75,0.06);
+  border: 4rpx solid #FFF4DC;
+}
+
+.stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32rpx;
+}
+
+.stats-title-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.stats-bar {
+  width: 6rpx;
+  height: 36rpx;
+  background: #FF9800;
+  border-radius: 3rpx;
+}
+
+.stats-title { font-size: 30rpx; font-weight: 800; color: #5D4037; }
+.stats-count {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #FF9800;
+  background: #FFF4DC;
+  padding: 8rpx 20rpx;
+  border-radius: 20rpx;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20rpx 40rpx;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16rpx;
+  border-bottom: 2rpx dashed #FFF4DC;
+}
+
+.stat-left {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.stat-idx  { font-size: 20rpx; color: #D0B8A1; width: 28rpx; font-weight: 700; }
+
+.stat-dot {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 14rpx;
+  border: 4rpx solid #fff;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.1);
+  flex-shrink: 0;
+}
+
+.stat-info { display: flex; flex-direction: column; gap: 2rpx; }
+.stat-id   { font-size: 26rpx; font-weight: 800; color: #5D4037; }
+.stat-name { font-size: 18rpx; color: #A1887F; font-weight: 700; }
+
+.stat-count {
+  font-size: 24rpx;
+  font-weight: 800;
+  color: #8C6B4B;
+  background: #FFF9ED;
+  padding: 6rpx 16rpx;
+  border-radius: 12rpx;
+  border: 2rpx solid #FFF4DC;
+}
+
+/* ─── 底部操作栏 ─── */
+.bottom-bar {
+  padding: 24rpx 32rpx 60rpx;
+  background: linear-gradient(to top, #FFF9ED 80%, transparent);
+  flex-shrink: 0;
+}
+
+.btn-save {
+  width: 100%;
+  height: 100rpx;
+  border-radius: 50rpx;
+  background: linear-gradient(135deg, #FFD54F, #FF9800);
+  color: #3E2723;
+  font-size: 32rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12rpx 30rpx rgba(255,152,0,0.35);
+  border-bottom: 8rpx solid #F57C00;
+  transition: all 0.15s;
+}
+
+.btn-save:active {
+  transform: translateY(4rpx);
+  border-bottom-width: 2rpx;
+  opacity: 0.9;
+}
+
+.btn-saved {
+  background: #E8F5E9;
+  color: #2E7D32;
+  box-shadow: none;
+  border-bottom: 8rpx solid #C8E6C9;
+}

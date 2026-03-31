@@ -1,0 +1,49 @@
+{
+  "pages": [
+    "pages/home/home",
+    "pages/generate/generate",
+    "pages/history/history",
+    "pages/profile/profile",
+    "pages/result/result",
+    "pages/my-patterns/my-patterns",
+    "pages/draw/draw",
+    "pages/ai-generate/ai-generate",
+    "pages/generating/generating",
+    "pages/vip/vip",
+    "pages/convert/convert"
+  ],
+  "window": {
+    "navigationBarTitleText": "Bean Pattern",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundTextStyle": "light"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#D0B8A1",
+    "selectedColor": "#FF9800",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/home/home",
+        "text": "首页"
+      },
+      {
+        "pagePath": "pages/convert/convert",
+        "text": "转图纸"
+      },
+      {
+        "pagePath": "pages/ai-generate/ai-generate",
+        "text": "AI生成"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "usingComponents": {}
+}

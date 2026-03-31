@@ -1,0 +1,15 @@
+<view class="nav-bar" style="padding-top: {{navTop}}px;">
+  <view wx:if="{{showBack}}" class="nav-back" bindtap="onBack">
+    <text class="nav-back-arrow">←</text>
+  </view>
+  <view wx:else class="nav-placeholder"></view>
+
+  <view class="nav-center">
+    <text class="nav-title">{{title}}</text>
+    <text wx:if="{{subtitle}}" class="nav-sub">{{subtitle}}</text>
+  </view>
+
+  <view class="nav-right">
+    <slot name="right"></slot>
+  </view>
+</view>

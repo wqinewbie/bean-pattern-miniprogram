@@ -1,0 +1,158 @@
+const request = require('../../utils/request');
+
+Page({
+  data: {
+    userInfo: null,
+    stats: { total: 0, success: 0, ai: 0 },
+    loading: false,
+    activeSheet: '',
+    cloudProcess: true,
+    feedbackText: '',
+    creatorIncome: 0,
+  },
+
+  onShow() {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setSelected(3);
+    }
+    this.loadProfile();
+  },
+
+  loadProfile() {
+    const nickName = wx.getStorageSync('nickName') || '';
+    const avatarUrl = wx.getStorageSync('avatarUrl') || '';
+    this.setData({
+      userInfo: { nickName: nickName || '魔法师小豆', avatarUrl }
+    });
+    const sessionId = wx.getStorageSync('sessionId');
+    if (!sessionId) return;
+
+    const app = getApp();
+    const cache = app && app.globalData && app.globalData.prefetch;
+    if (cache && cache.profile && cache.stats) {
+      const profile = cache.profile;
+      const stats = cache.stats;
+      if (profile && profile.nickName) {
+        wx.setStorageSync('nickName', profile.nickName);
+        wx.setStorageSync('avatarUrl', profile.avatarUrl || '');
+      }
+      this.setData({
+        userInfo: {
+          nickName: (profile && profile.nickName) || nickName || '魔法师小豆',
+          avatarUrl: (profile && profile.avatarUrl) || avatarUrl || ''
+        },
+        stats: stats || { total: 0, success: 0, ai: 0 },
+        loading: false
+      });
+      return;
+    }
+
+    this.setData({ loading: true });
+    Promise.all([
+      request.get('/api/user/profile'),
+      request.get('/api/user/stats')
+    ])
+      .then(([profile, stats]) => {
+        if (profile && profile.nickName) {
+          wx.setStorageSync('nickName', profile.nickName);
+          wx.setStorageSync('avatarUrl', profile.avatarUrl || '');
+        }
+        this.setData({
+          userInfo: {
+            nickName: (profile && profile.nickName) || nickName || '魔法师小豆',
+            avatarUrl: (profile && profile.avatarUrl) || avatarUrl || ''
+          },
+          stats: stats || { total: 0, success: 0, ai: 0 },
+          loading: false
+        });
+      })
+      .catch(() => { this.setData({ loading: false }); });
+  },
+
+  onEditProfile() {
+    wx.navigateTo({ url: '/pages/login/login' });
+  },
+
+  onGoHistory() {
+    wx.navigateTo({ url: '/pages/history/history' });
+  },
+
+  onGoMyPatterns() {
+    wx.navigateTo({ url: '/pages/my-patterns/my-patterns' });
+  },
+
+  onVip() {
+    wx.navigateTo({ url: '/pages/vip/vip' });
+  },
+
+  onAccountSettings() { this.setData({ activeSheet: 'account' }); },
+  onPrivacy()         { this.setData({ activeSheet: 'privacy' }); },
+  onHelp()            { this.setData({ activeSheet: 'help' }); },
+  onCreator()         { this.setData({ activeSheet: 'creator' }); },
+  onCloseSheet()      { this.setData({ activeSheet: '' }); },
+
+  onBindPhone() {
+    wx.showToast({ title: '绑定手机号功能即将上线', icon: 'none' });
+  },
+
+  onLogout() {
+    wx.showModal({
+      title: '退出登录',
+      content: '确认退出登录？',
+      success: (res) => {
+        if (res.confirm) {
+          wx.removeStorageSync('sessionId');
+          wx.removeStorageSync('nickName');
+          wx.removeStorageSync('avatarUrl');
+          this.setData({
+            userInfo: null,
+            stats: { total: 0, success: 0, ai: 0 },
+            activeSheet: ''
+          });
+          wx.showToast({ title: '已退出登录', icon: 'success' });
+        }
+      }
+    });
+  },
+
+  onCloudProcessChange(e) {
+    this.setData({ cloudProcess: e.detail.value });
+    wx.showToast({ title: e.detail.value ? '已开启云端处理' : '已关闭云端处理', icon: 'none' });
+  },
+
+  onClearTrace() {
+    wx.showModal({
+      title: '清除魔法痕迹',
+      content: '将清除本地缓存和使用记录，确认继续？',
+      success: (res) => {
+        if (res.confirm) {
+          wx.clearStorageSync();
+          this.setData({ userInfo: null, stats: { total: 0, success: 0, ai: 0 }, activeSheet: '' });
+          wx.showToast({ title: '已清除', icon: 'success' });
+        }
+      }
+    });
+  },
+
+  onFeedbackInput(e) {
+    this.setData({ feedbackText: e.detail.value });
+  },
+
+  // 反馈已对接后端 /api/feedback/submit
+  onSendFeedback() {
+    const text = this.data.feedbackText.trim();
+    if (!text) { wx.showToast({ title: '请先写下建议', icon: 'none' }); return; }
+    request.post('/api/feedback/submit', { content: text, category: 'SUGGESTION' })
+      .then(() => {
+        wx.showToast({ title: '已发送给小豆，谢谢！', icon: 'success' });
+        this.setData({ feedbackText: '', activeSheet: '' });
+      })
+      .catch(() => {
+        wx.showToast({ title: '发送失败，请重试', icon: 'none' });
+      });
+  },
+
+  onUploadPattern() {
+    wx.showToast({ title: '上传图纸功能即将上线', icon: 'none' });
+  },
+});

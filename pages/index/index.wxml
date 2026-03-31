@@ -1,0 +1,16 @@
+<view class="container">
+  <button class="convert-btn" type="primary" bindtap="onChooseImage" loading="{{loading}}">
+    图片转换
+  </button>
+
+  <view wx:if="{{originalUrl}}" class="card">
+    <text class="title">原图</text>
+    <image class="preview" src="{{originalUrl}}" mode="widthFix"></image>
+  </view>
+
+  <view wx:if="{{processedUrl}}" class="card">
+    <text class="title">AI 结果图</text>
+    <image class="preview" src="{{processedUrl}}" mode="widthFix"></image>
+    <button class="download-btn" bindtap="onDownload">导出下载</button>
+  </view>
+</view>

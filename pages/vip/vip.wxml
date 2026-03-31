@@ -1,0 +1,83 @@
+<view class="container">
+
+  <!-- 状态栏 -->
+  <view style="height:{{statusBarHeight}}px"></view>
+
+  <!-- 顶部导航 -->
+  <view class="nav-bar">
+    <view class="nav-back" bindtap="onBack"><text class="nav-back-icon">‹</text></view>
+    <text class="nav-title">高级魔法师</text>
+    <view style="width:72rpx"></view>
+  </view>
+
+  <!-- 滚动内容 -->
+  <scroll-view scroll-y class="scroll-body">
+
+    <!-- 顶部 Banner -->
+    <view class="hero-banner">
+      <view class="hero-crown">👑</view>
+      <view class="hero-texts">
+        <text class="hero-title">解锁全部魔法特权</text>
+        <text class="hero-sub">加入高级魔法师，享受无限创作自由</text>
+      </view>
+      <!-- 装饰圆 -->
+      <view class="hero-deco hero-deco1"></view>
+      <view class="hero-deco hero-deco2"></view>
+    </view>
+
+    <!-- 特权列表 -->
+    <view class="benefits-zone">
+      <view class="benefits-grid">
+        <view wx:for="{{benefits}}" wx:key="icon" class="benefit-item">
+          <text class="benefit-icon">{{item.icon}}</text>
+          <text class="benefit-title">{{item.title}}</text>
+          <text class="benefit-desc">{{item.desc}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 套餐选择 -->
+    <view class="plans-zone">
+      <text class="plans-title">选择套餐</text>
+      <view class="plans-list">
+        <view
+          wx:for="{{plans}}"
+          wx:key="id"
+          class="plan-item {{selectedPlan===item.id?'plan-item--active':''}}"
+          bindtap="onSelectPlan"
+          data-id="{{item.id}}"
+        >
+          <view wx:if="{{item.tag}}" class="plan-tag">{{item.tag}}</view>
+          <text class="plan-name">{{item.name}}</text>
+          <view class="plan-price-row">
+            <text class="plan-unit">¥</text>
+            <text class="plan-price">{{item.price}}</text>
+          </view>
+          <text class="plan-period">/{{item.unit}}</text>
+          <view wx:if="{{selectedPlan===item.id}}" class="plan-check">✓</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 权益说明 -->
+    <view class="notice-zone">
+      <text class="notice-text">· 订阅后自动续费，可随时取消</text>
+      <text class="notice-text">· 开通即视为同意《VIP服务协议》</text>
+      <text class="notice-text">· 如有问题请联系在线客服</text>
+    </view>
+
+    <view style="height:200rpx"></view>
+  </scroll-view>
+
+  <!-- 底部支付按钮（固定）-->
+  <view class="pay-bar">
+    <view class="pay-price-info">
+      <text class="pay-label">当前套餐</text>
+      <text class="pay-amount">¥{{plans[selectedPlan==='month'?0:selectedPlan==='quarter'?1:2].price}}</text>
+    </view>
+    <view class="pay-btn" bindtap="onPay">
+      <text>立即开通特权 ✨</text>
+    </view>
+  </view>
+
+</view>

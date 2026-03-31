@@ -1,0 +1,36 @@
+<view class="container">
+
+  <!-- 标题区 -->
+  <view class="header" style="padding-top:{{statusBarHeight + 24}}px">
+    <view class="header-icon">🖼</view>
+    <view class="header-texts">
+      <text class="header-title">图片转图纸</text>
+      <text class="header-sub">魔法变变变，一键生成像素风</text>
+    </view>
+  </view>
+
+  <!-- 主体 -->
+  <view class="body">
+
+    <!-- 上传卡片 -->
+    <view class="upload-card" bindtap="onChooseImage">
+      <view class="deco deco-tr"></view>
+      <view class="deco deco-bl"></view>
+      <view class="upload-icon-wrap">
+        <text class="upload-icon">☁</text>
+      </view>
+      <view class="upload-texts">
+        <text class="upload-title">点击上传图片</text>
+        <text class="upload-sub">支持相册 / 拍照上传</text>
+      </view>
+    </view>
+
+    <!-- 提示信息 -->
+    <view class="info-card">
+      <text class="info-icon">ℹ</text>
+      <text class="info-text">建议上传背景干净、轮廓清晰的图片，转换效果更佳哦！魔法生效后可任意调整色号和尺寸。</text>
+    </view>
+
+  </view>
+
+</view>
