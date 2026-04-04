@@ -154,7 +154,7 @@ Page({
   onConfirmSavePattern() {
     const { taskId, patternNameInput } = this.data;
     const name = (patternNameInput || '').trim() || ('魔法图纸#' + taskId);
-    request.post('/api/my-pattern/save/' + taskId)
+    request.post('/my-pattern/save/' + taskId)
       .then(() => {
         const map = wx.getStorageSync('patternNameMap') || {};
         map[String(taskId)] = name;

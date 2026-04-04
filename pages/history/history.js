@@ -26,7 +26,7 @@ Page({
 
   loadHistory() {
     this.setData({ loading: true });
-    request.get('/api/task/list?page=1&pageSize=50')
+    request.get('/task/list?page=1&pageSize=50')
       .then((data) => {
         const raw = data.list || [];
         const history = raw.map((item) => ({

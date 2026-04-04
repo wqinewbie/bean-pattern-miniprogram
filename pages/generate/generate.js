@@ -44,7 +44,7 @@ Page({
   },
 
   loadBrandsFromServer() {
-    request.get('/api/bead/brands').then((data) => {
+    request.get('/bead/brands').then((data) => {
       if (!data || typeof data !== 'object') return;
       const brandList = Object.keys(data);
       if (brandList.length === 0) return;
@@ -199,7 +199,7 @@ Page({
             const rawGrid=this.sampleGrid(rawData,sampW,sampH,gridW,gridH);
             const rgbGrid=mirrorOn?rawGrid.map(row=>[...row].reverse()):rawGrid;
             this.setData({loadingText:'颜色匹配中...'});
-            request.post('/api/bead/match-colors',{brand,algo,colorCount:maxColors,grid:rgbGrid})
+            request.post('/bead/match-colors',{brand,algo,colorCount:maxColors,grid:rgbGrid})
               .then((matched)=>{
                 const grid=matched;
                 this.setData({loadingText:'绘制图纸...'});
@@ -211,7 +211,7 @@ Page({
                 this.setData({loadingText:'上传中...'});
                 const sid=wx.getStorageSync('sessionId')||'';
                 return Promise.all([this.uploadFile(imageUrl,sid),this.uploadFile(rp,sid),this.uploadFile(pp,sid)])
-                  .then(([ou,ru,pu])=>request.post('/api/bead/pattern-local',{
+                  .then(([ou,ru,pu])=>request.post('/bead/pattern-local',{
                     imageUrl:ou,resultUrl:ru,patternUrl:pu,colorStats:JSON.stringify(stats)
                   }).then((data)=>({ru,pu,stats,taskId:data&&data.taskId?data.taskId:''})));
               })
@@ -388,7 +388,7 @@ Page({
   uploadFile(filePath,sessionId){
     return new Promise((resolve,reject)=>{
       wx.uploadFile({
-        url:API_BASE_URL+'/api/image/upload',filePath,name:'file',
+        url:API_BASE_URL+'/image/upload',filePath,name:'file',
         header:{'X-Session-Id':sessionId},
         success:(res)=>{
           try{const body=JSON.parse(res.data);

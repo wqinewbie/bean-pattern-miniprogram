@@ -59,8 +59,8 @@ Page({
 
     this.setData({ loading: true });
     Promise.all([
-      request.get('/api/user/profile'),
-      request.get('/api/user/stats')
+      request.get('/user/profile'),
+      request.get('/user/stats')
     ])
       .then(([profile, stats]) => {
         this.applyProfileAndStats(profile, stats, nickName, avatarUrl);
@@ -163,7 +163,7 @@ Page({
       wx.showToast({ title: '请先写下建议', icon: 'none' });
       return;
     }
-    request.post('/api/feedback/submit', { content: text, category: 'SUGGESTION' })
+    request.post('/feedback/submit', { content: text, category: 'SUGGESTION' })
       .then(() => {
         wx.showToast({ title: '已发送给小豆，感谢反馈', icon: 'success' });
         this.setData({ feedbackText: '', activeSheet: '' });

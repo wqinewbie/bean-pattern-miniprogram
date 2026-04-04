@@ -32,7 +32,7 @@ Page({
     wx.login({
       success: (res) => {
         if (!res.code) return;
-        request.post('/api/auth/login', { code: res.code })
+        request.post('/auth/login', { code: res.code })
           .then((data) => {
             const sessionId = data.sessionId || data.token;
             if (sessionId) wx.setStorageSync('sessionId', sessionId);
@@ -69,7 +69,7 @@ Page({
     if (this.data.codeCountdown > 0 || this.data.sendingCode) return;
 
     this.setData({ sendingCode: true });
-    request.post('/api/user/send-phone-code', { phone })
+    request.post('/user/send-phone-code', { phone })
       .then(() => {
         wx.showToast({ title: '验证码已发送', icon: 'success' });
         this.startCountdown();
@@ -108,7 +108,7 @@ Page({
       }
       return;
     }
-    request.post('/api/user/bind-phone-wx', { code })
+    request.post('/user/bind-phone-wx', { code })
       .then((phone) => {
         wx.setStorageSync('phone', phone || '');
         this.setData({ phone: phone || '', wxPhoneBound: true });
@@ -154,16 +154,16 @@ Page({
 
     uploadAvatar
       .then((finalAvatarUrl) => {
-        return request.post('/api/user/update', {
+        return request.post('/user/update', {
           nickName: nickName.trim(),
           avatarUrl: finalAvatarUrl || ''
         }).then(() => finalAvatarUrl);
       })
       .then((finalAvatarUrl) => {
         if (wxPhoneBound) {
-          return request.post('/api/user/bind-phone', { phone: phone.trim() }).then(() => finalAvatarUrl);
+          return request.post('/user/bind-phone', { phone: phone.trim() }).then(() => finalAvatarUrl);
         }
-        return request.post('/api/user/bind-phone-by-code', {
+        return request.post('/user/bind-phone-by-code', {
           phone: phone.trim(),
           code: smsCode.trim()
         }).then(() => finalAvatarUrl);
@@ -190,7 +190,7 @@ Page({
     const sessionId = wx.getStorageSync('sessionId') || '';
     return new Promise((resolve) => {
       wx.uploadFile({
-        url: `${API_BASE_URL}/api/image/upload`,
+        url: `${API_BASE_URL}/image/upload`,
         filePath: avatarUrl,
         name: 'file',
         header: { 'X-Session-Id': sessionId },

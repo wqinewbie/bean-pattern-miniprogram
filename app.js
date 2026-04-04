@@ -42,7 +42,7 @@ App({
   },
 
   prefetchHomeData() {
-    request.get('/api/creator/patterns?limit=100')
+    request.get('/creator/patterns?limit=100')
       .then((data) => {
         this.globalData.prefetch.templates = Array.isArray(data) ? data : [];
         this.globalData.prefetch.templatesAt = Date.now();
@@ -54,8 +54,8 @@ App({
     const sessionId = wx.getStorageSync('sessionId');
     if (!sessionId) return;
     Promise.all([
-      request.get('/api/user/profile'),
-      request.get('/api/user/stats')
+      request.get('/user/profile'),
+      request.get('/user/stats')
     ])
       .then(([profile, stats]) => {
         this.globalData.prefetch.profile = profile || null;
@@ -70,7 +70,7 @@ App({
     wx.login({
       success: (res) => {
         if (!res.code) return;
-        request.post('/api/auth/login', { code: res.code })
+        request.post('/auth/login', { code: res.code })
           .then((data) => {
             const sessionId = data.sessionId || data.token;
             if (sessionId) {

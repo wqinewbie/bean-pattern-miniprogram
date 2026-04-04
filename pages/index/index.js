@@ -21,7 +21,7 @@ Page({
           return;
         }
         try {
-          const res = await request("/api/auth/wx-login", "POST", { code: loginRes.code });
+          const res = await request("/auth/wx-login", "POST", { code: loginRes.code });
           if (!res.success) {
             throw new Error(res.message || "登录失败");
           }
@@ -50,7 +50,7 @@ Page({
     this.setData({ loading: true, originalUrl: "", processedUrl: "" });
     return new Promise((resolve) => {
       wx.uploadFile({
-        url: `${API_BASE_URL}/api/image/upload`,
+        url: `${API_BASE_URL}/image/upload`,
         filePath,
         name: "file",
         success: async (uploadRes) => {
@@ -62,7 +62,7 @@ Page({
             const originalUrl = uploadData.data.originalUrl;
             this.setData({ originalUrl });
 
-            const processData = await request("/api/image/process", "POST", { imageUrl: originalUrl });
+            const processData = await request("/image/process", "POST", { imageUrl: originalUrl });
             if (!processData.success) {
               throw new Error(processData.message || "处理失败");
             }

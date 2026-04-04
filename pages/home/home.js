@@ -83,7 +83,7 @@ Page({
   },
 
   loadBanners() {
-    request.get('/api/banner/list')
+    request.get('/banner/list')
       .then((data) => {
         const list = Array.isArray(data) ? data : [];
         if (!list.length) return;
@@ -137,7 +137,7 @@ Page({
       });
       return;
     }
-    request.get('/api/creator/patterns?limit=100')
+    request.get('/creator/patterns?limit=100')
       .then((data) => {
         const list = Array.isArray(data) ? data : [];
         this.setData({
@@ -183,11 +183,11 @@ Page({
           wx.showToast({ title: '微信登录失败，请重试', icon: 'none' });
           return;
         }
-        request.post('/api/auth/login', { code: res.code })
+        request.post('/auth/login', { code: res.code })
           .then((data) => {
             const sid = data.sessionId || data.token;
             if (sid) wx.setStorageSync('sessionId', sid);
-            return request.get('/api/user/profile').catch(() => null);
+            return request.get('/user/profile').catch(() => null);
           })
           .then((profile) => {
             wx.setStorageSync('everRegistered', true);
@@ -227,16 +227,16 @@ Page({
           wx.showToast({ title: '微信登录失败，请重试', icon: 'none' });
           return;
         }
-        request.post('/api/auth/login', { code: res.code })
+        request.post('/auth/login', { code: res.code })
           .then((data) => {
             const sid = data.sessionId || data.token;
             if (sid) wx.setStorageSync('sessionId', sid);
-            return request.post('/api/user/bind-phone-wx', { code: phoneCode });
+            return request.post('/user/bind-phone-wx', { code: phoneCode });
           })
           .then((phone) => {
             wx.setStorageSync('phone', phone || '');
             wx.setStorageSync('everRegistered', true);
-            return request.get('/api/user/profile').catch(() => null);
+            return request.get('/user/profile').catch(() => null);
           })
           .then((profile) => {
             if (profile) {

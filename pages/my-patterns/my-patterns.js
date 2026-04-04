@@ -31,7 +31,7 @@ Page({
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
       this.setData({ loading: true });
-      request.get('/api/my-pattern/list')
+      request.get('/my-pattern/list')
         .then((data) => {
           const nameMap = wx.getStorageSync('patternNameMap') || {};
           const patterns = (Array.isArray(data) ? data : []).map(item => ({
@@ -69,7 +69,7 @@ Page({
       title: '提示', content: '确认从我的图纸中移除？',
       success: (res) => {
         if (res.confirm) {
-          request.post('/api/my-pattern/unsave/' + taskId)
+          request.post('/my-pattern/unsave/' + taskId)
             .then(() => {
               const patterns = this.data.patterns.filter(p => String(p.taskId) !== String(taskId));
               this.setData({ patterns }, () => this.applyFilter());

@@ -86,7 +86,7 @@ Page({
 
   _loadPaletteColors(brand, colorCount) {
     this.setData({ paletteLoading: true });
-    request.get('/api/bead/colors?brand=' + encodeURIComponent(brand) + '&colorCount=' + (colorCount || 0))
+    request.get('/bead/colors?brand=' + encodeURIComponent(brand) + '&colorCount=' + (colorCount || 0))
       .then((list) => {
         const items = (Array.isArray(list) ? list : []).map((c, idx) => {
           const hex = '#' + [c.r, c.g, c.b].map(v => Number(v).toString(16).padStart(2, '0')).join('').toUpperCase();
@@ -111,7 +111,7 @@ Page({
   },
 
   _loadDefaultBrand() {
-    request.get('/api/bead/brands')
+    request.get('/bead/brands')
       .then((data) => {
         const dict = data && typeof data === 'object' ? data : {};
         const list = Object.keys(dict);
@@ -456,7 +456,7 @@ Page({
               this._uploadFile(resultUrl, sid),
               this._uploadFile(patternUrl, sid)
             ]).then(([ru, pu]) => {
-              return request.post('/api/bead/pattern-local', {
+              return request.post('/bead/pattern-local', {
                 imageUrl: ru,
                 resultUrl: ru,
                 patternUrl: pu,
@@ -470,7 +470,7 @@ Page({
                 wx.showToast({ title: '请先登录后保存', icon: 'none' });
                 return;
               }
-              return request.post('/api/my-pattern/save/' + taskId).then(() => {
+              return request.post('/my-pattern/save/' + taskId).then(() => {
                 wx.hideLoading();
                 this.setData({ showColorDetail: false });
                 wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
@@ -492,7 +492,7 @@ Page({
         return;
       }
       wx.uploadFile({
-        url: API_BASE_URL + '/api/image/upload',
+        url: API_BASE_URL + '/image/upload',
         filePath,
         name: 'file',
         header: { 'X-Session-Id': sessionId },
@@ -674,7 +674,7 @@ Page({
     if (!stats || !stats.length) return Promise.resolve({});
 
     const grid = [stats.map((s) => [s.r, s.g, s.b])];
-    return request.post('/api/bead/match-colors', {
+    return request.post('/bead/match-colors', {
       brand,
       algo: 'standard',
       colorCount,

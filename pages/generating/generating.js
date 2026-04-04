@@ -30,7 +30,7 @@ Page({
       this.setData({ isTimeout: true });
     }, 30000);
 
-    request.post('/api/bead/pattern-ai-text', {
+    request.post('/bead/pattern-ai-text', {
       prompt, style, size
     })
       .then((data) => {

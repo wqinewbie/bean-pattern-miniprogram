@@ -54,7 +54,7 @@ function ensureProfileComplete() {
     return Promise.resolve(true);
   }
 
-  return request.get('/api/user/profile')
+  return request.get('/user/profile')
     .then((profile) => {
       cacheProfile(profile || {});
       const nick = (profile && profile.nickName) || '';

@@ -26,7 +26,7 @@ Page({
 
   loadPlans() {
     this.setData({ plansLoading: true });
-    request.get('/api/recharge/plans')
+    request.get('/recharge/plans')
       .then((data) => {
         const plans = Array.isArray(data) ? data : [];
         this.setData({
@@ -51,7 +51,7 @@ Page({
     if (!requireLogin({ mode: 'page' })) return;
     wx.showToast({ title: `即将开通${plan.name}`, icon: 'none' });
     // TODO: 调用后端创建订单接口，再调起微信支付
-    // request.post('/api/order/create', { planId: plan.id })
+    // request.post('/order/create', { planId: plan.id })
     //   .then(orderData => wx.requestPayment({ ...orderData }))
   },
 

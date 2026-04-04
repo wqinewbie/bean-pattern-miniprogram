@@ -1,7 +1,7 @@
 /**
  * 拼豆图纸前端生成算法（后端颜色匹配版）
  * 1. 本地采样获取 RGB 网格
- * 2. 发送到后端 /api/bead/match-colors 做颜色匹配
+ * 2. 发送到后端 /bead/match-colors 做颜色匹配
  * 3. 用匹配结果绘制结果图和图纸
  */
 var request = require('./request');
@@ -54,7 +54,7 @@ function generateBeadPattern(imagePath, gridSize, style, brand) {
               try {
                 var rgbGrid = sampleGrid(pd.data, sampW, sampH, gridW, gridH);
                 // 发给后端匹配颜色
-                request.post('/api/bead/match-colors', { brand: brand, grid: rgbGrid })
+                request.post('/bead/match-colors', { brand: brand, grid: rgbGrid })
                   .then(function(matchedGrid) {
                     return drawResult(matchedGrid, gridW, gridH, cellW, cellH, drawW, drawH)
                       .then(function(rp) {
