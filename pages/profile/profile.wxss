@@ -9,14 +9,16 @@
 /* ─── 头部黄色区域 ─── */
 .header-zone {
   background: #FFEBB5;
-  padding: 100rpx 40rpx 120rpx;
+  padding: 0 40rpx 120rpx;
+  padding-bottom: 120rpx;
   border-radius: 0 0 60rpx 60rpx;
   border-bottom: 4rpx solid #FFD54F;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .header-top {
-  height: 72rpx;
+  height: 32rpx;
   margin-bottom: 16rpx;
 }
 
@@ -221,6 +223,89 @@
 
 .menu-arrow { font-size: 40rpx; color: #D0B8A1; }
 .menu-divider { height: 2rpx; background: #FFF9ED; margin: 0 24rpx; }
+
+/* ─── 内嵌子页（TabBar保持不动） ─── */
+.sub-page {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: calc(120rpx + env(safe-area-inset-bottom));
+  background: #FFF9ED;
+  z-index: 40;
+  transform: translateY(100%);
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+.sub-page--show {
+  transform: translateY(0);
+}
+
+.sub-header {
+  padding: 0 28rpx 12rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2rpx solid #FFF4DC;
+  background: #FFF9ED;
+}
+
+.sub-back { font-size: 42rpx; color: #8C6B4B; width: 72rpx; }
+.sub-title { font-size: 32rpx; font-weight: 800; color: #5D4037; }
+.sub-action { font-size: 24rpx; color: #FF6B6B; width: 72rpx; text-align: right; }
+
+.sub-scroll { flex: 1; }
+.sub-loading, .sub-empty {
+  height: 320rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #A1887F;
+  font-size: 26rpx;
+}
+
+.sub-list { padding: 24rpx 32rpx; }
+.sub-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx;
+  background: #fff;
+  border-radius: 24rpx;
+  margin-bottom: 16rpx;
+  box-shadow: 0 4rpx 12rpx rgba(140,107,75,0.06);
+}
+
+.sub-thumb {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 16rpx;
+  background: #FFF4DC;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sub-thumb-img { width: 100%; height: 100%; }
+.sub-thumb-ph { font-size: 48rpx; }
+
+.sub-info { flex: 1; display: flex; flex-direction: column; gap: 8rpx; }
+.sub-name { font-size: 26rpx; font-weight: 700; color: #5D4037; }
+.sub-meta { font-size: 20rpx; color: #A1887F; }
+.sub-del { font-size: 32rpx; color: #D0B8A1; padding: 8rpx; }
+.sub-go {
+  background: #FF9800;
+  color: #fff;
+  padding: 12rpx 24rpx;
+  border-radius: 20rpx;
+  font-size: 20rpx;
+  font-weight: 700;
+  flex-shrink: 0;
+}
 
 /* ─── 底部弹窗通用 ─── */
 .sheet-mask {

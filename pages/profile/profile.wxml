@@ -1,7 +1,7 @@
 <view class="container">
 
   <!-- 头部黄色区域 -->
-  <view class="header-zone">
+  <view class="header-zone" style="padding-top: {{profileTopPaddingPx}}px;">
     <view class="header-top">
       <view style="width:60rpx"></view>
       <view class="bell-wrap" bindtap="onGoHistory">
@@ -36,7 +36,7 @@
     </view>
     <view class="stat-divider"></view>
     <view class="stat-item" bindtap="onGoMyPatterns">
-      <text class="stat-num">{{stats.success || 0}}</text>
+      <text class="stat-num">{{stats.saved || 0}}</text>
       <text class="stat-label">📁 魔法图</text>
     </view>
   </view>
@@ -111,6 +111,58 @@
 
     <view style="height:120rpx"></view>
   </scroll-view>
+
+  <!-- ====== 内嵌子页（TabBar保持不动） ====== -->
+  <view class="sub-page {{subPage?'sub-page--show':''}}">
+    <view class="sub-header" style="padding-top: {{subTopSafePx}}px; min-height: {{subHeaderHeightPx}}px;">
+      <view class="sub-back" bindtap="onCloseSubPage">←</view>
+      <text class="sub-title">{{subPage==='patterns'?'图纸箱':'时光机'}}</text>
+      <view class="sub-action" wx:if="{{subPage==='history'}}" bindtap="onSubClearHistory">清空</view>
+      <view class="sub-action" wx:elif="{{subPage==='patterns'}}"></view>
+    </view>
+
+    <scroll-view scroll-y class="sub-scroll">
+      <view wx:if="{{subPageLoading}}" class="sub-loading">加载中...</view>
+
+      <view wx:if="{{subPage==='patterns' && !subPageLoading && subPagePatterns.length===0}}" class="sub-empty">
+        <text>还没有图纸，快去生成吧</text>
+      </view>
+      <view wx:if="{{subPage==='history' && !subPageLoading && subPageHistory.length===0}}" class="sub-empty">
+        <text>还没有历史记录</text>
+      </view>
+
+      <view wx:if="{{subPage==='patterns'}}" class="sub-list">
+        <view wx:for="{{subPagePatterns}}" wx:key="taskId" class="sub-item">
+          <view class="sub-thumb" bindtap="onSubItemTap" data-item="{{item}}">
+            <image wx:if="{{item.patternUrl}}" class="sub-thumb-img" src="{{item.patternUrl}}" mode="aspectFill"/>
+            <image wx:elif="{{item.resultUrl}}" class="sub-thumb-img" src="{{item.resultUrl}}" mode="aspectFill"/>
+            <view wx:else class="sub-thumb-ph">🖼</view>
+          </view>
+          <view class="sub-info" bindtap="onSubItemTap" data-item="{{item}}">
+            <text class="sub-name">{{item.patternName || ('魔法图纸#'+item.taskId)}}</text>
+            <text class="sub-meta">拼豆图纸 · {{item.createdAt}}</text>
+          </view>
+          <view class="sub-del" bindtap="onSubDelete" data-taskid="{{item.taskId}}">🗑</view>
+        </view>
+      </view>
+
+      <view wx:if="{{subPage==='history'}}" class="sub-list">
+        <view wx:for="{{subPageHistory}}" wx:key="taskId" class="sub-item" bindtap="onSubItemTap" data-item="{{item}}">
+          <view class="sub-thumb">
+            <image wx:if="{{item.resultUrl}}" class="sub-thumb-img" src="{{item.resultUrl}}" mode="aspectFill"/>
+            <view wx:else class="sub-thumb-ph">🖼</view>
+          </view>
+          <view class="sub-info">
+            <text class="sub-name">恢复编辑 {{item.gridSize}}格</text>
+            <text class="sub-meta">{{item.createdAt}}</text>
+          </view>
+          <view class="sub-go">继续</view>
+        </view>
+      </view>
+
+      <view style="height:180rpx"></view>
+    </scroll-view>
+  </view>
 
   <!-- ====== 子页弹窗 ====== -->
 

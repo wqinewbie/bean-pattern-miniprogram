@@ -14,29 +14,29 @@
   <view class="action-zone">
     <view class="card-grid-2x2">
       <view class="action-card" bindtap="onBeadPatternLocal">
-        <view class="card-icon pink">
-          <text class="icon-text">🖼</text>
+        <view class="card-icon card-tilt-left pink">
+          <image class="icon-img" src="/assets/icons/card-convert.svg" mode="aspectFit"/>
         </view>
         <text class="card-title">图片转图纸</text>
         <text class="card-desc">智能识别色彩</text>
       </view>
       <view class="action-card" bindtap="onBeadPatternAI">
-        <view class="card-icon purple">
-          <text class="icon-text">✨</text>
+        <view class="card-icon card-tilt-right purple">
+          <image class="icon-img" src="/assets/icons/card-ai.svg" mode="aspectFit"/>
         </view>
         <text class="card-title">AI一键生成</text>
         <text class="card-desc">文字秒变图纸</text>
       </view>
       <view class="action-card" bindtap="onDrawBoard">
-        <view class="card-icon blue">
-          <text class="icon-text">✏️</text>
+        <view class="card-icon card-tilt-right blue">
+          <image class="icon-img" src="/assets/icons/card-draw.svg" mode="aspectFit"/>
         </view>
         <text class="card-title">空白画板</text>
         <text class="card-desc">自由创作拼豆</text>
       </view>
       <view class="action-card" bindtap="onGoMyPatterns">
-        <view class="card-icon orange">
-          <text class="icon-text">📁</text>
+        <view class="card-icon card-tilt-left orange">
+          <image class="icon-img" src="/assets/icons/card-patterns.svg" mode="aspectFit"/>
         </view>
         <text class="card-title">我的图纸</text>
         <text class="card-desc">管理历史作品</text>
@@ -86,30 +86,28 @@
   <view wx:if="{{showLoginModal}}" class="login-modal login-modal--show">
     <view class="modal-close" bindtap="onCloseLoginModal">✕</view>
     <view class="modal-magic-icon">{{isFirstLogin ? '🌟' : '🪄'}}</view>
-    <text class="modal-title">{{isFirstLogin ? '创建你的魔法档案' : '欢迎回来'}}</text>
-    <text class="modal-sub">{{isFirstLogin ? '设置一下你的专属形象吧~' : '重新设置头像和昵称'}}</text>
+    <text class="modal-title">{{isFirstLogin ? '微信登录' : '欢迎回来'}}</text>
+    <text class="modal-sub">{{isFirstLogin ? '可先快速登录进入，手机号与头像昵称可稍后在“我的”页面补充' : '登录后可继续补充手机号与头像昵称'}}</text>
 
-    <button class="modal-avatar-btn" open-type="chooseAvatar" bindchooseavatar="onLoginChooseAvatar">
-      <image wx:if="{{loginAvatarUrl}}" class="modal-avatar-img" src="{{loginAvatarUrl}}" mode="aspectFill"/>
-      <view wx:else class="modal-avatar-ph">
-        <text>👤</text>
-        <text class="modal-avatar-hint">点击设置头像</text>
-      </view>
+    <button class="modal-phone-btn modal-wechat-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" wx:if="{{!loginSubmitting}}">
+      📱 微信手机号一键登录
     </button>
 
-    <input class="modal-nick-input" type="nickname" placeholder="输入昵称，或一键使用微信名" value="{{loginNickName}}" bindinput="onLoginNickInput" maxlength="20"/>
-
-    <button wx:if="{{isFirstLogin}}" class="modal-phone-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">
-      <text wx:if="{{!phoneGot}}">📱 授权手机号（可选）</text>
-      <text wx:else>✅ 手机号已授权</text>
-    </button>
-
-    <view class="modal-wechat-btn" bindtap="onLoginSubmit">
-      <text wx:if="{{!loginSubmitting}}">✨ 进入魔法屋</text>
-      <view wx:else class="btn-loading-row"><view class="modal-spinner"></view><text>施法中...</text></view>
+    <view wx:else class="modal-phone-btn modal-wechat-btn">
+      <view class="btn-loading-row"><view class="modal-spinner"></view><text>处理中...</text></view>
     </view>
 
-    <view class="modal-skip-btn" bindtap="onCloseLoginModal">下次一定</view>
+    <view class="modal-wechat-btn modal-wechat-btn--ghost" bindtap="onQuickWxLogin">
+      <text wx:if="{{!loginSubmitting}}">🟢 先微信快速登录，手机号后续补充</text>
+      <view wx:else class="btn-loading-row"><view class="modal-spinner"></view><text>处理中...</text></view>
+    </view>
+
+    <view class="modal-wechat-btn" bindtap="onGoProfileEdit">
+      <text wx:if="{{!loginSubmitting}}">🛠 去我的页面编辑头像昵称</text>
+      <view wx:else class="btn-loading-row"><view class="modal-spinner"></view><text>处理中...</text></view>
+    </view>
+
+    <view class="modal-skip-btn" bindtap="onCloseLoginModal">暂不登录</view>
     <text class="modal-policy">登录即代表同意 <text class="policy-link">《用户协议》</text> 和 <text class="policy-link">《隐私政策》</text></text>
   </view>
 

@@ -1,0 +1,49 @@
+<view class="page">
+  <view class="top-bar" style="padding-top: {{topSafePx}}px; min-height: {{topBarHeightPx}}px;">
+    <view class="back" bindtap="onBack">←</view>
+    <view class="top-actions">
+      <view class="action-btn" bindtap="onToggleBrightness">调节明暗</view>
+      <view class="action-btn" bindtap="onResetView">重置视图</view>
+      <view class="hint">双指缩放</view>
+    </view>
+    <view class="dot"></view>
+  </view>
+
+  <view class="nav-row" wx:if="{{currentColor}}">
+    <view class="nav-btn" bindtap="onPrev">← 上一色</view>
+    <view class="nav-center">
+      <view class="color-dot" style="background:rgb({{currentColor.r}},{{currentColor.g}},{{currentColor.b}})"></view>
+      <view class="nav-meta">
+        <text class="nav-id">{{currentColor.id}} <text class="nav-count">x{{currentColor.count}}颗</text></text>
+        <text class="nav-progress">{{currentIndex+1}} / {{colorStats.length}}</text>
+      </view>
+    </view>
+    <view class="nav-btn" bindtap="onNext">下一色 →</view>
+  </view>
+
+  <view class="canvas-wrap" bindtouchstart="onCanvasTouchStart" bindtouchmove="onCanvasTouchMove" bindtouchend="onCanvasTouchEnd">
+    <canvas
+      canvas-id="focus-canvas"
+      class="focus-canvas"
+      style="transform: translate({{offsetX}}px, {{offsetY}}px) scale({{scale}});"
+    />
+    <canvas canvas-id="focus-base-canvas" class="hidden-canvas" />
+  </view>
+
+  <view class="bottom">
+    <view class="chips-wrap">
+      <scroll-view class="chip-list" scroll-x>
+        <view class="chips">
+          <view wx:for="{{colorStats}}" wx:key="id" class="chip {{index===currentIndex?'chip--active':''}} {{completedMap[item.id]?'chip--done':''}}" bindtap="onPick" data-index="{{index}}">
+            <view class="chip-dot" style="background:rgb({{item.r}},{{item.g}},{{item.b}})"></view>
+            <text class="chip-id">{{item.id}}</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view class="finish-btn {{completedMap[currentColor.id]?'finish-btn--done':''}}" bindtap="onToggleDone" wx:if="{{currentColor}}">
+      {{completedMap[currentColor.id] ? '撤销完成' : '拼完此色，打卡！'}}
+    </view>
+  </view>
+</view>

@@ -1,5 +1,7 @@
 const request = require('../../utils/request');
+const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { API_BASE_URL } = require('../../utils/config');
+const { getSafeAreaLayout } = require('../../utils/safe-area');
 
 const RANDOM_PROMPTS = [
   '戴围巾的橘猫，旁边有一杯热咖啡',
@@ -23,16 +25,15 @@ Page({
   },
 
   onLoad() {
-    wx.getSystemInfo({
-      success: (res) => {
-        const sbh = res.statusBarHeight || 20;
-        // header = statusBar + 24px padding + icon行约80px
-        const headerH = sbh + 24 + Math.round(160 / 750 * res.windowWidth);
-        const tabBarH = 56;
-        const scrollHeight = Math.max(res.windowHeight - headerH - tabBarH, 300);
-        this.setData({ statusBarHeight: sbh, scrollHeight });
-      }
-    });
+    const layout = getSafeAreaLayout();
+    const sys = wx.getSystemInfoSync ? wx.getSystemInfoSync() : {};
+    const sbh = layout.statusBarHeight;
+    const windowWidth = sys.windowWidth || 375;
+    const windowHeight = sys.windowHeight || 667;
+    const headerH = sbh + 24 + Math.round(160 / 750 * windowWidth);
+    const tabBarH = 56;
+    const scrollHeight = Math.max(windowHeight - headerH - tabBarH, 300);
+    this.setData({ statusBarHeight: sbh, scrollHeight });
   },
 
   onShow() {
@@ -61,19 +62,17 @@ Page({
   onGenerate() {
     const { prompt, isGenerating, selectedStyle, selectedSize } = this.data;
     if (!prompt.trim() || isGenerating) return;
-    const sessionId = wx.getStorageSync('sessionId');
-    if (!sessionId) {
-      wx.showToast({ title: '请先登录', icon: 'none' });
-      return;
-    }
-    this.setData({ isGenerating: true });
-    wx.navigateTo({
-      url: '/pages/generating/generating?prompt=' + encodeURIComponent(prompt) +
-           '&style=' + encodeURIComponent(selectedStyle) +
-           '&size=' + selectedSize
+    ensureProfileComplete().then((ok) => {
+      if (!ok) return;
+      this.setData({ isGenerating: true });
+      wx.navigateTo({
+        url: '/pages/generating/generating?prompt=' + encodeURIComponent(prompt) +
+             '&style=' + encodeURIComponent(selectedStyle) +
+             '&size=' + selectedSize
+      });
+      setTimeout(() => {
+        this.setData({ isGenerating: false });
+      }, 1000);
     });
-    setTimeout(() => {
-      this.setData({ isGenerating: false });
-    }, 1000);
   },
 });

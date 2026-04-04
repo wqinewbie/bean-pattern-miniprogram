@@ -1,4 +1,5 @@
 const request = require('../../utils/request');
+const { isLoggedAndBound, requireLogin, cacheProfile, hasSession } = require('../../utils/profile-guard');
 
 const CATEGORIES = ['推荐', '卡通', '动物', '字母', '简约', '节日'];
 
@@ -8,10 +9,7 @@ Page({
     loadingText: '处理中...',
     showLoginModal: false,
     isFirstLogin: true,
-    loginAvatarUrl: '',
-    loginNickName: '',
     loginSubmitting: false,
-    phoneGot: false,
     nickName: '',
     avatarUrl: '',
     statusBarHeight: 20,
@@ -28,7 +26,7 @@ Page({
     categories: CATEGORIES,
     activeCategory: '推荐',
     templates: [],
-    allTemplates: [],  // 从后端加载的完整列表
+    allTemplates: [],
     templatesLoading: true,
   },
 
@@ -54,22 +52,36 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setSelected(0);
     }
-    const nickName = wx.getStorageSync('nickName');
-    if (!nickName) {
-      const everRegistered = wx.getStorageSync('everRegistered');
-      setTimeout(() => {
-        this.setData({
-          showLoginModal: true,
-          isFirstLogin: !everRegistered,
-          loginAvatarUrl: '',
-          loginNickName: '',
-          phoneGot: false,
-        });
-      }, 400);
+    if (!hasSession()) {
+      this.openLoginModal();
+    } else {
+      this.closeLoginModal();
     }
   },
 
-  // ─── Banner ───
+  openLoginModal() {
+    if (this._loginModalTimer) clearTimeout(this._loginModalTimer);
+    const everRegistered = wx.getStorageSync('everRegistered');
+    this._loginModalTimer = setTimeout(() => {
+      this._loginModalTimer = null;
+      if (hasSession()) return;
+      this.setData({
+        showLoginModal: true,
+        isFirstLogin: !everRegistered,
+      });
+    }, 400);
+  },
+
+  closeLoginModal() {
+    if (this._loginModalTimer) {
+      clearTimeout(this._loginModalTimer);
+      this._loginModalTimer = null;
+    }
+    if (this.data.showLoginModal || this.data.loginSubmitting) {
+      this.setData({ showLoginModal: false, loginSubmitting: false });
+    }
+  },
+
   loadBanners() {
     request.get('/api/banner/list')
       .then((data) => {
@@ -111,7 +123,6 @@ Page({
     }
   },
 
-  // ─── 图纸市场 ───
   loadTemplates() {
     this.setData({ templatesLoading: true });
     const app = getApp();
@@ -158,20 +169,94 @@ Page({
     wx.navigateTo({ url: '/pages/generate/generate?imageUrl=' + encodeURIComponent(url) });
   },
 
-  // ─── 登录弹窗 ───
-  onLoginChooseAvatar(e) {
-    this.setData({ loginAvatarUrl: e.detail.avatarUrl });
+  onGoProfileEdit() {
+    wx.navigateTo({ url: '/pages/login/login' });
   },
 
-  onLoginNickInput(e) {
-    this.setData({ loginNickName: e.detail.value });
+  onQuickWxLogin() {
+    if (this.data.loginSubmitting) return;
+    this.setData({ loginSubmitting: true });
+    wx.login({
+      success: (res) => {
+        if (!res.code) {
+          this.setData({ loginSubmitting: false });
+          wx.showToast({ title: '微信登录失败，请重试', icon: 'none' });
+          return;
+        }
+        request.post('/api/auth/login', { code: res.code })
+          .then((data) => {
+            const sid = data.sessionId || data.token;
+            if (sid) wx.setStorageSync('sessionId', sid);
+            return request.get('/api/user/profile').catch(() => null);
+          })
+          .then((profile) => {
+            wx.setStorageSync('everRegistered', true);
+            cacheProfile(profile || {});
+            this.closeLoginModal();
+            wx.showToast({ title: '登录成功，可稍后补手机号', icon: 'success' });
+            if (this._loginCallback) { this._loginCallback(); this._loginCallback = null; }
+          })
+          .catch(() => {
+            this.setData({ loginSubmitting: false });
+            wx.showToast({ title: '登录失败，请重试', icon: 'none' });
+          });
+      },
+      fail: () => {
+        this.setData({ loginSubmitting: false });
+        wx.showToast({ title: '微信登录失败，请重试', icon: 'none' });
+      }
+    });
   },
 
   onGetPhoneNumber(e) {
-    if (e.detail.code) {
-      this.setData({ phoneGot: true });
-      wx.showToast({ title: '手机号已授权', icon: 'success' });
+    console.log('onGetPhoneNumber detail:', e && e.detail ? e.detail : null);
+    const phoneCode = e && e.detail && e.detail.code;
+    if (!phoneCode) {
+      const errMsg = e && e.detail && e.detail.errMsg ? e.detail.errMsg : '';
+      const tip = errMsg && errMsg.indexOf('fail') >= 0
+        ? '当前账号暂未开通手机号能力，可先快速登录'
+        : '当前环境暂未返回手机号授权，请用真机测试';
+      wx.showToast({ title: tip, icon: 'none' });
+      return;
     }
+    this.setData({ loginSubmitting: true });
+    wx.login({
+      success: (res) => {
+        if (!res.code) {
+          this.setData({ loginSubmitting: false });
+          wx.showToast({ title: '微信登录失败，请重试', icon: 'none' });
+          return;
+        }
+        request.post('/api/auth/login', { code: res.code })
+          .then((data) => {
+            const sid = data.sessionId || data.token;
+            if (sid) wx.setStorageSync('sessionId', sid);
+            return request.post('/api/user/bind-phone-wx', { code: phoneCode });
+          })
+          .then((phone) => {
+            wx.setStorageSync('phone', phone || '');
+            wx.setStorageSync('everRegistered', true);
+            return request.get('/api/user/profile').catch(() => null);
+          })
+          .then((profile) => {
+            if (profile) {
+              cacheProfile(profile);
+            }
+            wx.setStorageSync('everRegistered', true);
+            this.closeLoginModal();
+            wx.showToast({ title: '登录成功', icon: 'success' });
+            if (this._loginCallback) { this._loginCallback(); this._loginCallback = null; }
+          })
+          .catch((err) => {
+            this.setData({ loginSubmitting: false });
+            wx.showToast({ title: (err && err.message) || '登录失败，请重试', icon: 'none' });
+          });
+      },
+      fail: () => {
+        this.setData({ loginSubmitting: false });
+        wx.showToast({ title: '微信登录失败，请重试', icon: 'none' });
+      }
+    });
   },
 
   onCloseLoginModal() {
@@ -179,86 +264,34 @@ Page({
     if (this._loginCallback) this._loginCallback = null;
   },
 
-  onLoginSubmit() {
-    const { loginNickName, loginAvatarUrl } = this.data;
-    const nick = loginNickName.trim();
-    if (!nick) {
-      wx.showToast({ title: '请输入昵称', icon: 'none' });
-      return;
-    }
-    this.setData({ loginSubmitting: true });
-    wx.login({
-      success: (res) => {
-        if (res.code) {
-          request.post('/api/auth/login', { code: res.code })
-            .then((data) => {
-              const sid = data.sessionId || data.token;
-              if (sid) wx.setStorageSync('sessionId', sid);
-            })
-            .catch(() => {})
-            .finally(() => {
-              this._saveLogin(nick, loginAvatarUrl);
-            });
-        } else {
-          this._saveLogin(nick, loginAvatarUrl);
-        }
-      },
-      fail: () => { this._saveLogin(nick, loginAvatarUrl); }
-    });
-  },
-
-  _saveLogin(nick, avatarPath) {
-    wx.setStorageSync('nickName', nick);
-    wx.setStorageSync('everRegistered', '1');
-    if (avatarPath) wx.setStorageSync('avatarUrl', avatarPath);
-    this.setData({
-      showLoginModal: false,
-      loginSubmitting: false,
-      nickName: nick,
-      avatarUrl: avatarPath || wx.getStorageSync('avatarUrl') || ''
-    });
-    wx.showToast({ title: '登录成功', icon: 'success' });
-    if (this._loginCallback) { this._loginCallback(); this._loginCallback = null; }
-    const sessionId = wx.getStorageSync('sessionId');
-    if (sessionId) {
-      request.post('/api/user/update', { nickName: nick, avatarUrl: avatarPath || '' }).catch(() => {});
-    }
-  },
-
   checkLogin() {
-    const nickName = wx.getStorageSync('nickName');
-    if (!nickName) {
-      const everRegistered = wx.getStorageSync('everRegistered');
-      this.setData({
-        showLoginModal: true,
-        isFirstLogin: !everRegistered,
-        loginAvatarUrl: '',
-        loginNickName: '',
-        phoneGot: false,
-      });
-      return false;
-    }
-    return true;
+    return requireLogin({
+      mode: 'modal',
+      onNeedLogin: () => {
+        this.openLoginModal();
+      }
+    });
+  },
+
+  runAfterLogin(action) {
+    if (!this.checkLogin()) return;
+    if (typeof action === 'function') action();
   },
 
   onBeadPatternLocal() {
-    if (!this.checkLogin()) return;
-    wx.switchTab({ url: '/pages/convert/convert' });
+    this.runAfterLogin(() => wx.switchTab({ url: '/pages/convert/convert' }));
   },
 
   onBeadPatternAI() {
-    if (!this.checkLogin()) return;
-    wx.switchTab({ url: '/pages/ai-generate/ai-generate' });
+    this.runAfterLogin(() => wx.switchTab({ url: '/pages/ai-generate/ai-generate' }));
   },
 
   onGoMyPatterns() {
-    if (!this.checkLogin()) return;
-    wx.navigateTo({ url: '/pages/my-patterns/my-patterns' });
+    this.runAfterLogin(() => wx.navigateTo({ url: '/pages/my-patterns/my-patterns' }));
   },
 
   onDrawBoard() {
-    if (!this.checkLogin()) return;
-    wx.navigateTo({ url: '/pages/draw/draw' });
+    this.runAfterLogin(() => wx.navigateTo({ url: '/pages/draw/draw' }));
   },
 
   showError(msg) {

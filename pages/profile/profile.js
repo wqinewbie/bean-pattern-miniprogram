@@ -1,17 +1,39 @@
 const request = require('../../utils/request');
+const { cacheProfile } = require('../../utils/profile-guard');
+const { getSafeAreaLayout } = require('../../utils/safe-area');
+
+const DEFAULT_NICKNAME = '魔法师小豆';
+const EMPTY_STATS = { total: 0, success: 0, ai: 0, saved: 0 };
 
 Page({
   data: {
     userInfo: null,
-    stats: { total: 0, success: 0, ai: 0 },
+    stats: EMPTY_STATS,
     loading: false,
     activeSheet: '',
     cloudProcess: true,
     feedbackText: '',
     creatorIncome: 0,
+    profileTopPaddingPx: 88,
+    subTopSafePx: 20,
+    subHeaderHeightPx: 88,
+  },
+
+  onLoad() {
+    this.calcSafeAreas();
+  },
+
+  calcSafeAreas() {
+    const layout = getSafeAreaLayout();
+    this.setData({
+      profileTopPaddingPx: layout.headerSafeTop,
+      subTopSafePx: layout.statusBarHeight,
+      subHeaderHeightPx: layout.navHeight,
+    });
   },
 
   onShow() {
+    this.calcSafeAreas();
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setSelected(3);
     }
@@ -22,28 +44,16 @@ Page({
     const nickName = wx.getStorageSync('nickName') || '';
     const avatarUrl = wx.getStorageSync('avatarUrl') || '';
     this.setData({
-      userInfo: { nickName: nickName || '魔法师小豆', avatarUrl }
+      userInfo: { nickName: nickName || DEFAULT_NICKNAME, avatarUrl }
     });
+
     const sessionId = wx.getStorageSync('sessionId');
     if (!sessionId) return;
 
     const app = getApp();
     const cache = app && app.globalData && app.globalData.prefetch;
     if (cache && cache.profile && cache.stats) {
-      const profile = cache.profile;
-      const stats = cache.stats;
-      if (profile && profile.nickName) {
-        wx.setStorageSync('nickName', profile.nickName);
-        wx.setStorageSync('avatarUrl', profile.avatarUrl || '');
-      }
-      this.setData({
-        userInfo: {
-          nickName: (profile && profile.nickName) || nickName || '魔法师小豆',
-          avatarUrl: (profile && profile.avatarUrl) || avatarUrl || ''
-        },
-        stats: stats || { total: 0, success: 0, ai: 0 },
-        loading: false
-      });
+      this.applyProfileAndStats(cache.profile, cache.stats, nickName, avatarUrl);
       return;
     }
 
@@ -53,20 +63,27 @@ Page({
       request.get('/api/user/stats')
     ])
       .then(([profile, stats]) => {
-        if (profile && profile.nickName) {
-          wx.setStorageSync('nickName', profile.nickName);
-          wx.setStorageSync('avatarUrl', profile.avatarUrl || '');
-        }
-        this.setData({
-          userInfo: {
-            nickName: (profile && profile.nickName) || nickName || '魔法师小豆',
-            avatarUrl: (profile && profile.avatarUrl) || avatarUrl || ''
-          },
-          stats: stats || { total: 0, success: 0, ai: 0 },
-          loading: false
-        });
+        this.applyProfileAndStats(profile, stats, nickName, avatarUrl);
       })
-      .catch(() => { this.setData({ loading: false }); });
+      .catch(() => {
+        this.setData({ loading: false });
+      });
+  },
+
+  applyProfileAndStats(profile, stats, fallbackNickName, fallbackAvatarUrl) {
+    if (profile && profile.nickName) {
+      wx.setStorageSync('nickName', profile.nickName);
+      wx.setStorageSync('avatarUrl', profile.avatarUrl || '');
+      wx.setStorageSync('phone', profile.phone || '');
+    }
+    this.setData({
+      userInfo: {
+        nickName: (profile && profile.nickName) || fallbackNickName || DEFAULT_NICKNAME,
+        avatarUrl: (profile && profile.avatarUrl) || fallbackAvatarUrl || ''
+      },
+      stats: stats || EMPTY_STATS,
+      loading: false
+    });
   },
 
   onEditProfile() {
@@ -86,10 +103,10 @@ Page({
   },
 
   onAccountSettings() { this.setData({ activeSheet: 'account' }); },
-  onPrivacy()         { this.setData({ activeSheet: 'privacy' }); },
-  onHelp()            { this.setData({ activeSheet: 'help' }); },
-  onCreator()         { this.setData({ activeSheet: 'creator' }); },
-  onCloseSheet()      { this.setData({ activeSheet: '' }); },
+  onPrivacy() { this.setData({ activeSheet: 'privacy' }); },
+  onHelp() { this.setData({ activeSheet: 'help' }); },
+  onCreator() { this.setData({ activeSheet: 'creator' }); },
+  onCloseSheet() { this.setData({ activeSheet: '' }); },
 
   onBindPhone() {
     wx.showToast({ title: '绑定手机号功能即将上线', icon: 'none' });
@@ -104,9 +121,10 @@ Page({
           wx.removeStorageSync('sessionId');
           wx.removeStorageSync('nickName');
           wx.removeStorageSync('avatarUrl');
+          wx.removeStorageSync('phone');
           this.setData({
             userInfo: null,
-            stats: { total: 0, success: 0, ai: 0 },
+            stats: EMPTY_STATS,
             activeSheet: ''
           });
           wx.showToast({ title: '已退出登录', icon: 'success' });
@@ -116,8 +134,9 @@ Page({
   },
 
   onCloudProcessChange(e) {
-    this.setData({ cloudProcess: e.detail.value });
-    wx.showToast({ title: e.detail.value ? '已开启云端处理' : '已关闭云端处理', icon: 'none' });
+    const enabled = !!e.detail.value;
+    this.setData({ cloudProcess: enabled });
+    wx.showToast({ title: enabled ? '已开启云端处理' : '已关闭云端处理', icon: 'none' });
   },
 
   onClearTrace() {
@@ -127,7 +146,7 @@ Page({
       success: (res) => {
         if (res.confirm) {
           wx.clearStorageSync();
-          this.setData({ userInfo: null, stats: { total: 0, success: 0, ai: 0 }, activeSheet: '' });
+          this.setData({ userInfo: null, stats: EMPTY_STATS, activeSheet: '' });
           wx.showToast({ title: '已清除', icon: 'success' });
         }
       }
@@ -138,13 +157,15 @@ Page({
     this.setData({ feedbackText: e.detail.value });
   },
 
-  // 反馈已对接后端 /api/feedback/submit
   onSendFeedback() {
     const text = this.data.feedbackText.trim();
-    if (!text) { wx.showToast({ title: '请先写下建议', icon: 'none' }); return; }
+    if (!text) {
+      wx.showToast({ title: '请先写下建议', icon: 'none' });
+      return;
+    }
     request.post('/api/feedback/submit', { content: text, category: 'SUGGESTION' })
       .then(() => {
-        wx.showToast({ title: '已发送给小豆，谢谢！', icon: 'success' });
+        wx.showToast({ title: '已发送给小豆，感谢反馈', icon: 'success' });
         this.setData({ feedbackText: '', activeSheet: '' });
       })
       .catch(() => {

@@ -1,22 +1,33 @@
 const request = require('../../utils/request');
+const { cacheProfile } = require('../../utils/profile-guard');
 
 Page({
   data: {
     avatarUrl: '',
     nickName: '',
+    phone: '',
+    smsCode: '',
+    wxPhoneBound: false,
+    sendingCode: false,
+    codeCountdown: 0,
     submitting: false
   },
 
   onLoad() {
-    // 如果已经登录过，看是否已有昵称，有则直接跳首页
     const sessionId = wx.getStorageSync('sessionId');
-    if (!sessionId) {
-      // 未登录，先静默登录拿 sessionId，再让用户完善资料
-      this.silentLogin();
-    }
+    if (!sessionId) this.silentLogin();
+    this.setData({
+      nickName: wx.getStorageSync('nickName') || '',
+      avatarUrl: wx.getStorageSync('avatarUrl') || '',
+      phone: wx.getStorageSync('phone') || '',
+      wxPhoneBound: !!wx.getStorageSync('phone')
+    });
   },
 
-  // 静默登录：wx.login 换取 sessionId（无需用户感知）
+  onUnload() {
+    if (this._codeTimer) clearInterval(this._codeTimer);
+  },
+
   silentLogin() {
     wx.login({
       success: (res) => {
@@ -33,56 +44,145 @@ Page({
     });
   },
 
-  // 用户选择头像（微信官方 chooseAvatar API）
   onChooseAvatar(e) {
-    const { avatarUrl } = e.detail;
-    this.setData({ avatarUrl });
+    this.setData({ avatarUrl: e.detail.avatarUrl });
   },
 
-  // 昵称输入框失焦（type="nickname" 时微信会自动填入微信名）
   onNickNameInput(e) {
     this.setData({ nickName: e.detail.value });
   },
 
-  // 确认提交
+  onPhoneInput(e) {
+    this.setData({ phone: e.detail.value, wxPhoneBound: false });
+  },
+
+  onSmsCodeInput(e) {
+    this.setData({ smsCode: e.detail.value });
+  },
+
+  onSendSmsCode() {
+    const phone = (this.data.phone || '').trim();
+    if (!/^1\d{10}$/.test(phone)) {
+      wx.showToast({ title: '请输入正确手机号', icon: 'none' });
+      return;
+    }
+    if (this.data.codeCountdown > 0 || this.data.sendingCode) return;
+
+    this.setData({ sendingCode: true });
+    request.post('/api/user/send-phone-code', { phone })
+      .then(() => {
+        wx.showToast({ title: '验证码已发送', icon: 'success' });
+        this.startCountdown();
+      })
+      .catch((err) => {
+        wx.showToast({ title: err.message || '发送失败，请重试', icon: 'none' });
+      })
+      .finally(() => {
+        this.setData({ sendingCode: false });
+      });
+  },
+
+  startCountdown() {
+    if (this._codeTimer) clearInterval(this._codeTimer);
+    this.setData({ codeCountdown: 60 });
+    this._codeTimer = setInterval(() => {
+      const next = this.data.codeCountdown - 1;
+      if (next <= 0) {
+        clearInterval(this._codeTimer);
+        this._codeTimer = null;
+        this.setData({ codeCountdown: 0 });
+      } else {
+        this.setData({ codeCountdown: next });
+      }
+    }, 1000);
+  },
+
+  onGetPhoneNumber(e) {
+    const code = e && e.detail && e.detail.code;
+    const errMsg = (e && e.detail && e.detail.errMsg) || '';
+    if (!code) {
+      if (errMsg.includes('user deny') || errMsg.includes('user cancel')) {
+        wx.showToast({ title: '你已取消授权，可手动输入手机号', icon: 'none' });
+      } else {
+        wx.showToast({ title: '未授权手机号，可手动输入', icon: 'none' });
+      }
+      return;
+    }
+    request.post('/api/user/bind-phone-wx', { code })
+      .then((phone) => {
+        wx.setStorageSync('phone', phone || '');
+        this.setData({ phone: phone || '', wxPhoneBound: true });
+        wx.showToast({ title: '已一键绑定手机号', icon: 'success' });
+      })
+      .catch((err) => {
+        wx.showToast({ title: this.resolvePhoneBindError(err), icon: 'none' });
+      });
+  },
+
+  resolvePhoneBindError(err) {
+    const msg = (err && err.message ? String(err.message) : '').toLowerCase();
+    if (!msg) return '一键绑定失败，请手动输入';
+    if (msg.includes('access_token') || msg.includes('appid') || msg.includes('appsecret')) {
+      return '系统微信配置异常，请先手动输入手机号';
+    }
+    if (msg.includes('code') || msg.includes('invalid') || msg.includes('过期')) {
+      return '授权已失效，请重试或手动输入手机号';
+    }
+    if (msg.includes('network') || msg.includes('http')) {
+      return '网络异常，请重试或手动输入手机号';
+    }
+    return '一键绑定失败，请手动输入手机号';
+  },
+
   onSubmit() {
-    const { nickName, avatarUrl } = this.data;
+    const { nickName, avatarUrl, phone, wxPhoneBound, smsCode } = this.data;
     if (!nickName.trim()) {
       wx.showToast({ title: '请输入昵称', icon: 'none' });
       return;
     }
+    if (!/^1\d{10}$/.test((phone || '').trim())) {
+      wx.showToast({ title: '请先一键绑定或手动填写手机号', icon: 'none' });
+      return;
+    }
+    if (!wxPhoneBound && !/^\d{6}$/.test((smsCode || '').trim())) {
+      wx.showToast({ title: '请输入6位短信验证码', icon: 'none' });
+      return;
+    }
 
     this.setData({ submitting: true });
-
-    // 如果有微信头像（临时路径），先上传到后端存储
-    const uploadAvatar = avatarUrl
-      ? this.uploadAvatarIfNeeded(avatarUrl)
-      : Promise.resolve(avatarUrl);
+    const uploadAvatar = avatarUrl ? this.uploadAvatarIfNeeded(avatarUrl) : Promise.resolve(avatarUrl);
 
     uploadAvatar
       .then((finalAvatarUrl) => {
         return request.post('/api/user/update', {
           nickName: nickName.trim(),
           avatarUrl: finalAvatarUrl || ''
-        });
+        }).then(() => finalAvatarUrl);
       })
-      .then(() => {
-        // 本地缓存昵称和头像，避免每次重新请求
+      .then((finalAvatarUrl) => {
+        if (wxPhoneBound) {
+          return request.post('/api/user/bind-phone', { phone: phone.trim() }).then(() => finalAvatarUrl);
+        }
+        return request.post('/api/user/bind-phone-by-code', {
+          phone: phone.trim(),
+          code: smsCode.trim()
+        }).then(() => finalAvatarUrl);
+      })
+      .then((finalAvatarUrl) => {
         wx.setStorageSync('nickName', nickName.trim());
-        wx.setStorageSync('avatarUrl', avatarUrl);
+        wx.setStorageSync('avatarUrl', finalAvatarUrl || avatarUrl || '');
+        wx.setStorageSync('phone', phone.trim());
         this.setData({ submitting: false });
-        // 跳转首页
-        wx.switchTab({ url: '/pages/home/home' });
+        wx.showToast({ title: '已完成绑定', icon: 'success' });
+        setTimeout(() => wx.switchTab({ url: '/pages/home/home' }), 400);
       })
-      .catch(() => {
+      .catch((e) => {
         this.setData({ submitting: false });
-        wx.showToast({ title: '保存失败，请重试', icon: 'none' });
+        wx.showToast({ title: e.message || '保存失败，请重试', icon: 'none' });
       });
   },
 
-  // 上传头像到后端（微信临时路径需要上传才能持久化）
   uploadAvatarIfNeeded(avatarUrl) {
-    // 微信头像临时路径以 http://tmp 或 wxfile:// 开头
     if (!avatarUrl || avatarUrl.startsWith('http://') && !avatarUrl.includes('tmp')) {
       return Promise.resolve(avatarUrl);
     }
@@ -102,15 +202,10 @@ Page({
               return;
             }
           } catch (e) {}
-          resolve(avatarUrl); // 上传失败，降级用临时路径
+          resolve(avatarUrl);
         },
         fail: () => resolve(avatarUrl)
       });
     });
-  },
-
-  // 跳过（不填资料直接进入）
-  onSkip() {
-    wx.switchTab({ url: '/pages/home/home' });
   }
 });

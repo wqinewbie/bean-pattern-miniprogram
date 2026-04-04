@@ -1,4 +1,5 @@
 const request = require('../../utils/request');
+const { getSafeAreaLayout } = require('../../utils/safe-area');
 
 Page({
   data: {
@@ -14,13 +15,13 @@ Page({
   onShow() {
     this.calcNavTop();
     this.loadHistory();
+    const tab = this.selectComponent('#appTabBar');
+    if (tab && tab.setSelected) tab.setSelected(3);
   },
 
   calcNavTop() {
-    const menuButton = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
-    const statusBar = wx.getSystemInfoSync ? (wx.getSystemInfoSync().statusBarHeight || 20) : 20;
-    const navTop = (menuButton && menuButton.bottom) ? (menuButton.bottom + 10) : (statusBar + 44);
-    this.setData({ navTop });
+    const layout = getSafeAreaLayout();
+    this.setData({ navTop: layout.navTop });
   },
 
   loadHistory() {

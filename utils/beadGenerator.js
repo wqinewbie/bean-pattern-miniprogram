@@ -56,7 +56,6 @@ function generateBeadPattern(imagePath, gridSize, style, brand) {
                 // 发给后端匹配颜色
                 request.post('/api/bead/match-colors', { brand: brand, grid: rgbGrid })
                   .then(function(matchedGrid) {
-                    console.log('[bead] match ok, rows:', matchedGrid && matchedGrid.length);
                     return drawResult(matchedGrid, gridW, gridH, cellW, cellH, drawW, drawH)
                       .then(function(rp) {
                         return drawPattern(matchedGrid, gridW, gridH, cellW, cellH, drawW, drawH)

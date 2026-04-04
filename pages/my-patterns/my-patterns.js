@@ -1,8 +1,12 @@
 const request = require('../../utils/request');
+const { ensureProfileComplete } = require('../../utils/profile-guard');
+const { getSafeAreaLayout } = require('../../utils/safe-area');
 
 Page({
   data: {
     patterns: [],
+    filteredPatterns: [],
+    keyword: '',
     loading: false,
     navTop: 88,
   },
@@ -14,30 +18,34 @@ Page({
   onShow() {
     this.calcNavTop();
     this.loadPatterns();
+    const tab = this.selectComponent('#appTabBar');
+    if (tab && tab.setSelected) tab.setSelected(3);
   },
 
   calcNavTop() {
-    const menuButton = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
-    const statusBar = wx.getSystemInfoSync ? (wx.getSystemInfoSync().statusBarHeight || 20) : 20;
-    const navTop = (menuButton && menuButton.bottom) ? (menuButton.bottom + 10) : (statusBar + 44);
-    this.setData({ navTop });
+    const layout = getSafeAreaLayout();
+    this.setData({ navTop: layout.navTop });
   },
 
   loadPatterns() {
-    this.setData({ loading: true });
-    request.get('/api/my-pattern/list')
-      .then((data) => {
-        console.log('patterns data:', data);
-        const patterns = (Array.isArray(data) ? data : []).map(item => ({
-          ...item,
-          createdAt: this.formatTime(item.createdAt),
-        }));
-        this.setData({ patterns, loading: false });
-      })
-      .catch((err) => { 
-        console.error('load patterns error:', err);
-        this.setData({ loading: false }); 
-      });
+    ensureProfileComplete().then((ok) => {
+      if (!ok) return;
+      this.setData({ loading: true });
+      request.get('/api/my-pattern/list')
+        .then((data) => {
+          const nameMap = wx.getStorageSync('patternNameMap') || {};
+          const patterns = (Array.isArray(data) ? data : []).map(item => ({
+            ...item,
+            patternName: item.patternName || nameMap[String(item.taskId)] || ('魔法图纸#' + item.taskId),
+            createdAt: this.formatTime(item.createdAt),
+          }));
+          this.setData({ patterns, loading: false }, () => this.applyFilter());
+        })
+        .catch(() => {
+          wx.showToast({ title: '加载失败', icon: 'none' });
+          this.setData({ loading: false });
+        });
+    });
   },
 
   onItemTap(e) {
@@ -64,7 +72,7 @@ Page({
           request.post('/api/my-pattern/unsave/' + taskId)
             .then(() => {
               const patterns = this.data.patterns.filter(p => String(p.taskId) !== String(taskId));
-              this.setData({ patterns });
+              this.setData({ patterns }, () => this.applyFilter());
               wx.showToast({ title: '已移除', icon: 'success' });
             })
             .catch(() => wx.showToast({ title: '操作失败', icon: 'none' }));
@@ -86,7 +94,27 @@ Page({
     wx.navigateTo({ url: '/pages/generate/generate' });
   },
 
-  onSearchInput() {
+  onSearchInput(e) {
+    this.setData({ keyword: (e.detail.value || '').trim() }, () => this.applyFilter());
+  },
+
+  applyFilter() {
+    const kw = (this.data.keyword || '').toLowerCase();
+    const source = this.data.patterns || [];
+    if (!kw) {
+      this.setData({ filteredPatterns: source });
+      return;
+    }
+    const filteredPatterns = source.filter((item) => {
+      const title = item && item.patternName ? String(item.patternName) : '未命名作品';
+      const colorStats = (item && item.colorStats) ? String(item.colorStats) : '';
+      const createdAt = item && item.createdAt ? String(item.createdAt) : '';
+      return title.toLowerCase().includes(kw)
+        || colorStats.toLowerCase().includes(kw)
+        || createdAt.toLowerCase().includes(kw)
+        || String(item.taskId || '').toLowerCase().includes(kw);
+    });
+    this.setData({ filteredPatterns });
   },
 
   onNavHome() {

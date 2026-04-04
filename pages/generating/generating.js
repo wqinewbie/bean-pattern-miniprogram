@@ -44,6 +44,10 @@ Page({
       })
       .catch((err) => {
         clearTimeout(this._timeoutTimer);
+        if (err && err.message === 'PROFILE_INCOMPLETE') {
+          wx.navigateBack({ delta: 1 });
+          return;
+        }
         wx.showModal({
           title: 'AI生成失败',
           content: (err && err.message) ? err.message : '请稍后重试',

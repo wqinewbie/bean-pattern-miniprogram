@@ -29,24 +29,7 @@
     <view style="height:120rpx"></view>
   </scroll-view>
 
-  <!-- 底部导航 -->
-  <view class="bottom-nav">
-    <view class="nav-item" bindtap="onNavHome">
-      <text class="nav-icon">🏠</text>
-      <text class="nav-label">首页</text>
-    </view>
-    <view class="nav-item" bindtap="onNavPatterns">
-      <text class="nav-icon">📋</text>
-      <text class="nav-label">转图纸</text>
-    </view>
-    <view class="nav-item" bindtap="onNavAI">
-      <text class="nav-icon">✨</text>
-      <text class="nav-label">AI生成</text>
-    </view>
-    <view class="nav-item" bindtap="onNavProfile">
-      <text class="nav-icon">👤</text>
-      <text class="nav-label">我的</text>
-    </view>
-  </view>
+  <!-- 统一底部 TabBar -->
+  <app-tab-bar id="appTabBar" />
 
 </view>

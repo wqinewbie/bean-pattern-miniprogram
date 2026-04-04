@@ -1,4 +1,6 @@
 const request = require('../../utils/request');
+const { requireLogin } = require('../../utils/profile-guard');
+const { getSafeAreaLayout } = require('../../utils/safe-area');
 
 Page({
   data: {
@@ -17,11 +19,8 @@ Page({
   },
 
   onLoad() {
-    wx.getSystemInfo({
-      success: (res) => {
-        this.setData({ statusBarHeight: res.statusBarHeight || 20 });
-      }
-    });
+    const layout = getSafeAreaLayout();
+    this.setData({ statusBarHeight: layout.statusBarHeight });
     this.loadPlans();
   },
 
@@ -49,11 +48,7 @@ Page({
   onPay() {
     const plan = this.data.plans.find(p => p.id === this.data.selectedPlan);
     if (!plan) return;
-    const sessionId = wx.getStorageSync('sessionId');
-    if (!sessionId) {
-      wx.showToast({ title: '请先登录', icon: 'none' });
-      return;
-    }
+    if (!requireLogin({ mode: 'page' })) return;
     wx.showToast({ title: `即将开通${plan.name}`, icon: 'none' });
     // TODO: 调用后端创建订单接口，再调起微信支付
     // request.post('/api/order/create', { planId: plan.id })

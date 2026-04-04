@@ -1,5 +1,6 @@
 const { API_BASE_URL } = require('../../utils/config');
 const request = require('../../utils/request');
+const { ensureProfileComplete } = require('../../utils/profile-guard');
 
 Page({
   data: {
@@ -163,7 +164,13 @@ Page({
   onAlgoChange(e){this.setData({algoIndex:parseInt(e.detail.value)});},
   onTabChange(e){this.setData({activeTab:e.currentTarget.dataset.tab});},
 
-  onGenerate(){if(!this.data.imageUrl){this.onChooseImage();return;}this.startGenerate();},
+  onGenerate(){
+    ensureProfileComplete().then((ok) => {
+      if (!ok) return;
+      if(!this.data.imageUrl){this.onChooseImage();return;}
+      this.startGenerate();
+    });
+  },
 
   startGenerate(){
     const{imageUrl,gridSizeOptions,gridSizeIndex,colorCountOptions,colorCountIndex,algoOptions,algoIndex,customMode,customConfirmed,customSizeVal,mirrorOn}=this.data;
@@ -174,11 +181,17 @@ Page({
     this.setData({loading:true,loadingText:'采样中...'});
     wx.getImageInfo({src:imageUrl,success:(info)=>{
       const ratio=info.width/info.height;
-      const gridW=ratio>=1?gridSize:Math.max(1,Math.round(gridSize*ratio));
-      const gridH=ratio>=1?Math.max(1,Math.round(gridSize/ratio)):gridSize;
-      const sampW=320,sampH=Math.max(1,Math.round(320/ratio));
+      const gridW=gridSize;
+      const gridH=gridSize;
+      const sampW=320,sampH=320;
+      const drawW = ratio >= 1 ? sampW : Math.round(sampH * ratio);
+      const drawH = ratio >= 1 ? Math.round(sampW / ratio) : sampH;
+      const drawX = Math.floor((sampW - drawW) / 2);
+      const drawY = Math.floor((sampH - drawH) / 2);
       const sCtx=wx.createCanvasContext('gen-sample-canvas');
-      sCtx.drawImage(imageUrl,0,0,sampW,sampH);
+      sCtx.setFillStyle('#FFFFFF');
+      sCtx.fillRect(0,0,sampW,sampH);
+      sCtx.drawImage(imageUrl,drawX,drawY,drawW,drawH);
       sCtx.draw(false,()=>{
         wx.canvasGetImageData({canvasId:'gen-sample-canvas',x:0,y:0,width:sampW,height:sampH,
           success:(pd)=>{
@@ -211,10 +224,10 @@ Page({
                        '&patternUrl=' + encodeURIComponent(pu) +
                        '&colorStats=' + encodeURIComponent(JSON.stringify(stats)) +
                        '&gridSize=' + gridSize +
-                       '&brand=' + encodeURIComponent('MARD')
+                       '&brand=' + encodeURIComponent(brand)
                 });
               })
-              .catch((err)=>{this.setData({loading:false});const msg=err&&err.message?err.message:(err&&err.errMsg?err.errMsg:'unknown');wx.showToast({title:'失败:'+msg.slice(0,20),icon:'none',duration:3000});console.error('generate error',err);});
+              .catch((err)=>{this.setData({loading:false});const msg=err&&err.message?err.message:(err&&err.errMsg?err.errMsg:'unknown');wx.showToast({title:'失败:'+msg.slice(0,20),icon:'none',duration:3000});});
           },fail:()=>{this.setData({loading:false});}
         });
       });

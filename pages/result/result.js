@@ -1,4 +1,6 @@
 const request = require('../../utils/request');
+const { ensureProfileComplete } = require('../../utils/profile-guard');
+const { getSafeAreaLayout } = require('../../utils/safe-area');
 
 Page({
   data: {
@@ -11,6 +13,7 @@ Page({
     activeTab: 'result',
     saving: false,
     isSaved: false,
+    currentPreviewUrl: '',
     currentSize: 64,
     brandName: 'MARD',
     gridSizeOptions: [
@@ -18,14 +21,14 @@ Page({
       { value: 64, label: '64x64' }, { value: 78, label: '78x78' },
       { value: 104, label: '104x104' }
     ],
-    navTop: 88
+    navTop: 88,
+    showNameModal: false,
+    patternNameInput: '',
   },
 
   onLoad(options) {
-    const menuButton = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
-    const statusBar = wx.getSystemInfoSync ? (wx.getSystemInfoSync().statusBarHeight || 20) : 20;
-    const navTop = (menuButton && menuButton.bottom) ? (menuButton.bottom + 10) : (statusBar + 44);
-    this.setData({ navTop });
+    const layout = getSafeAreaLayout();
+    this.setData({ navTop: layout.navTop });
     const { taskId, originalUrl, resultUrl, patternUrl, colorStats, gridSize, brand } = options;
     let stats = [];
     try {
@@ -42,6 +45,7 @@ Page({
       colorStats:  stats,
       totalBeads,
       activeTab: resultUrl ? 'result' : 'original',
+      currentPreviewUrl: decodeURIComponent(resultUrl || '') || decodeURIComponent(originalUrl || ''),
       currentSize: size,
       brandName,
     });
@@ -54,15 +58,18 @@ Page({
   },
 
   onTabChange(e) {
-    this.setData({ activeTab: e.currentTarget.dataset.tab });
+    const tab = e.currentTarget.dataset.tab;
+    const nextUrl = tab === 'original'
+      ? this.data.originalUrl
+      : (tab === 'result' ? this.data.resultUrl : this.data.patternUrl);
+    this.setData({
+      activeTab: tab,
+      currentPreviewUrl: nextUrl || ''
+    });
   },
 
   getCurrentUrl() {
-    const { activeTab, originalUrl, resultUrl, patternUrl } = this.data;
-    if (activeTab === 'original') return originalUrl;
-    if (activeTab === 'result')   return resultUrl;
-    if (activeTab === 'pattern')  return patternUrl;
-    return '';
+    return this.data.currentPreviewUrl || '';
   },
 
   onPreviewImage() {
@@ -106,20 +113,53 @@ Page({
     });
   },
 
+  onEnterFocusMode() {
+    const { patternUrl, colorStats, currentSize, brandName } = this.data;
+    if (!patternUrl || !colorStats.length) {
+      wx.showToast({ title: '暂无可进入的数据', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({
+      url: '/pages/focus-mode/focus-mode?patternUrl=' + encodeURIComponent(patternUrl)
+        + '&colorStats=' + encodeURIComponent(JSON.stringify(colorStats))
+        + '&gridSize=' + currentSize
+        + '&brand=' + encodeURIComponent(brandName)
+    });
+  },
+
   onSaveToMyPatterns() {
-    const { taskId, isSaved } = this.data;
-    // taskId 为空、null、-1 或字符串'-1'均视为无效
-    if (!taskId || String(taskId) === '-1' || String(taskId) === 'null') {
-      wx.showToast({ title: '请先登录再保存', icon: 'none' });
-      return;
-    }
-    if (isSaved) {
-      wx.showToast({ title: '已保存到我的图纸', icon: 'none' });
-      return;
-    }
+    ensureProfileComplete().then((ok) => {
+      if (!ok) return;
+      const { taskId, isSaved } = this.data;
+      if (!taskId || String(taskId) === '-1' || String(taskId) === 'null') {
+        wx.showToast({ title: '请先登录再保存', icon: 'none' });
+        return;
+      }
+      if (isSaved) {
+        wx.showToast({ title: '已保存到我的图纸', icon: 'none' });
+        return;
+      }
+      this.setData({ showNameModal: true, patternNameInput: '' });
+    });
+  },
+
+  onNameInput(e) {
+    this.setData({ patternNameInput: e.detail.value || '' });
+  },
+
+  onCloseNameModal() {
+    this.setData({ showNameModal: false });
+  },
+
+  onConfirmSavePattern() {
+    const { taskId, patternNameInput } = this.data;
+    const name = (patternNameInput || '').trim() || ('魔法图纸#' + taskId);
     request.post('/api/my-pattern/save/' + taskId)
       .then(() => {
-        this.setData({ isSaved: true });
+        const map = wx.getStorageSync('patternNameMap') || {};
+        map[String(taskId)] = name;
+        wx.setStorageSync('patternNameMap', map);
+        this.setData({ isSaved: true, showNameModal: false, patternNameInput: name });
         wx.showToast({ title: '已保存到我的图纸', icon: 'success' });
       })
       .catch(() => {
@@ -134,5 +174,7 @@ Page({
   onColorTap(e) {
     const { name, id, count } = e.currentTarget.dataset;
     wx.showToast({ title: '#' + id + ' ' + name + '(' + count + '颗)', icon: 'none', duration: 2000 });
-  }
+  },
+
+  noop() {}
 });

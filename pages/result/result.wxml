@@ -8,9 +8,7 @@
     <!-- 图纸大图预览区 -->
     <view class="preview-card">
       <view class="preview-wrap">
-        <image wx:if="{{activeTab==='original' && originalUrl}}" class="preview-img" src="{{originalUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
-        <image wx:elif="{{activeTab==='result' && resultUrl}}" class="preview-img" src="{{resultUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
-        <image wx:elif="{{activeTab==='pattern' && patternUrl}}" class="preview-img" src="{{patternUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+        <image wx:if="{{currentPreviewUrl}}" class="preview-img" src="{{currentPreviewUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
         <view wx:else class="image-placeholder">
           <text class="ph-icon">🖼️</text>
           <text class="ph-text">暂无图片</text>
@@ -30,7 +28,10 @@
       </view>
 
       <!-- 保存到相册 -->
-      <view class="save-img-btn" bindtap="onSaveImage">💾 保存当前图片到相册</view>
+      <view class="save-img-btn" bindtap="onSaveImage">保存当前图片</view>
+
+      <!-- 沉浸拼豆模式 -->
+      <view class="focus-mode-btn" bindtap="onEnterFocusMode">进入沉浸拼豆模式</view>
     </view>
 
     <!-- 色号清单 -->
@@ -61,10 +62,15 @@
     <view style="height:200rpx"></view>
   </scroll-view>
 
-  <!-- 底部操作按钮 -->
-  <view class="bottom-bar">
-    <view class="btn-save {{isSaved?'btn-saved':''}}" bindtap="onSaveToMyPatterns">
-      <text>{{isSaved ? '✓ 已保存图纸' : '📁 保存图纸'}}</text>
+  <!-- 命名弹框 -->
+  <view wx:if="{{showNameModal}}" class="name-mask" bindtap="onCloseNameModal"></view>
+  <view class="name-modal {{showNameModal?'name-modal--show':''}}" catchtap="noop">
+    <view class="name-title">给图纸起个名字</view>
+    <input class="name-input" type="text" maxlength="20" value="{{patternNameInput}}" bindinput="onNameInput" placeholder="例如：柴犬像素摆件" placeholder-class="name-placeholder"/>
+    <view class="name-hint">不填则自动命名为 魔法图纸#任务号</view>
+    <view class="name-actions">
+      <view class="name-btn name-btn--ghost" bindtap="onCloseNameModal">取消</view>
+      <view class="name-btn name-btn--main" bindtap="onConfirmSavePattern">保存</view>
     </view>
   </view>
 

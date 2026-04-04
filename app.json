@@ -5,6 +5,7 @@
     "pages/history/history",
     "pages/profile/profile",
     "pages/result/result",
+    "pages/focus-mode/focus-mode",
     "pages/my-patterns/my-patterns",
     "pages/draw/draw",
     "pages/ai-generate/ai-generate",

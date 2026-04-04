@@ -1,14 +1,13 @@
+const { getSafeAreaLayout } = require('../../utils/safe-area');
+
 Page({
   data: {
     statusBarHeight: 20,
   },
 
   onLoad() {
-    wx.getSystemInfo({
-      success: (res) => {
-        this.setData({ statusBarHeight: res.statusBarHeight || 20 });
-      }
-    });
+    const layout = getSafeAreaLayout();
+    this.setData({ statusBarHeight: layout.statusBarHeight });
   },
 
   onShow() {
