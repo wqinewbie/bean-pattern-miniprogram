@@ -1,5 +1,8 @@
-const API_BASE_URL = "http://192.168.31.208:8082";
+const ENV = 'dev';
 
-module.exports = {
-  API_BASE_URL
+const envConfig = {
+  dev: require('./config.dev'),
+  prod: require('./config.prod')
 };
+
+module.exports = envConfig[ENV] || envConfig.dev;
