@@ -1,4 +1,5 @@
-const { API_BASE_URL } = require('./config');
+const { API_BASE_URL: API_BASE_URL_RAW } = require('./config');
+const API_BASE_URL = `${API_BASE_URL_RAW}/api`;
 
 const ERROR_CODES = {
   PROFILE_INCOMPLETE: 10010,
