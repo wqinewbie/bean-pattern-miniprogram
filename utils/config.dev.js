@@ -1,5 +1,5 @@
 const config = {
-  API_BASE_URL: "http://<服务器公网IP>/api"
+  API_BASE_URL: "http://106.53.119.137/api"
 };
 
 module.exports = config;
