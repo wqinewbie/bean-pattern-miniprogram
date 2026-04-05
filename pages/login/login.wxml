@@ -1,7 +1,7 @@
 <view class="container">
   <view class="card">
-    <text class="page-title">完善信息并绑定手机号</text>
-    <text class="page-sub">优先推荐微信一键绑定，失败可用短信验证码</text>
+    <text class="page-title">完善资料（手机号选填）</text>
+    <text class="page-sub">可直接保存进入；如需手机号能力可后续绑定</text>
 
     <view class="avatar-wrap">
       <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
@@ -39,7 +39,7 @@
     </view>
 
     <button class="btn-confirm" bindtap="onSubmit" disabled="{{submitting}}">
-      {{submitting ? '保存中...' : '确认绑定并进入'}}
+      {{submitting ? '保存中...' : '保存并进入'}}
     </button>
   </view>
 </view>

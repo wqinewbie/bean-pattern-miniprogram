@@ -136,15 +136,16 @@ Page({
 
   onSubmit() {
     const { nickName, avatarUrl, phone, wxPhoneBound, smsCode } = this.data;
+    const phoneTrimmed = (phone || '').trim();
     if (!nickName.trim()) {
       wx.showToast({ title: '请输入昵称', icon: 'none' });
       return;
     }
-    if (!/^1\d{10}$/.test((phone || '').trim())) {
-      wx.showToast({ title: '请先一键绑定或手动填写手机号', icon: 'none' });
+    if (phoneTrimmed && !/^1\d{10}$/.test(phoneTrimmed)) {
+      wx.showToast({ title: '请输入正确手机号', icon: 'none' });
       return;
     }
-    if (!wxPhoneBound && !/^\d{6}$/.test((smsCode || '').trim())) {
+    if (phoneTrimmed && !wxPhoneBound && !/^\d{6}$/.test((smsCode || '').trim())) {
       wx.showToast({ title: '请输入6位短信验证码', icon: 'none' });
       return;
     }
@@ -160,20 +161,25 @@ Page({
         }).then(() => finalAvatarUrl);
       })
       .then((finalAvatarUrl) => {
+        if (!phoneTrimmed) {
+          return finalAvatarUrl;
+        }
         if (wxPhoneBound) {
-          return request.post('/user/bind-phone', { phone: phone.trim() }).then(() => finalAvatarUrl);
+          return request.post('/user/bind-phone', { phone: phoneTrimmed }).then(() => finalAvatarUrl);
         }
         return request.post('/user/bind-phone-by-code', {
-          phone: phone.trim(),
-          code: smsCode.trim()
+          phone: phoneTrimmed,
+          code: (smsCode || '').trim()
         }).then(() => finalAvatarUrl);
       })
       .then((finalAvatarUrl) => {
         wx.setStorageSync('nickName', nickName.trim());
         wx.setStorageSync('avatarUrl', finalAvatarUrl || avatarUrl || '');
-        wx.setStorageSync('phone', phone.trim());
+        if (phoneTrimmed) {
+          wx.setStorageSync('phone', phoneTrimmed);
+        }
         this.setData({ submitting: false });
-        wx.showToast({ title: '已完成绑定', icon: 'success' });
+        wx.showToast({ title: '已保存', icon: 'success' });
         setTimeout(() => wx.switchTab({ url: '/pages/home/home' }), 400);
       })
       .catch((e) => {

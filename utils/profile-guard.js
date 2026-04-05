@@ -8,12 +8,8 @@ function hasSession() {
   return hasText(wx.getStorageSync('sessionId') || '');
 }
 
-function hasBoundPhone() {
-  return hasText(wx.getStorageSync('phone') || '');
-}
-
 function isLoggedAndBound() {
-  return hasSession() && hasBoundPhone();
+  return hasSession();
 }
 
 function cacheProfile(profile) {
@@ -47,37 +43,17 @@ function ensureProfileComplete() {
     return Promise.resolve(false);
   }
 
-  const nickName = wx.getStorageSync('nickName') || '';
-  const avatarUrl = wx.getStorageSync('avatarUrl') || '';
-  const phone = wx.getStorageSync('phone') || '';
-  if (hasText(nickName) && hasText(avatarUrl) && hasText(phone)) {
-    return Promise.resolve(true);
-  }
-
   return request.get('/user/profile')
     .then((profile) => {
       cacheProfile(profile || {});
-      const nick = (profile && profile.nickName) || '';
-      const avatar = (profile && profile.avatarUrl) || '';
-      const p = (profile && profile.phone) || '';
-      if (hasText(nick) && hasText(avatar) && hasText(p)) return true;
-      wx.showModal({
-        title: '绑定手机号',
-        content: '请先完善昵称头像并绑定手机号后再继续操作',
-        confirmText: '去绑定',
-        success: (res) => {
-          if (res.confirm) openProfilePage();
-        }
-      });
-      return false;
+      return true;
     })
-    .catch(() => false);
+    .catch(() => true);
 }
 
 module.exports = {
   ensureProfileComplete,
   hasSession,
-  hasBoundPhone,
   isLoggedAndBound,
   cacheProfile,
   requireLogin,

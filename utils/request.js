@@ -3,13 +3,11 @@ const API_BASE_URL = `${API_BASE_URL_RAW}/api`;
 
 const ERROR_CODES = {
   PROFILE_INCOMPLETE: 10010,
-  PHONE_UNBOUND: 10011,
 };
 
 const ERROR_MESSAGES = {
   UNAUTHORIZED: 'UNAUTHORIZED',
   PROFILE_INCOMPLETE: 'PROFILE_INCOMPLETE',
-  PHONE_UNBOUND: 'PHONE_UNBOUND',
 };
 
 function clearSessionCache() {
@@ -19,11 +17,11 @@ function clearSessionCache() {
   wx.removeStorageSync('phone');
 }
 
-function openProfileGuardModal(needPhone, message) {
+function openProfileGuardModal(message) {
   wx.showModal({
-    title: needPhone ? '绑定手机号' : '完善资料',
-    content: message || (needPhone ? '请先绑定手机号后再继续操作' : '请先完善昵称和头像后再继续操作'),
-    confirmText: needPhone ? '去绑定' : '去完善',
+    title: '完善资料',
+    content: message || '请先完善昵称和头像后再继续操作',
+    confirmText: '去完善',
     success: (res) => {
       if (res.confirm) wx.navigateTo({ url: '/pages/login/login' });
     }
@@ -32,10 +30,9 @@ function openProfileGuardModal(needPhone, message) {
 
 function rejectProfileGuard(body, reject) {
   const code = body && body.code;
-  if (code !== ERROR_CODES.PROFILE_INCOMPLETE && code !== ERROR_CODES.PHONE_UNBOUND) return false;
-  const needPhone = code === ERROR_CODES.PHONE_UNBOUND;
-  openProfileGuardModal(needPhone, body && body.message);
-  reject(new Error(needPhone ? ERROR_MESSAGES.PHONE_UNBOUND : ERROR_MESSAGES.PROFILE_INCOMPLETE));
+  if (code !== ERROR_CODES.PROFILE_INCOMPLETE) return false;
+  openProfileGuardModal(body && body.message);
+  reject(new Error(ERROR_MESSAGES.PROFILE_INCOMPLETE));
   return true;
 }
 
