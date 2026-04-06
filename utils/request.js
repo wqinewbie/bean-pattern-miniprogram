@@ -1,6 +1,16 @@
 const { API_BASE_URL: API_BASE_URL_RAW } = require('./config');
 const API_BASE_URL = `${API_BASE_URL_RAW}/api`;
 
+const DEBUG_REQUEST = (() => {
+  try {
+    const info = wx.getAccountInfoSync && wx.getAccountInfoSync();
+    const envVersion = info && info.miniProgram && info.miniProgram.envVersion;
+    return envVersion !== 'release';
+  } catch (e) {
+    return true;
+  }
+})();
+
 const ERROR_CODES = {
   PROFILE_INCOMPLETE: 10010,
 };
@@ -39,9 +49,17 @@ function rejectProfileGuard(body, reject) {
 function request(url, method, data, headers) {
   return new Promise((resolve, reject) => {
     const sessionId = wx.getStorageSync('sessionId') || '';
+    const fullUrl = `${API_BASE_URL}${url}`;
+
+    if (DEBUG_REQUEST) {
+      console.log('[REQ]', method, fullUrl, data || {});
+      if (url === '/auth/login') {
+        console.log('[LOGIN][API_BASE_URL]', API_BASE_URL_RAW);
+      }
+    }
 
     wx.request({
-      url: `${API_BASE_URL}${url}`,
+      url: fullUrl,
       method,
       data,
       header: {
@@ -51,6 +69,10 @@ function request(url, method, data, headers) {
       },
       success: (res) => {
         const body = res.data;
+
+        if (DEBUG_REQUEST) {
+          console.log('[RES]', method, fullUrl, res.statusCode, body);
+        }
 
         if (res.statusCode === 401) {
           clearSessionCache();
@@ -77,7 +99,12 @@ function request(url, method, data, headers) {
 
         reject(new Error(`HTTP ${res.statusCode}`));
       },
-      fail: (err) => reject(new Error(err.errMsg || '网络错误'))
+      fail: (err) => {
+        if (DEBUG_REQUEST) {
+          console.error('[REQ_FAIL]', method, fullUrl, err);
+        }
+        reject(new Error(err.errMsg || '网络错误'));
+      }
     });
   });
 }

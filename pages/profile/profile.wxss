@@ -176,11 +176,7 @@
 /* ─── 菜单卡片 ─── */
 .menu-card {
   margin: 0 32rpx 24rpx;
-  background: #fff;
-  border-radius: 40rpx;
   padding: 12rpx;
-  box-shadow: 0 8rpx 30rpx rgba(140,107,75,0.06);
-  border: 2rpx solid #FFF4DC;
 }
 
 .menu-item {

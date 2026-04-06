@@ -27,8 +27,13 @@
         <view class="tab {{activeTab==='pattern'?'tab--active':''}}" bindtap="onTabChange" data-tab="pattern">色号图</view>
       </view>
 
-      <!-- 保存到相册 -->
+      <!-- 保存当前图片 -->
       <view class="save-img-btn" bindtap="onSaveImage">保存当前图片</view>
+
+      <!-- 保存到图纸箱 -->
+      <view class="save-box-btn {{isSaved?'save-box-btn--done':''}}" bindtap="onSaveToMyPatterns">
+        {{isSaved ? '已保存到图纸箱' : '保存到图纸箱'}}
+      </view>
 
       <!-- 沉浸拼豆模式 -->
       <view class="focus-mode-btn" bindtap="onEnterFocusMode">进入沉浸拼豆模式</view>

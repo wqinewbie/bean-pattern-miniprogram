@@ -13,6 +13,13 @@ const RANDOM_PROMPTS = [
 ];
 
 Page({
+  syncTabBar() {
+    const tabBar = this.getTabBar && this.getTabBar();
+    if (tabBar && typeof tabBar.setSelected === 'function') {
+      tabBar.setSelected(2);
+    }
+  },
+
   data: {
     prompt: '',
     isGenerating: false,
@@ -37,9 +44,7 @@ Page({
   },
 
   onShow() {
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setSelected(2);
-    }
+    this.syncTabBar();
   },
 
   onPromptInput(e) {

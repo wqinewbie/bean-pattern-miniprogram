@@ -1,49 +1,80 @@
-<view class="page">
-  <view class="top-bar" style="padding-top: {{topSafePx}}px; min-height: {{topBarHeightPx}}px;">
-    <view class="back" bindtap="onBack">←</view>
-    <view class="top-actions">
-      <view class="action-btn" bindtap="onToggleBrightness">调节明暗</view>
-      <view class="action-btn" bindtap="onResetView">重置视图</view>
-      <view class="hint">双指缩放</view>
-    </view>
-    <view class="dot"></view>
-  </view>
+<view class="focus-page">
+  <page-nav-bar title="沉浸拼豆" nav-top="{{navTop}}" bind:back="onBack">
+    <view slot="right" class="nav-reset" bindtap="onResetAll">重置</view>
+  </page-nav-bar>
 
-  <view class="nav-row" wx:if="{{currentColor}}">
-    <view class="nav-btn" bindtap="onPrev">← 上一色</view>
-    <view class="nav-center">
-      <view class="color-dot" style="background:rgb({{currentColor.r}},{{currentColor.g}},{{currentColor.b}})"></view>
-      <view class="nav-meta">
-        <text class="nav-id">{{currentColor.id}} <text class="nav-count">x{{currentColor.count}}颗</text></text>
-        <text class="nav-progress">{{currentIndex+1}} / {{colorStats.length}}</text>
+  <view class="summary" wx:if="{{currentColor}}">
+    <view class="summary-btn" bindtap="onPrevColor">← 上一色</view>
+    <view class="summary-center">
+      <view class="summary-dot" style="background:rgb({{currentColor.r}},{{currentColor.g}},{{currentColor.b}})"></view>
+      <view class="summary-meta">
+        <text class="summary-id">{{currentColor.id}}</text>
+        <text class="summary-count">{{currentIndex + 1}} / {{palette.length}} · {{currentColor.count}}颗</text>
       </view>
     </view>
-    <view class="nav-btn" bindtap="onNext">下一色 →</view>
+    <view class="summary-btn" bindtap="onNextColor">下一色 →</view>
   </view>
 
-  <view class="canvas-wrap" bindtouchstart="onCanvasTouchStart" bindtouchmove="onCanvasTouchMove" bindtouchend="onCanvasTouchEnd">
-    <canvas
-      canvas-id="focus-canvas"
-      class="focus-canvas"
-      style="transform: translate({{offsetX}}px, {{offsetY}}px) scale({{scale}});"
-    />
-    <canvas canvas-id="focus-base-canvas" class="hidden-canvas" />
+  <view class="board-wrap">
+    <canvas canvas-id="focus-canvas" class="focus-canvas" style="width: {{boardPx}}px; height: {{boardPx}}px;" />
+    <canvas canvas-id="focus-base-canvas" class="hidden-canvas" style="width: {{boardPx}}px; height: {{boardPx}}px;" />
   </view>
 
-  <view class="bottom">
-    <view class="chips-wrap">
-      <scroll-view class="chip-list" scroll-x>
-        <view class="chips">
-          <view wx:for="{{colorStats}}" wx:key="id" class="chip {{index===currentIndex?'chip--active':''}} {{completedMap[item.id]?'chip--done':''}}" bindtap="onPick" data-index="{{index}}">
-            <view class="chip-dot" style="background:rgb({{item.r}},{{item.g}},{{item.b}})"></view>
-            <text class="chip-id">{{item.id}}</text>
+  <card-shell variant="warm" animated="{{true}}" custom-class="bottom-panel {{panelExpanded ? 'panel-open' : 'panel-close'}} panel-slide-in">
+    <view class="panel-handle" bindtap="onTogglePanel">
+      <view wx:if="{{panelExpanded}}" class="handle-icon">⌄</view>
+      <view wx:else class="handle-icon">⌃</view>
+    </view>
+
+    <view wx:if="{{panelExpanded}}" class="panel-body">
+      <view class="control-row">
+        <text class="control-label">对比度</text>
+        <slider
+          class="contrast-slider"
+          min="20"
+          max="100"
+          step="10"
+          value="{{contrast}}"
+          activeColor="#d97706"
+          backgroundColor="#ffffff"
+          block-color="#ffffff"
+          block-size="18"
+          bindchange="onContrastChange"
+        />
+        <text class="control-value">{{contrast}}%</text>
+      </view>
+
+      <view class="mode-capsule">
+        <view class="mode-indicator mode-indicator--{{mode}}"></view>
+        <view class="mode-item {{mode==='colorId'?'mode-item--active':''}}" data-mode="colorId" bindtap="onModeChange">色号</view>
+        <view class="mode-item {{mode==='horizontal'?'mode-item--active':''}}" data-mode="horizontal" bindtap="onModeChange">横向计数</view>
+        <view class="mode-item {{mode==='vertical'?'mode-item--active':''}}" data-mode="vertical" bindtap="onModeChange">竖向计数</view>
+      </view>
+
+      <view class="divider"></view>
+
+      <scroll-view class="palette-scroll" scroll-x>
+        <view class="palette-row">
+          <view
+            wx:for="{{palette}}"
+            wx:key="id"
+            class="palette-item"
+          >
+            <view
+              class="bead {{currentColorId===item.id?'bead--active':''}} {{completedMap[item.id]?'bead--done':''}}"
+              style="background:rgb({{item.r}},{{item.g}},{{item.b}})"
+              bindtap="onPickColor"
+              bindlongpress="onToggleDone"
+              data-id="{{item.id}}"
+            >
+              <text class="bead-id">{{item.id}}</text>
+            </view>
+            <text class="bead-count">{{item.count}}颗</text>
           </view>
         </view>
       </scroll-view>
-    </view>
 
-    <view class="finish-btn {{completedMap[currentColor.id]?'finish-btn--done':''}}" bindtap="onToggleDone" wx:if="{{currentColor}}">
-      {{completedMap[currentColor.id] ? '撤销完成' : '拼完此色，打卡！'}}
+      <text class="hint">点击高亮 · 长按标记完成</text>
     </view>
-  </view>
+  </card-shell>
 </view>

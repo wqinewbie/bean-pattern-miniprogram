@@ -3,33 +3,30 @@ const { getSafeAreaLayout } = require('../../utils/safe-area');
 Page({
   data: {
     patternUrl: '',
+    brandName: 'MARD',
+    currentSize: 64,
     colorStats: [],
+    palette: [],
+    currentColorId: '',
     currentIndex: 0,
     currentColor: null,
+    panelExpanded: true,
+    contrast: 50,
+    mode: 'colorId',
     completedMap: {},
     doneCount: 0,
-    currentSize: 64,
-    brandName: 'MARD',
-    brightness: 1,
-    scale: 1,
-    offsetX: 0,
-    offsetY: 0,
-    canvasSizePx: 340,
-    topSafePx: 20,
-    topBarHeightPx: 44,
+    boardPx: 340,
+    navTop: 88,
   },
 
-  _grid: [],
   _ctx: null,
   _baseCtx: null,
-  _cellSize: 4,
-  _isPanning: false,
-  _panStartX: 0,
-  _panStartY: 0,
-  _panStartOffsetX: 0,
-  _panStartOffsetY: 0,
-  _pinchStartDistance: 0,
-  _pinchStartScale: 1,
+  _rgbGrid: [],
+  _idGrid: [],
+  _colorMap: {},
+  _hRun: [],
+  _vRun: [],
+
   onLoad(options) {
     let stats = [];
     try {
@@ -37,287 +34,329 @@ Page({
     } catch (e) {}
 
     const patternUrl = decodeURIComponent(options.patternUrl || '');
-    const currentSize = options.gridSize ? parseInt(options.gridSize) : 64;
+    const currentSize = options.gridSize ? parseInt(options.gridSize, 10) : 64;
     const brandName = options.brand ? decodeURIComponent(options.brand) : 'MARD';
 
     const layout = getSafeAreaLayout();
     const sys = wx.getSystemInfoSync ? wx.getSystemInfoSync() : {};
-    const canvasSizePx = Math.min((sys.windowWidth || 375) - 24, 360);
-    const topSafePx = layout.statusBarHeight;
-    const topBarHeightPx = layout.navHeight - layout.statusBarHeight;
-    this.setData({ topSafePx, topBarHeightPx, canvasSizePx });
-    this._cellSize = canvasSizePx / currentSize;
-    this._ctx = wx.createCanvasContext('focus-canvas', this);
-    this._baseCtx = wx.createCanvasContext('focus-base-canvas', this);
+    const boardPx = Math.min(Math.floor((sys.windowWidth || 375) * 0.9), 400);
+
+    const colorMap = {};
+    (stats || []).forEach((c) => {
+      colorMap[c.id] = {
+        id: c.id,
+        name: c.name || '',
+        r: Number(c.r) || 0,
+        g: Number(c.g) || 0,
+        b: Number(c.b) || 0,
+        count: Number(c.count) || 0,
+      };
+    });
+    this._colorMap = colorMap;
 
     this.setData({
       patternUrl,
-      colorStats: stats,
-      currentSize,
       brandName,
-      currentColor: stats[0] || null
-    }, () => {
-      this._colorHexMap = {};
-      (stats || []).forEach((c) => {
-        const h = this._hex(c.r, c.g, c.b);
-        this._colorHexMap[h] = c;
-      });
-      this._buildGridFromPattern();
+      currentSize,
+      colorStats: stats,
+      boardPx,
+      navTop: layout.navTop,
+      currentColorId: stats[0] ? stats[0].id : '',
     });
+
+    this._ctx = wx.createCanvasContext('focus-canvas', this);
+    this._baseCtx = wx.createCanvasContext('focus-base-canvas', this);
+
+    this._buildGridFromPattern();
   },
 
-  _distance(t1, t2) {
-    const dx = t1.clientX - t2.clientX;
-    const dy = t1.clientY - t2.clientY;
-    return Math.sqrt(dx * dx + dy * dy);
+  _distance2(a, b, r, g, bl) {
+    const dr = a - r;
+    const dg = b - g;
+    const db = bl - g; // placeholder to satisfy style
+    return dr * dr + dg * dg + db * db;
+  },
+
+  _matchColorId(r, g, b) {
+    const palette = this.data.colorStats || [];
+    if (!palette.length) return '';
+
+    let best = palette[0];
+    let bestD = Number.MAX_SAFE_INTEGER;
+    palette.forEach((c) => {
+      const dr = r - (Number(c.r) || 0);
+      const dg = g - (Number(c.g) || 0);
+      const db = b - (Number(c.b) || 0);
+      const d = dr * dr + dg * dg + db * db;
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    });
+    return best ? best.id : '';
   },
 
   _buildGridFromPattern() {
-    const { patternUrl, currentSize } = this.data;
+    const { patternUrl, currentSize, boardPx } = this.data;
     if (!patternUrl) return;
 
     wx.getImageInfo({
       src: patternUrl,
       success: (info) => {
-        const localPath = info.path || patternUrl;
-        const drawSize = this.data.canvasSizePx;
-        this._baseCtx.drawImage(localPath, 0, 0, drawSize, drawSize);
+        const src = info.path || patternUrl;
+        this._baseCtx.drawImage(src, 0, 0, boardPx, boardPx);
         this._baseCtx.draw(false, () => {
           wx.canvasGetImageData({
             canvasId: 'focus-base-canvas',
             x: 0,
             y: 0,
-            width: drawSize,
-            height: drawSize,
+            width: boardPx,
+            height: boardPx,
             success: (img) => {
               const data = img.data;
-              const gs = currentSize;
-              const cs = this._cellSize;
-              const grid = Array.from({ length: gs }, () => Array(gs).fill(null));
+              const cs = boardPx / currentSize;
+              const rgbGrid = Array.from({ length: currentSize }, () => Array(currentSize).fill(null));
+              const idGrid = Array.from({ length: currentSize }, () => Array(currentSize).fill(''));
+              const counts = {};
 
-              for (let y = 0; y < gs; y++) {
-                for (let x = 0; x < gs; x++) {
-                  const sx = Math.min(drawSize - 1, Math.floor(x * cs + cs / 2));
-                  const sy = Math.min(drawSize - 1, Math.floor(y * cs + cs / 2));
-                  const i = (sy * drawSize + sx) * 4;
-                  const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-                  if (a < 10) continue;
-                  grid[y][x] = { r, g, b };
+              for (let y = 0; y < currentSize; y++) {
+                for (let x = 0; x < currentSize; x++) {
+                  const sx = Math.min(boardPx - 1, Math.floor(x * cs + cs / 2));
+                  const sy = Math.min(boardPx - 1, Math.floor(y * cs + cs / 2));
+                  const i = (sy * boardPx + sx) * 4;
+                  const a = data[i + 3];
+                  if (a < 8) continue;
+
+                  const r = data[i];
+                  const g = data[i + 1];
+                  const b = data[i + 2];
+                  rgbGrid[y][x] = { r, g, b };
+
+                  const id = this._matchColorId(r, g, b);
+                  idGrid[y][x] = id;
+                  if (id) counts[id] = (counts[id] || 0) + 1;
                 }
               }
 
-              this._grid = grid;
-              this._renderFocus();
+              this._rgbGrid = rgbGrid;
+              this._idGrid = idGrid;
+
+              const palette = (this.data.colorStats || [])
+                .filter((c) => counts[c.id] > 0)
+                .map((c) => ({ ...c, count: counts[c.id] }))
+                .sort((a, b) => b.count - a.count);
+
+              const nextId = this.data.currentColorId || (palette[0] ? palette[0].id : '');
+              this.setData({ palette, currentColorId: nextId }, () => {
+                this._calcRuns();
+                this._renderBoard();
+              });
             },
             fail: () => {
-              this._renderImageFallback(localPath);
+              this._renderFallbackImage(src);
             }
           }, this);
         });
       },
       fail: () => {
-        this._grid = Array.from({ length: currentSize }, () => Array(currentSize).fill(null));
-        this._renderFocus();
+        this._rgbGrid = [];
+        this._idGrid = [];
       }
     });
   },
 
-  _renderImageFallback(localPath) {
-    const ctx = this._ctx;
-    if (!ctx) return;
-    const size = this.data.canvasSizePx;
-    ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(localPath, 0, 0, size, size);
-    ctx.draw();
+  _renderFallbackImage(src) {
+    if (!this._ctx) return;
+    const { boardPx } = this.data;
+    this._ctx.clearRect(0, 0, boardPx, boardPx);
+    this._ctx.drawImage(src, 0, 0, boardPx, boardPx);
+    this._ctx.draw();
   },
 
-  _hex(r, g, b) {
-    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
-  },
+  _calcRuns() {
+    const n = this.data.currentSize;
+    const id = this.data.currentColorId;
+    const h = Array.from({ length: n }, () => Array(n).fill(0));
+    const v = Array.from({ length: n }, () => Array(n).fill(0));
 
-  _renderFocus() {
-    const ctx = this._ctx;
-    if (!ctx || !this._grid.length) return;
+    if (!id || !this._idGrid.length) {
+      this._hRun = h;
+      this._vRun = v;
+      return;
+    }
 
-    const { currentSize, brightness, currentColor, completedMap } = this.data;
-    const cs = this._cellSize;
-
-    ctx.clearRect(0, 0, this.data.canvasSizePx, this.data.canvasSizePx);
-    ctx.setFillStyle(brightness === 1 ? '#121212' : '#0A0A0A');
-    ctx.fillRect(0, 0, this.data.canvasSizePx, this.data.canvasSizePx);
-
-    const currentId = currentColor ? currentColor.id : '';
-    const activeAlpha = brightness === 1 ? 1 : 0.7;
-    const dimAlpha = brightness === 1 ? 0.25 : 0.12;
-    const doneAlpha = brightness === 1 ? 0.12 : 0.06;
-
-    for (let y = 0; y < currentSize; y++) {
-      for (let x = 0; x < currentSize; x++) {
-        const cell = this._grid[y] && this._grid[y][x];
-        if (!cell) continue;
-
-        const hex = this._hex(cell.r, cell.g, cell.b);
-        const match = this._findByHex(hex);
-        const id = match ? match.id : '';
-        const isHighlighted = id && id === currentId;
-        const isCompleted = id && completedMap[id];
-
-        if (isCompleted) ctx.setGlobalAlpha(doneAlpha);
-        else if (isHighlighted) ctx.setGlobalAlpha(activeAlpha);
-        else ctx.setGlobalAlpha(dimAlpha);
-
-        ctx.setFillStyle(`rgb(${cell.r},${cell.g},${cell.b})`);
-        ctx.fillRect(x * cs, y * cs, cs, cs);
-
-        if (isHighlighted && !isCompleted) {
-          ctx.setGlobalAlpha(1);
-          ctx.setStrokeStyle('rgba(255,255,255,0.95)');
-          ctx.setLineWidth(1.2);
-          ctx.strokeRect(x * cs + 0.5, y * cs + 0.5, cs - 1, cs - 1);
-
-          ctx.beginPath();
-          ctx.moveTo(x * cs + cs / 2, y * cs + 2);
-          ctx.lineTo(x * cs + cs / 2, (y + 1) * cs - 2);
-          ctx.moveTo(x * cs + 2, y * cs + cs / 2);
-          ctx.lineTo((x + 1) * cs - 2, y * cs + cs / 2);
-          ctx.setStrokeStyle('rgba(255,255,255,0.85)');
-          ctx.setLineWidth(1);
-          ctx.stroke();
+    for (let y = 0; y < n; y++) {
+      let run = 0;
+      for (let x = 0; x < n; x++) {
+        if (this._idGrid[y][x] === id) {
+          run += 1;
+          h[y][x] = run;
+        } else {
+          run = 0;
         }
-
-        ctx.setGlobalAlpha(1);
       }
     }
 
-    ctx.setStrokeStyle('rgba(255,255,255,0.08)');
-    ctx.setLineWidth(0.5);
-    for (let i = 0; i <= currentSize; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * cs, 0);
-      ctx.lineTo(i * cs, currentSize * cs);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, i * cs);
-      ctx.lineTo(currentSize * cs, i * cs);
-      ctx.stroke();
+    for (let x = 0; x < n; x++) {
+      let run = 0;
+      for (let y = 0; y < n; y++) {
+        if (this._idGrid[y][x] === id) {
+          run += 1;
+          v[y][x] = run;
+        } else {
+          run = 0;
+        }
+      }
     }
 
+    this._hRun = h;
+    this._vRun = v;
+  },
+
+  _renderBoard() {
+    const ctx = this._ctx;
+    if (!ctx || !this._rgbGrid.length) return;
+
+    const {
+      boardPx,
+      currentSize,
+      currentColorId,
+      contrast,
+      mode,
+      completedMap
+    } = this.data;
+
+    const cs = boardPx / currentSize;
+    const radius = Math.max(1.2, cs * 0.42);
+    const dimAlpha = contrast / 100;
+
+    ctx.clearRect(0, 0, boardPx, boardPx);
+    ctx.setFillStyle('#f5f5f4');
+    ctx.fillRect(0, 0, boardPx, boardPx);
+
+    for (let y = 0; y < currentSize; y++) {
+      for (let x = 0; x < currentSize; x++) {
+        const rgb = this._rgbGrid[y][x];
+        if (!rgb) continue;
+
+        const id = this._idGrid[y][x];
+        const hasFocus = !!currentColorId;
+        const focused = !hasFocus || id === currentColorId;
+        const done = !!completedMap[id];
+
+        if (done) ctx.setGlobalAlpha(0.28);
+        else ctx.setGlobalAlpha(focused ? 1 : dimAlpha);
+
+        ctx.setFillStyle(`rgb(${rgb.r},${rgb.g},${rgb.b})`);
+        ctx.beginPath();
+        ctx.arc(x * cs + cs / 2, y * cs + cs / 2, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (done && focused) {
+          ctx.setGlobalAlpha(0.6);
+          ctx.setFillStyle('#22c55e');
+          ctx.beginPath();
+          ctx.arc(x * cs + cs / 2, y * cs + cs / 2, Math.max(1, cs * 0.18), 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        let text = '';
+        if (id) {
+          if (mode === 'colorId') {
+            text = (!currentColorId || id === currentColorId) ? id : '';
+          } else if (id === currentColorId) {
+            text = mode === 'horizontal' ? String(this._hRun[y][x] || '') : String(this._vRun[y][x] || '');
+          }
+        }
+
+        if (text) {
+          const isLight = (rgb.r + rgb.g + rgb.b) > 560;
+          ctx.setGlobalAlpha(1);
+          ctx.setFillStyle(isLight ? '#1f2937' : '#ffffff');
+          ctx.setFontSize(Math.max(5, Math.min(10, Math.floor(cs * 0.58))));
+          ctx.setTextAlign('center');
+          ctx.setTextBaseline('middle');
+          ctx.fillText(text, x * cs + cs / 2, y * cs + cs / 2);
+        }
+      }
+    }
+
+    ctx.setGlobalAlpha(1);
     ctx.draw();
-  },
-
-  _findByHex(hex) {
-    const up = hex.toUpperCase();
-    return (this._colorHexMap && this._colorHexMap[up]) ? this._colorHexMap[up] : null;
-  },
-
-  onToggleBrightness() {
-    const brightness = this.data.brightness === 1 ? 0.5 : 1;
-    this.setData({ brightness }, () => this._renderFocus());
-    wx.showToast({ title: brightness === 1 ? '亮度正常' : '低亮模式', icon: 'none', duration: 1000 });
-  },
-
-  onResetView() {
-    this._isPanning = false;
-    this._pinchStartDistance = 0;
-    this.setData({ scale: 1, offsetX: 0, offsetY: 0 });
-    wx.showToast({ title: '视图已重置', icon: 'none', duration: 1000 });
-  },
-
-  onPrev() {
-    const { currentIndex, colorStats } = this.data;
-    if (!colorStats.length) return;
-    const idx = currentIndex <= 0 ? colorStats.length - 1 : currentIndex - 1;
-    this.setData({ currentIndex: idx, currentColor: colorStats[idx] }, () => this._renderFocus());
-  },
-
-  onNext() {
-    const { currentIndex, colorStats } = this.data;
-    if (!colorStats.length) return;
-    const idx = currentIndex >= colorStats.length - 1 ? 0 : currentIndex + 1;
-    this.setData({ currentIndex: idx, currentColor: colorStats[idx] }, () => this._renderFocus());
-  },
-
-  onPick(e) {
-    const idx = parseInt(e.currentTarget.dataset.index, 10);
-    const color = this.data.colorStats[idx];
-    this.setData({ currentIndex: idx, currentColor: color }, () => this._renderFocus());
-  },
-
-  onToggleDone() {
-    const { currentColor, completedMap } = this.data;
-    if (!currentColor) return;
-    const map = { ...completedMap };
-    if (map[currentColor.id]) delete map[currentColor.id];
-    else map[currentColor.id] = true;
-    this.setData({
-      completedMap: map,
-      doneCount: Object.keys(map).length
-    }, () => this._renderFocus());
-  },
-
-  onCanvasTouchStart(e) {
-    const touches = e.touches || [];
-    if (!touches.length) return;
-
-    if (touches.length >= 2) {
-      this._isPanning = true;
-      this._pinchStartDistance = this._distance(touches[0], touches[1]);
-      this._pinchStartScale = this.data.scale;
-      this._panStartX = (touches[0].clientX + touches[1].clientX) / 2;
-      this._panStartY = (touches[0].clientY + touches[1].clientY) / 2;
-      this._panStartOffsetX = this.data.offsetX;
-      this._panStartOffsetY = this.data.offsetY;
-      return;
-    }
-
-    this._isPanning = true;
-    this._panStartX = touches[0].clientX;
-    this._panStartY = touches[0].clientY;
-    this._panStartOffsetX = this.data.offsetX;
-    this._panStartOffsetY = this.data.offsetY;
-  },
-
-  _clampOffset(scale, ox, oy) {
-    const canvas = this.data.canvasSizePx;
-    const extra = Math.max(0, (scale - 1) * canvas / 2);
-    const maxOffset = extra + 80;
-    return {
-      x: Math.max(-maxOffset, Math.min(maxOffset, ox)),
-      y: Math.max(-maxOffset, Math.min(maxOffset, oy)),
-    };
-  },
-
-  onCanvasTouchMove(e) {
-    if (!this._isPanning) return;
-    const touches = e.touches || [];
-    if (!touches.length) return;
-
-    if (touches.length >= 2) {
-      const curDist = this._distance(touches[0], touches[1]);
-      const ratio = this._pinchStartDistance ? (curDist / this._pinchStartDistance) : 1;
-      const scale = Math.min(4, Math.max(0.6, this._pinchStartScale * ratio));
-      const cx = (touches[0].clientX + touches[1].clientX) / 2;
-      const cy = (touches[0].clientY + touches[1].clientY) / 2;
-      const ox = this._panStartOffsetX + (cx - this._panStartX);
-      const oy = this._panStartOffsetY + (cy - this._panStartY);
-      const p = this._clampOffset(scale, ox, oy);
-      this.setData({ scale, offsetX: p.x, offsetY: p.y });
-      return;
-    }
-
-    const t = touches[0];
-    const ox = this._panStartOffsetX + (t.clientX - this._panStartX);
-    const oy = this._panStartOffsetY + (t.clientY - this._panStartY);
-    const p = this._clampOffset(this.data.scale, ox, oy);
-    this.setData({ offsetX: p.x, offsetY: p.y });
-  },
-
-  onCanvasTouchEnd() {
-    this._isPanning = false;
-    this._pinchStartDistance = 0;
   },
 
   onBack() {
     wx.navigateBack({ delta: 1 });
+  },
+
+  onTogglePanel() {
+    this.setData({ panelExpanded: !this.data.panelExpanded });
+  },
+
+  onContrastChange(e) {
+    const val = parseInt(e.detail.value, 10);
+    this.setData({ contrast: val }, () => this._renderBoard());
+  },
+
+  onModeChange(e) {
+    const mode = e.currentTarget.dataset.mode;
+    this.setData({ mode }, () => this._renderBoard());
+  },
+
+  onPickColor(e) {
+    const id = e.currentTarget.dataset.id;
+    const next = this.data.currentColorId === id ? '' : id;
+    this.setData({ currentColorId: next }, () => {
+      this._calcRuns();
+      this._renderBoard();
+    });
+  },
+
+  onToggleDone(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    const map = { ...this.data.completedMap };
+    if (map[id]) delete map[id];
+    else map[id] = true;
+    this.setData({
+      completedMap: map,
+      doneCount: Object.keys(map).length,
+    }, () => this._renderBoard());
+  },
+
+  onPrevColor() {
+    const list = this.data.palette || [];
+    if (!list.length) return;
+    const i = list.findIndex((x) => x.id === this.data.currentColorId);
+    const idx = i <= 0 ? list.length - 1 : i - 1;
+    this.setData({ currentColorId: list[idx].id }, () => {
+      this._calcRuns();
+      this._renderBoard();
+    });
+  },
+
+  onNextColor() {
+    const list = this.data.palette || [];
+    if (!list.length) return;
+    const i = list.findIndex((x) => x.id === this.data.currentColorId);
+    const idx = i >= list.length - 1 ? 0 : i + 1;
+    this.setData({ currentColorId: list[idx].id }, () => {
+      this._calcRuns();
+      this._renderBoard();
+    });
+  },
+
+  onResetAll() {
+    const first = this.data.palette[0] ? this.data.palette[0].id : '';
+    this.setData({
+      currentColorId: first,
+      mode: 'colorId',
+      contrast: 50,
+      completedMap: {},
+      doneCount: 0,
+    }, () => {
+      this._calcRuns();
+      this._renderBoard();
+    });
   }
 });

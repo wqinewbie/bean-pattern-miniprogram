@@ -11,10 +11,8 @@ Page({
     customConfirmed: false,
     customSizeVal: '',
     showColorSheet: false,
-    // 品牌相关
     brandList: [],
     brandIndex: 0,
-    // 色号相关（从后端动态加载）
     colorCountLabel: '全部色号',
     colorCountValue: 0,
     colorCountOptions: [{ value: 0, label: '全部色号' }],
@@ -32,8 +30,7 @@ Page({
       { value: 'standard', label: '标准模式' },
       { value: 'portrait', label: '人像模式' },
       { value: 'pixel',    label: '像素风格' }
-    ]
-  },
+    ]  },
 
   onLoad(options) {
     if (options && options.imageUrl) {
@@ -48,7 +45,6 @@ Page({
       if (!data || typeof data !== 'object') return;
       const brandList = Object.keys(data);
       if (brandList.length === 0) return;
-      // 默认选第一个品牌
       const firstBrand = brandList[0];
       const kits = data[firstBrand] || [];
       const colorCountOptions = [
@@ -64,7 +60,6 @@ Page({
         _brandsData: data
       });
     }).catch(() => {
-      // 加载失败降级：使用 MARD 默认
       this.setData({
         brandList: ['MARD'],
         brandIndex: 0,
@@ -77,10 +72,6 @@ Page({
         colorCountValue: 0
       });
     });
-  },
-
-  onBack() {
-    wx.navigateBack({ delta: 1 });
   },
 
   onBrandChange(e) {
@@ -99,7 +90,6 @@ Page({
       colorCountValue: 0
     });
   },
-
   onGridSizeChange(e) {
     const index = e.detail !== undefined ? parseInt(e.detail.value) : parseInt(e.currentTarget.dataset.index);
     this.setData({ gridSizeIndex: index, customMode: false, customConfirmed: false, customSizeVal: '' });
@@ -111,22 +101,18 @@ Page({
 
   onCustomMode() {
     if (this.data.customMode) {
-      // 点确定：验证并保存
       let val = parseInt(this.data.customSizeVal, 10);
       if (isNaN(val) || val < 10) val = 24;
       if (val > 200) val = 200;
       this.setData({ customMode: false, customConfirmed: true, customSizeVal: String(val) });
     } else if (this.data.customConfirmed) {
-      // 点重设：清除自定义，回到picker
       this.setData({ customMode: false, customConfirmed: false, customSizeVal: '' });
     } else {
-      // 点自定义：进入输入模式
       this.setData({ customMode: true, customSizeVal: '' });
     }
   },
 
   onEditCustom() {
-    // 点击自定义值：重新进入编辑
     this.setData({ customMode: true });
   },
 
@@ -196,12 +182,15 @@ Page({
         wx.canvasGetImageData({canvasId:'gen-sample-canvas',x:0,y:0,width:sampW,height:sampH,
           success:(pd)=>{
             const rawData=algo==='portrait'?this.enhancePortrait(pd.data,sampW,sampH):algo==='pixel'?this.sharpenPixel(pd.data,sampW,sampH):pd.data;
-            const rawGrid=this.sampleGrid(rawData,sampW,sampH,gridW,gridH);
+            const sampled=this.sampleGrid(rawData,sampW,sampH,gridW,gridH);
+            const rawGrid=sampled.grid;
+            const mask=sampled.mask;
             const rgbGrid=mirrorOn?rawGrid.map(row=>[...row].reverse()):rawGrid;
+            const finalMask=mirrorOn?mask.map(row=>[...row].reverse()):mask;
             this.setData({loadingText:'颜色匹配中...'});
             request.post('/bead/match-colors',{brand,algo,colorCount:maxColors,grid:rgbGrid})
               .then((matched)=>{
-                const grid=matched;
+                const grid=this.applyMaskToMatchedGrid(matched, finalMask);
                 this.setData({loadingText:'绘制图纸...'});
                 return Promise.all([this.drawResult(grid,gridW,gridH),this.drawPattern(grid,gridW,gridH)])
                   .then(([rp,pp])=>({grid,rp,pp}));
@@ -227,7 +216,12 @@ Page({
                        '&brand=' + encodeURIComponent(brand)
                 });
               })
-              .catch((err)=>{this.setData({loading:false});const msg=err&&err.message?err.message:(err&&err.errMsg?err.errMsg:'unknown');wx.showToast({title:'失败:'+msg.slice(0,20),icon:'none',duration:3000});});
+              .catch((err)=>{
+                this.setData({loading:false});
+                const msg=err&&err.message?err.message:(err&&err.errMsg?err.errMsg:'unknown');
+                console.error('[generate][failed]', msg, err);
+                wx.showModal({ title:'生成失败', content:String(msg), showCancel:false });
+              });
           },fail:()=>{this.setData({loading:false});}
         });
       });
@@ -236,8 +230,10 @@ Page({
 
   sampleGrid(data,sw,sh,gw,gh){
     const grid=[];
+    const mask=[];
     for(let gy=0;gy<gh;gy++){
       const row=[];
+      const maskRow=[];
       for(let gx=0;gx<gw;gx++){
         const x0=Math.floor(gx*sw/gw),x1=Math.min(Math.ceil((gx+1)*sw/gw),sw);
         const y0=Math.floor(gy*sh/gh),y1=Math.min(Math.ceil((gy+1)*sh/gh),sh);
@@ -245,11 +241,19 @@ Page({
         for(let py=y0;py<y1;py++)for(let px=x0;px<x1;px++){
           const i=(py*sw+px)*4;r+=data[i];g+=data[i+1];b+=data[i+2];a+=data[i+3];n++;
         }
-        row.push(n===0||a/n<64?[255,255,255]:[Math.round(r/n),Math.round(g/n),Math.round(b/n)]);
+        const transparent=n===0||a/n<64;
+        maskRow.push(!transparent);
+        row.push(transparent?[255,255,255]:[Math.round(r/n),Math.round(g/n),Math.round(b/n)]);
       }
       grid.push(row);
+      mask.push(maskRow);
     }
-    return grid;
+    return { grid, mask };
+  },
+
+  applyMaskToMatchedGrid(grid,mask){
+    if(!Array.isArray(grid)||!Array.isArray(mask)) return grid;
+    return grid.map((row,y)=>row.map((c,x)=>((mask[y]&&mask[y][x])?c:null)));
   },
 
   limitColors(grid,maxColors){
@@ -273,7 +277,9 @@ Page({
       const ctx=wx.createCanvasContext('gen-result-canvas');
       ctx.setFillStyle('#ccc');ctx.fillRect(0,0,DW,DH);
       for(let y=0;y<gh;y++)for(let x=0;x<gw;x++){
-        const c=grid[y][x];ctx.setFillStyle('rgb('+c.r+','+c.g+','+c.b+')');ctx.fillRect(x*cw,y*ch,Math.ceil(cw),Math.ceil(ch));
+        const c=grid[y][x];
+        if(!c) continue;
+        ctx.setFillStyle('rgb('+c.r+','+c.g+','+c.b+')');ctx.fillRect(x*cw,y*ch,Math.ceil(cw),Math.ceil(ch));
       }
       ctx.draw(false,()=>wx.canvasToTempFilePath({canvasId:'gen-result-canvas',
         x:0,y:0,width:DW,height:DH,destWidth:DW,destHeight:DH,fileType:'png',
@@ -294,6 +300,7 @@ Page({
       const fs=Math.max(7,Math.floor(CELL*0.55));
       for(let y=0;y<gh;y++)for(let x=0;x<gw;x++){
         const c=grid[y][x],px=MARGIN+x*CELL,py=MARGIN+y*CELL;
+        if(!c) continue;
         ctx.setFillStyle('rgb('+c.r+','+c.g+','+c.b+')');ctx.fillRect(px,py,CELL,CELL);
         if(CELL>=12){
           const lum=0.299*c.r+0.587*c.g+0.114*c.b;
@@ -307,7 +314,6 @@ Page({
       for(let j=0;j<=gh;j++){ctx.beginPath();ctx.moveTo(MARGIN,MARGIN+j*CELL);ctx.lineTo(MARGIN+gw*CELL,MARGIN+j*CELL);ctx.stroke();}
       const lfs=Math.max(6,Math.floor(MARGIN*0.45));
       ctx.setFontSize(lfs);ctx.setFillStyle('#333');ctx.setTextAlign('center');ctx.setTextBaseline('middle');
-      // 每格都显示行列号，字体超小
       const numFs=Math.max(4,Math.min(8,Math.floor(MARGIN*0.38)));
       ctx.setFontSize(numFs);
       for(let x=0;x<gw;x++)ctx.fillText(''+(x+1),MARGIN+x*CELL+CELL/2,MARGIN/2);
@@ -323,25 +329,19 @@ Page({
         ctx.setFillStyle('#222');ctx.setFontSize(9);ctx.setTextBaseline('middle');
         ctx.fillText(c.id+'×'+c.count,sx+DOT+GAP,sy+DOT/2);
         sx+=120;
-      });
-      ctx.draw(false,()=>wx.canvasToTempFilePath({canvasId:'gen-pattern-canvas',
+      });      ctx.draw(false,()=>wx.canvasToTempFilePath({canvasId:'gen-pattern-canvas',
         x:0,y:0,width:W,height:TOTAL_H,destWidth:W,destHeight:TOTAL_H,fileType:'png',
         success:r=>resolve(r.tempFilePath),fail:reject}));
     });
   },
-
-  // 人像模式：提升饱和度+对比度
   enhancePortrait(data,w,h){
     const out=new Uint8ClampedArray(data.length);
     for(let i=0;i<data.length;i+=4){
       let r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];
-      // brightness lift +20 to reduce dark shadows
       r=Math.min(255,r+20); g=Math.min(255,g+20); b=Math.min(255,b+20);
-      // mild contrast 1.1
       r=Math.min(255,Math.max(0,Math.round((r-128)*1.1+128)));
       g=Math.min(255,Math.max(0,Math.round((g-128)*1.1+128)));
       b=Math.min(255,Math.max(0,Math.round((b-128)*1.1+128)));
-      // saturation boost x1.4
       const max=Math.max(r,g,b),mn=Math.min(r,g,b),d=max-mn;
       if(d>0){
         const l=(max+mn)/2;
@@ -357,8 +357,6 @@ Page({
     }
     return out;
   },
-
-  // 像素风格：锐化边缘
   sharpenPixel(data,w,h){
     const out=new Uint8ClampedArray(data.length);
     for(let y=0;y<h;y++)for(let x=0;x<w;x++){
@@ -379,6 +377,7 @@ Page({
   calcStats(grid){
     const map={};
     grid.forEach(row=>row.forEach(c=>{
+      if(!c) return;
       if(!map[c.id])map[c.id]={id:c.id,name:c.name||'',r:c.r,g:c.g,b:c.b,count:0};
       map[c.id].count++;
     }));
@@ -387,19 +386,55 @@ Page({
 
   uploadFile(filePath,sessionId){
     return new Promise((resolve,reject)=>{
-      wx.uploadFile({
-        url:API_BASE_URL+'/image/upload',filePath,name:'file',
-        header:{'X-Session-Id':sessionId},
-        success:(res)=>{
-          try{const body=JSON.parse(res.data);
-            if(res.statusCode===200&&body.code===0){resolve(body.data.imageUrl||body.data.originalUrl);return;}
-          }catch(e){}
-          reject(new Error('上传失败'));
-        },fail:reject
+      const uploadUrl = API_BASE_URL + '/api/image/upload';
+      const startUpload = (targetPath) => {
+        console.log('[upload][start]', uploadUrl, targetPath ? String(targetPath).slice(0, 80) : '', 'sid?', !!sessionId);
+        wx.uploadFile({
+          url: uploadUrl,
+          filePath: targetPath,
+          name:'file',
+          header:{'X-Session-Id':sessionId},
+          success:(res)=>{
+            const raw = res && res.data ? String(res.data) : '';
+            console.log('[upload][res]', uploadUrl, 'status=', res.statusCode, 'body=', raw.slice(0, 500));
+            try{
+              const body=JSON.parse(raw||'{}');
+              if(res.statusCode===200&&body.code===0){
+                resolve(body.data.imageUrl||body.data.originalUrl);
+                return;
+              }
+              const message=(body&&body.message)?body.message:('HTTP ' + res.statusCode);
+              reject(new Error('[upload] ' + message + ' | url=' + uploadUrl + ' | status=' + res.statusCode));
+              return;
+            }catch(e){
+              reject(new Error('[upload] HTTP ' + res.statusCode + ' | url=' + uploadUrl + ' | raw=' + raw.slice(0,120)));
+            }
+          },
+          fail:(err)=>{
+            console.error('[upload][fail]', uploadUrl, err);
+            reject(new Error('[upload] ' + ((err&&err.errMsg)||'上传失败') + ' | url=' + uploadUrl));
+          }
+        });
+      };
+
+      if(!filePath || String(filePath).startsWith('http')){ startUpload(filePath); return; }
+
+      wx.getFileInfo({
+        filePath,
+        success:(info)=>{
+          const limit=900*1024;
+          if(!info || !info.size || info.size<=limit){ startUpload(filePath); return; }
+          wx.compressImage({
+            src:filePath,
+            quality:60,
+            success:(r)=>startUpload((r&&r.tempFilePath)?r.tempFilePath:filePath),
+            fail:()=>startUpload(filePath)
+          });
+        },
+        fail:()=>startUpload(filePath)
       });
     });
   },
-
   onPreviewOriginal(){
     if(this.data.imageUrl)wx.previewImage({urls:[this.data.imageUrl],current:this.data.imageUrl});
   },
@@ -421,10 +456,15 @@ Page({
       wx.downloadFile({url,success:(r)=>{if(r.statusCode===200)save(r.tempFilePath);},fail:()=>{}});
     }else{save(url);}
   },
-
   onStatTap(e){
     const item=e.currentTarget.dataset.item;
-    wx.showToast({title:item.id+' '+item.name+' '+item.count+'颗',icon:'none',duration:2000});
+    wx.showToast({ title: item.id + ' ' + item.name + ' ' + item.count + ' pcs', icon: 'none', duration: 2000 });
   }
 
 });
+
+
+
+
+
+

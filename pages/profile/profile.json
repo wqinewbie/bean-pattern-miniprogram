@@ -1,4 +1,7 @@
 {
   "navigationBarTitleText": "",
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "card-shell": "/components/card-shell/index"
+  }
 }

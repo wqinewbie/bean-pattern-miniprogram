@@ -11,6 +11,8 @@ App({
     }
   },
 
+  _silentLoginPromise: null,
+
   onLaunch() {
     const sessionId = wx.getStorageSync('sessionId');
     if (!sessionId) {
@@ -65,23 +67,48 @@ App({
       .catch(() => {});
   },
 
-  // 静默登录：只换取 sessionId，不强制用户填资料
-  silentLogin() {
-    wx.login({
-      success: (res) => {
-        if (!res.code) return;
-        request.post('/auth/login', { code: res.code })
-          .then((data) => {
-            const sessionId = data.sessionId || data.token;
-            if (sessionId) {
+  ensureSession() {
+    const cached = wx.getStorageSync('sessionId');
+    if (cached) return Promise.resolve(cached);
+    if (this._silentLoginPromise) return this._silentLoginPromise;
+
+    this._silentLoginPromise = new Promise((resolve, reject) => {
+      wx.login({
+        success: (res) => {
+          if (!res.code) {
+            reject(new Error('wx.login no code'));
+            return;
+          }
+          request.post('/auth/login', { code: res.code })
+            .then((data) => {
+              const sessionId = data.sessionId || data.token;
+              if (!sessionId) {
+                reject(new Error('no session id'));
+                return;
+              }
               wx.setStorageSync('sessionId', sessionId);
               this.prefetchProfileData();
-            }
-          })
-          .catch(() => {
-            console.warn('silentLogin failed');
-          });
-      }
+              resolve(sessionId);
+            })
+            .catch((err) => {
+              reject(err || new Error('silent login failed'));
+            });
+        },
+        fail: (err) => {
+          reject(err || new Error('wx.login failed'));
+        }
+      });
+    }).finally(() => {
+      this._silentLoginPromise = null;
+    });
+
+    return this._silentLoginPromise;
+  },
+
+  // 静默登录：只换取 sessionId，不强制用户填资料
+  silentLogin() {
+    this.ensureSession().catch(() => {
+      console.warn('silentLogin failed');
     });
   }
 });

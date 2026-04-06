@@ -118,8 +118,27 @@
 }
 .save-img-btn:active { opacity: 0.82; }
 
+.save-box-btn {
+  margin-top: 12rpx;
+  height: 80rpx;
+  border-radius: 20rpx;
+  background: #FFEBC8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #6D4C41;
+  border: 2rpx solid #FFDCA8;
+}
+.save-box-btn--done {
+  background: #E8F5E9;
+  color: #2E7D32;
+  border-color: #C8E6C9;
+}
+
 .focus-mode-btn {
-  margin-top: 16rpx;
+  margin-top: 12rpx;
   height: 84rpx;
   border-radius: 42rpx;
   background: linear-gradient(135deg, #673AB7, #5E35B1);

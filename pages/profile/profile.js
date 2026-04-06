@@ -6,6 +6,13 @@ const DEFAULT_NICKNAME = '魔法师小豆';
 const EMPTY_STATS = { total: 0, success: 0, ai: 0, saved: 0 };
 
 Page({
+  syncTabBar() {
+    const tabBar = this.getTabBar && this.getTabBar();
+    if (tabBar && typeof tabBar.setSelected === 'function') {
+      tabBar.setSelected(3);
+    }
+  },
+
   data: {
     userInfo: null,
     stats: EMPTY_STATS,
@@ -33,10 +40,8 @@ Page({
   },
 
   onShow() {
+    this.syncTabBar();
     this.calcSafeAreas();
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setSelected(3);
-    }
     this.loadProfile();
   },
 
@@ -107,10 +112,6 @@ Page({
   onHelp() { this.setData({ activeSheet: 'help' }); },
   onCreator() { this.setData({ activeSheet: 'creator' }); },
   onCloseSheet() { this.setData({ activeSheet: '' }); },
-
-  onBindPhone() {
-    wx.showToast({ title: '绑定手机号功能即将上线', icon: 'none' });
-  },
 
   onLogout() {
     wx.showModal({

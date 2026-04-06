@@ -87,23 +87,10 @@
     <view class="modal-close" bindtap="onCloseLoginModal">✕</view>
     <view class="modal-magic-icon">{{isFirstLogin ? '🌟' : '🪄'}}</view>
     <text class="modal-title">{{isFirstLogin ? '微信登录' : '欢迎回来'}}</text>
-    <text class="modal-sub">{{isFirstLogin ? '可先快速登录进入，手机号与头像昵称可稍后在“我的”页面补充' : '登录后可继续补充手机号与头像昵称'}}</text>
-
-    <button class="modal-phone-btn modal-wechat-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" wx:if="{{!loginSubmitting}}">
-      📱 微信手机号一键登录
-    </button>
-
-    <view wx:else class="modal-phone-btn modal-wechat-btn">
-      <view class="btn-loading-row"><view class="modal-spinner"></view><text>处理中...</text></view>
-    </view>
+    <text class="modal-sub">{{isFirstLogin ? '微信快速登录后即可使用，头像昵称可在“我的”页面补充' : '登录后可在“我的”页面补充头像昵称'}}</text>
 
     <view class="modal-wechat-btn modal-wechat-btn--ghost" bindtap="onQuickWxLogin">
-      <text wx:if="{{!loginSubmitting}}">🟢 先微信快速登录，手机号后续补充</text>
-      <view wx:else class="btn-loading-row"><view class="modal-spinner"></view><text>处理中...</text></view>
-    </view>
-
-    <view class="modal-wechat-btn" bindtap="onGoProfileEdit">
-      <text wx:if="{{!loginSubmitting}}">🛠 去我的页面编辑头像昵称</text>
+      <text wx:if="{{!loginSubmitting}}">🟢 立即微信登录</text>
       <view wx:else class="btn-loading-row"><view class="modal-spinner"></view><text>处理中...</text></view>
     </view>
 

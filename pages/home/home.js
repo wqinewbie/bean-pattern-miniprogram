@@ -1,9 +1,16 @@
 const request = require('../../utils/request');
-const { isLoggedAndBound, requireLogin, cacheProfile, hasSession } = require('../../utils/profile-guard');
+const { requireLogin, cacheProfile, hasSession } = require('../../utils/profile-guard');
 
 const CATEGORIES = ['推荐', '卡通', '动物', '字母', '简约', '节日'];
 
 Page({
+  syncTabBar() {
+    const tabBar = this.getTabBar && this.getTabBar();
+    if (tabBar && typeof tabBar.setSelected === 'function') {
+      tabBar.setSelected(0);
+  }
+  },
+
   data: {
     loading: false,
     loadingText: '处理中...',
@@ -49,9 +56,7 @@ Page({
   },
 
   onShow() {
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setSelected(0);
-    }
+    this.syncTabBar();
     if (!hasSession()) {
       this.openLoginModal();
     } else {
@@ -83,6 +88,14 @@ Page({
   },
 
   loadBanners() {
+    const pickText = (value, fallback) => {
+      if (typeof value !== 'string') return fallback;
+      const t = value.trim();
+      if (!t) return fallback;
+      if(/[\uFFFD]/.test(t) || /[\u00C0-\u00FF]{3,}/.test(t)) return fallback;
+      return t;
+    };
+
     request.get('/banner/list')
       .then((data) => {
         const list = Array.isArray(data) ? data : [];
@@ -91,9 +104,9 @@ Page({
         this.setData({
           bannerList: list,
           currentBanner: {
-            title: first.title || '初夏限定拼豆',
-            subTitle: first.subTitle || '一键生成专属图纸',
-            tagText: first.tagText || '魔法上新',
+            title: pickText(first.title, '初夏限定拼豆'),
+            subTitle: pickText(first.subTitle, '一键生成专属图纸'),
+            tagText: pickText(first.tagText, '魔法上新'),
             imageUrl: first.imageUrl || '',
             linkType: first.linkType || 'NONE',
             linkValue: first.linkValue || ''
@@ -169,133 +182,90 @@ Page({
     wx.navigateTo({ url: '/pages/generate/generate?imageUrl=' + encodeURIComponent(url) });
   },
 
-  onGoProfileEdit() {
-    wx.navigateTo({ url: '/pages/login/login' });
-  },
-
   onQuickWxLogin() {
     if (this.data.loginSubmitting) return;
     this.setData({ loginSubmitting: true });
-    wx.login({
-      success: (res) => {
-        if (!res.code) {
-          this.setData({ loginSubmitting: false });
-          wx.showToast({ title: '微信登录失败，请重试', icon: 'none' });
-          return;
-        }
-        request.post('/auth/login', { code: res.code })
-          .then((data) => {
-            const sid = data.sessionId || data.token;
-            if (sid) wx.setStorageSync('sessionId', sid);
-            return request.get('/user/profile').catch(() => null);
-          })
-          .then((profile) => {
-            wx.setStorageSync('everRegistered', true);
-            cacheProfile(profile || {});
-            this.closeLoginModal();
-            wx.showToast({ title: '登录成功，可稍后补手机号', icon: 'success' });
-            if (this._loginCallback) { this._loginCallback(); this._loginCallback = null; }
-          })
-          .catch(() => {
-            this.setData({ loginSubmitting: false });
-            wx.showToast({ title: '登录失败，请重试', icon: 'none' });
-          });
-      },
-      fail: () => {
-        this.setData({ loginSubmitting: false });
-        wx.showToast({ title: '微信登录失败，请重试', icon: 'none' });
-      }
-    });
-  },
 
-  onGetPhoneNumber(e) {
-    console.log('onGetPhoneNumber detail:', e && e.detail ? e.detail : null);
-    const phoneCode = e && e.detail && e.detail.code;
-    if (!phoneCode) {
-      const errMsg = e && e.detail && e.detail.errMsg ? e.detail.errMsg : '';
-      const tip = errMsg && errMsg.indexOf('fail') >= 0
-        ? '当前账号暂未开通手机号能力，可先快速登录'
-        : '当前环境暂未返回手机号授权，请用真机测试';
-      wx.showToast({ title: tip, icon: 'none' });
-      return;
-    }
-    this.setData({ loginSubmitting: true });
     wx.login({
       success: (res) => {
-        if (!res.code) {
-          this.setData({ loginSubmitting: false });
-          wx.showToast({ title: '微信登录失败，请重试', icon: 'none' });
-          return;
-        }
-        request.post('/auth/login', { code: res.code })
-          .then((data) => {
-            const sid = data.sessionId || data.token;
-            if (sid) wx.setStorageSync('sessionId', sid);
-            return request.post('/user/bind-phone-wx', { code: phoneCode });
-          })
-          .then((phone) => {
-            wx.setStorageSync('phone', phone || '');
-            wx.setStorageSync('everRegistered', true);
-            return request.get('/user/profile').catch(() => null);
-          })
-          .then((profile) => {
-            if (profile) {
-              cacheProfile(profile);
-            }
-            wx.setStorageSync('everRegistered', true);
-            this.closeLoginModal();
-            wx.showToast({ title: '登录成功', icon: 'success' });
-            if (this._loginCallback) { this._loginCallback(); this._loginCallback = null; }
-          })
-          .catch((err) => {
-            this.setData({ loginSubmitting: false });
-            wx.showToast({ title: (err && err.message) || '登录失败，请重试', icon: 'none' });
-          });
-      },
-      fail: () => {
-        this.setData({ loginSubmitting: false });
-        wx.showToast({ title: '微信登录失败，请重试', icon: 'none' });
+        const code = res.code;
+        if (!code) throw new Error('NO_CODE');
+        return request.post('/auth/wechat-login', { code });
       }
-    });
+    })
+      .then((ret) => {
+        const sessionId = ret && ret.sessionId;
+        if (!sessionId) throw new Error('NO_SESSION');
+
+        wx.setStorageSync('sessionId', sessionId);
+        wx.setStorageSync('everRegistered', true);
+
+        const profile = ret.profile || {};
+        if (profile.nickName) wx.setStorageSync('nickName', profile.nickName);
+        if (profile.avatarUrl) wx.setStorageSync('avatarUrl', profile.avatarUrl);
+        cacheProfile(profile);
+
+        this.setData({
+          nickName: profile.nickName || this.data.nickName,
+          avatarUrl: profile.avatarUrl || this.data.avatarUrl,
+          showLoginModal: false,
+          loginSubmitting: false,
+          isFirstLogin: false,
+        });
+
+        wx.showToast({ title: '登录成功', icon: 'success' });
+
+        if (typeof this._loginCallback === 'function') {
+          const cb = this._loginCallback;
+          this._loginCallback = null;
+          setTimeout(() => cb(), 100);
+        }
+      })
+      .catch(() => {
+        this.setData({ loginSubmitting: false });
+        wx.showToast({ title: '登录失败，请重试', icon: 'none' });
+      });
   },
 
   onCloseLoginModal() {
-    this.setData({ showLoginModal: false });
-    if (this._loginCallback) this._loginCallback = null;
+    this.closeLoginModal();
   },
 
   checkLogin() {
-    return requireLogin({
-      mode: 'modal',
-      onNeedLogin: () => {
-        this.openLoginModal();
-      }
-    });
-  },
-
-  runAfterLogin(action) {
-    if (!this.checkLogin()) return;
-    if (typeof action === 'function') action();
+    if (requireLogin({ silentToast: true })) return true;
+    this.openLoginModal();
+    return false;
   },
 
   onBeadPatternLocal() {
-    this.runAfterLogin(() => wx.switchTab({ url: '/pages/convert/convert' }));
+    if (!this.checkLogin()) return;
+    wx.switchTab({ url: '/pages/convert/convert' });
   },
 
   onBeadPatternAI() {
-    this.runAfterLogin(() => wx.switchTab({ url: '/pages/ai-generate/ai-generate' }));
-  },
-
-  onGoMyPatterns() {
-    this.runAfterLogin(() => wx.navigateTo({ url: '/pages/my-patterns/my-patterns' }));
+    if (!this.checkLogin()) return;
+    wx.switchTab({ url: '/pages/ai-generate/ai-generate' });
   },
 
   onDrawBoard() {
-    this.runAfterLogin(() => wx.navigateTo({ url: '/pages/draw/draw' }));
+    if (!this.checkLogin()) return;
+    wx.navigateTo({ url: '/pages/draw/draw' });
   },
 
-  showError(msg) {
-    this.setData({ loading: false });
-    wx.showToast({ title: msg, icon: 'none' });
+  onGoMyPatterns() {
+    if (!this.checkLogin()) return;
+    wx.navigateTo({ url: '/pages/my-patterns/my-patterns' });
+  },
+
+  onPullDownRefresh() {
+    this.loadBanners();
+    this.loadTemplates();
+    setTimeout(() => wx.stopPullDownRefresh(), 400);
+  },
+
+  onUnload() {
+    if (this._loginModalTimer) clearTimeout(this._loginModalTimer);
+    this._loginModalTimer = null;
+    this._loginCallback = null;
   }
 });

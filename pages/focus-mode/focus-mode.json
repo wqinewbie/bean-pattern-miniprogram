@@ -1,3 +1,7 @@
 {
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "page-nav-bar": "/components/page-nav-bar/index",
+    "card-shell": "/components/card-shell/index"
+  }
 }
