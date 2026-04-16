@@ -51,7 +51,6 @@
         <view class="title-bar"></view>
         <text class="tutorial-title">魔法小课堂</text>
       </view>
-      <text class="tutorial-more">更多 ›</text>
     </view>
     <view class="tutorial-card">
       <view class="tutorial-thumb">

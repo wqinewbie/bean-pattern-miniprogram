@@ -32,6 +32,10 @@ Page({
       { value: 'pixel',    label: '像素风格' }
     ]  },
 
+  onBack() {
+    wx.navigateBack({ delta: 1 });
+  },
+
   onLoad(options) {
     if (options && options.imageUrl) {
       const url = decodeURIComponent(options.imageUrl);

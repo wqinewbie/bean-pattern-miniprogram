@@ -1,5 +1,8 @@
 <view class="container">
 
+  <!-- 顶部导航 -->
+  <page-nav-bar title="拼豆图纸生成器" bind:back="onBack" />
+
   <!-- 重新选择图片 -->
   <view class="reselect-bar">
     <view class="btn-reselect-top" bindtap="onChooseImage">重新选择图片</view>

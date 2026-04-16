@@ -1,55 +1,25 @@
-/* generate.wxss */
+/* generate.wxss - 暖色调风格 */
 
 .container {
   min-height: 100vh;
-  background: #1C1C1E;
+  background: #FFF9ED;
   display: flex;
   flex-direction: column;
-}
-
-/* ─── 顶部导航 ─── */
-.nav-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 60rpx 32rpx 24rpx;
-  background: #1C1C1E;
-  position: relative;
-  z-index: 10;
-}
-
-.nav-back {
-  width: 72rpx; height: 72rpx;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 36rpx; color: #9ca3af;
-}
-
-.nav-title {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: #FFD54F;
-}
-
-.nav-confirm {
-  font-size: 28rpx;
-  font-weight: 700;
-  color: #9ca3af;
-  padding: 12rpx 24rpx;
 }
 
 /* ─── 重选按钮 ─── */
 .reselect-bar {
   padding: 16rpx 32rpx 16rpx;
-  background: #1C1C1E;
+  background: #FFF9ED;
 }
 
 .btn-reselect-top {
   width: 100%;
   height: 88rpx;
-  background: #2C2C2E;
-  border: 2rpx solid #3A3A3C;
+  background: #fff;
+  border: 2rpx solid #FFE0B2;
   border-radius: 24rpx;
-  color: #FFD54F;
+  color: #FF9800;
   font-size: 28rpx;
   font-weight: 700;
   display: flex;
@@ -67,6 +37,7 @@
   justify-content: center;
   padding: 16rpx 32rpx;
   min-height: 420rpx;
+  background: #FFF9ED;
 }
 
 .preview-box {
@@ -74,10 +45,11 @@
   max-width: 560rpx;
   aspect-ratio: 1;
   position: relative;
-  background: #2C2C2E;
-  border: 4rpx solid #3A3A3C;
+  background: #fff;
+  border: 4rpx solid #FFE0B2;
   border-radius: 24rpx;
   overflow: hidden;
+  box-shadow: 0 8rpx 30rpx rgba(140,107,75,0.12);
 }
 
 .preview-img { width: 100%; height: 100%; }
@@ -87,33 +59,34 @@
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   gap: 20rpx;
+  background: #FFF9ED;
 }
 
 .ph-icon { font-size: 80rpx; }
-.ph-text  { font-size: 28rpx; color: #666; }
+.ph-text  { font-size: 28rpx; color: #A1887F; }
 
 .grid-overlay {
   position: absolute; inset: 0;
   pointer-events: none;
 }
 
-.grid-line { position: absolute; background: rgba(255,255,255,0.15); }
+.grid-line { position: absolute; background: rgba(255,152,0,0.15); }
 .grid-line.h { left: 0; right: 0; height: 2rpx; }
 .grid-line.v { top: 0; bottom: 0; width: 2rpx; }
 
 /* ─── 设置面板 ─── */
 .settings-panel {
-  background: #2C2C2E;
+  background: #fff;
   border-radius: 40rpx 40rpx 0 0;
   padding: 24rpx 40rpx 60rpx;
   flex-shrink: 0;
-  box-shadow: 0 -10rpx 40rpx rgba(0,0,0,0.5);
-  border-top: 2rpx solid #3A3A3C;
+  box-shadow: 0 -10rpx 40rpx rgba(140,107,75,0.08);
+  border-top: 2rpx solid #FFE0B2;
 }
 
 .panel-handle {
   width: 80rpx; height: 8rpx;
-  background: #3A3A3C;
+  background: #FFE0B2;
   border-radius: 4rpx;
   margin: 0 auto 32rpx;
 }
@@ -124,41 +97,8 @@
   display: block;
   font-size: 24rpx;
   font-weight: 700;
-  color: #9ca3af;
+  color: #A1887F;
   margin-bottom: 16rpx;
-}
-
-/* 尺寸格子：4列（15/20/30/自定义）*/
-.size-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16rpx;
-}
-
-.size-btn {
-  height: 80rpx;
-  border-radius: 20rpx;
-  border: 2rpx solid #3A3A3C;
-  background: #1C1C1E;
-  color: #9ca3af;
-  font-size: 26rpx;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.size-btn:active { opacity: 0.7; }
-.size-btn--active { border-color: #FFD54F; background: rgba(255,213,79,0.1); color: #FFD54F; }
-
-.custom-size-input {
-  width: 80rpx;
-  text-align: center;
-  font-size: 26rpx;
-  font-weight: 700;
-  color: #FFD54F;
-  background: transparent;
-  border: none;
 }
 
 /* ─── 三列设置行（色号+算法+镜像）─── */
@@ -176,22 +116,22 @@
   align-items: center;
   justify-content: space-between;
   height: 80rpx;
-  background: #1C1C1E;
+  background: #FFF9ED;
   border-radius: 20rpx;
   padding: 0 20rpx;
-  border: 2rpx solid #3A3A3C;
+  border: 2rpx solid #FFE0B2;
 }
 
-.picker-val   { font-size: 24rpx; color: #fff; }
-.picker-arrow { font-size: 24rpx; color: #666; }
+.picker-val   { font-size: 24rpx; color: #5D4037; }
+.picker-arrow { font-size: 24rpx; color: #A1887F; }
 
 /* 镜像开关 */
 .mirror-btn {
   height: 80rpx;
   border-radius: 20rpx;
-  border: 2rpx solid #3A3A3C;
-  background: #1C1C1E;
-  color: #9ca3af;
+  border: 2rpx solid #FFE0B2;
+  background: #FFF9ED;
+  color: #A1887F;
   font-size: 26rpx;
   font-weight: 700;
   display: flex;
@@ -200,18 +140,18 @@
 }
 
 .mirror-btn--on {
-  border-color: #FFD54F;
-  background: rgba(255,213,79,0.1);
-  color: #FFD54F;
+  border-color: #FF9800;
+  background: rgba(255,152,0,0.1);
+  color: #FF9800;
 }
 
 /* ─── 生成按钮 ─── */
 .btn-generate {
   width: 100%;
   height: 104rpx;
-  background: linear-gradient(135deg, #FFD54F, #FF9800);
+  background: linear-gradient(135deg, #FF9800, #FFB74D);
   border-radius: 52rpx;
-  color: #3E2723;
+  color: #fff;
   font-size: 32rpx;
   font-weight: 700;
   display: flex;
@@ -231,10 +171,10 @@
   justify-content: space-between;
   align-items: center;
   padding: 8rpx 32rpx 0;
-  background: #1C1C1E;
+  background: #FFF9ED;
 }
 
-.hint-gray  { font-size: 22rpx; color: #666; font-weight: 700; }
+.hint-gray  { font-size: 22rpx; color: #A1887F; font-weight: 700; }
 .hint-orange { font-size: 22rpx; color: #FF9800; font-weight: 700; }
 .hint-blue   { font-size: 22rpx; color: #0288D1; font-weight: 700; }
 .hints-right { display: flex; gap: 24rpx; }
@@ -243,7 +183,7 @@
   width: 24rpx; height: 24rpx;
   border-radius: 50%;
   background: #fff;
-  border: 3rpx solid #000;
+  border: 3rpx solid #5D4037;
   outline: 2rpx solid #fff;
 }
 
@@ -251,7 +191,7 @@
 .sheet-mask {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.6);
+  background: rgba(0,0,0,0.4);
   z-index: 50;
 }
 
@@ -280,13 +220,13 @@
   text-align: center;
   font-size: 32rpx;
   font-weight: 700;
-  color: #666;
+  color: #A1887F;
   padding: 28rpx 0;
-  border-bottom: 2rpx solid #f5f5f5;
+  border-bottom: 2rpx solid #FFF4DC;
 }
 
-.sheet-item--active { color: #333; font-size: 36rpx; }
-.sheet-item:active { background: #f9f9f9; }
+.sheet-item--active { color: #5D4037; font-size: 36rpx; }
+.sheet-item:active { background: #FFF9ED; }
 
 .sheet-btns {
   display: flex;
@@ -295,15 +235,15 @@
 
 .sheet-btn-cancel {
   flex: 1; height: 88rpx;
-  background: #f0f0f0;
+  background: #FFF4DC;
   border-radius: 20rpx;
   display: flex; align-items: center; justify-content: center;
-  font-size: 28rpx; font-weight: 700; color: #666;
+  font-size: 28rpx; font-weight: 700; color: #A1887F;
 }
 
 .sheet-btn-confirm {
   flex: 1; height: 88rpx;
-  background: #07C160;
+  background: #FF9800;
   border-radius: 20rpx;
   display: flex; align-items: center; justify-content: center;
   font-size: 28rpx; font-weight: 700; color: #fff;
@@ -312,7 +252,7 @@
 /* ─── 加载蒙层 ─── */
 .loading-mask {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.6);
+  background: rgba(0,0,0,0.5);
   display: flex; align-items: center; justify-content: center;
   z-index: 999;
 }
@@ -327,15 +267,15 @@
 
 .loading-spinner {
   width: 64rpx; height: 64rpx;
-  border: 6rpx solid #f0f0f0;
-  border-top-color: #FFD54F;
+  border: 6rpx solid #FFF4DC;
+  border-top-color: #FF9800;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.loading-text { font-size: 28rpx; color: #666; font-weight: 500; }
+.loading-text { font-size: 28rpx; color: #A1887F; font-weight: 500; }
 
 /* ── 尺寸picker行 ── */
 .size-row {
@@ -350,8 +290,8 @@
   min-width: 0;
   height: 80rpx;
   border-radius: 20rpx;
-  border: 2rpx solid #3A3A3C;
-  background: #1C1C1E;
+  border: 2rpx solid #FFE0B2;
+  background: #FFF9ED;
   padding: 0 20rpx;
   display: flex;
   align-items: center;
@@ -361,15 +301,15 @@
 
 .size-picker .picker-val {
   font-size: 26rpx;
-  color: #fff;
+  color: #5D4037;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .size-picker--active {
-  border-color: #FFD54F;
-  background: rgba(255,213,79,0.1);
+  border-color: #FF9800;
+  background: rgba(255,152,0,0.1);
 }
 
 .size-custom-btn {
@@ -377,9 +317,9 @@
   flex-shrink: 0;
   height: 80rpx;
   border-radius: 20rpx;
-  border: 2rpx solid #3A3A3C;
-  background: #1C1C1E;
-  color: #9ca3af;
+  border: 2rpx solid #FFE0B2;
+  background: #FFF9ED;
+  color: #A1887F;
   font-size: 26rpx;
   font-weight: 700;
   display: flex;
@@ -388,9 +328,9 @@
 }
 
 .size-custom-btn.size-btn--active {
-  border-color: #FFD54F;
-  background: rgba(255,213,79,0.1);
-  color: #FFD54F;
+  border-color: #FF9800;
+  background: rgba(255,152,0,0.1);
+  color: #FF9800;
 }
 
 /* size-half-box: 两个框各半 */
@@ -399,8 +339,8 @@
   min-width: 0;
   height: 80rpx;
   border-radius: 20rpx;
-  border: 2rpx solid #3A3A3C;
-  background: #1C1C1E;
+  border: 2rpx solid #FFE0B2;
+  background: #FFF9ED;
   padding: 0 20rpx;
   display: flex;
   align-items: center;
@@ -410,16 +350,16 @@
 
 .size-confirm-btn {
   justify-content: center;
-  color: #9ca3af;
+  color: #A1887F;
   font-size: 26rpx;
   font-weight: 700;
   cursor: pointer;
 }
 
 .size-confirm-btn.size-picker--active {
-  border-color: #FFD54F;
-  background: rgba(255,213,79,0.1);
-  color: #FFD54F;
+  border-color: #FF9800;
+  background: rgba(255,152,0,0.1);
+  color: #FF9800;
 }
 
 .size-half-box .custom-size-input {
@@ -430,6 +370,39 @@
   border: none;
   font-size: 26rpx;
   font-weight: 700;
-  color: #FFD54F;
+  color: #FF9800;
   text-align: center;
+}
+
+/* ─── 尺寸按钮（4列）─── */
+.size-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16rpx;
+}
+
+.size-btn {
+  height: 80rpx;
+  border-radius: 20rpx;
+  border: 2rpx solid #FFE0B2;
+  background: #FFF9ED;
+  color: #A1887F;
+  font-size: 26rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.size-btn:active { opacity: 0.7; }
+.size-btn--active { border-color: #FF9800; background: rgba(255,152,0,0.1); color: #FF9800; }
+
+.custom-size-input {
+  width: 80rpx;
+  text-align: center;
+  font-size: 26rpx;
+  font-weight: 700;
+  color: #FF9800;
+  background: transparent;
+  border: none;
 }

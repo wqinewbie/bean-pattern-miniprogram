@@ -186,13 +186,19 @@ Page({
     if (this.data.loginSubmitting) return;
     this.setData({ loginSubmitting: true });
 
-    wx.login({
-      success: (res) => {
-        const code = res.code;
-        if (!code) throw new Error('NO_CODE');
-        return request.post('/auth/wechat-login', { code });
-      }
+    new Promise((resolve, reject) => {
+      wx.login({
+        success: (res) => {
+          if (!res.code) {
+            reject(new Error('NO_CODE'));
+            return;
+          }
+          resolve(res.code);
+        },
+        fail: (err) => reject(err || new Error('WX_LOGIN_FAILED')),
+      });
     })
+      .then((code) => request.post('/auth/login', { code }))
       .then((ret) => {
         const sessionId = ret && ret.sessionId;
         if (!sessionId) throw new Error('NO_SESSION');
@@ -209,7 +215,6 @@ Page({
           nickName: profile.nickName || this.data.nickName,
           avatarUrl: profile.avatarUrl || this.data.avatarUrl,
           showLoginModal: false,
-          loginSubmitting: false,
           isFirstLogin: false,
         });
 
@@ -222,8 +227,10 @@ Page({
         }
       })
       .catch(() => {
-        this.setData({ loginSubmitting: false });
         wx.showToast({ title: '登录失败，请重试', icon: 'none' });
+      })
+      .finally(() => {
+        this.setData({ loginSubmitting: false });
       });
   },
 

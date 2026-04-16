@@ -1,19 +1,21 @@
-/* page-nav-bar 组件样式 */
+/* page-nav-bar 组件样式 - 暖色调 */
+/* 注意：所有尺寸使用 px 单位，与 JS 计算保持一致 */
 .nav-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 20rpx;
-  padding-left: 32rpx;
-  padding-right: 32rpx;
-  background: #FFEBB5;
+  padding-bottom: 10px;
+  padding-left: 16px;
+  padding-right: 16px;
+  background: #FFF9ED;
   flex-shrink: 0;
   z-index: 10;
+  height: 32px;
 }
 
 .nav-back {
-  width: 72rpx;
-  height: 72rpx;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -21,13 +23,13 @@
 }
 
 .nav-back-arrow {
-  font-size: 40rpx;
-  color: #8C6B4B;
+  font-size: 20px;
+  color: #A1887F;
 }
 
 .nav-placeholder {
-  width: 72rpx;
-  height: 72rpx;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
 }
 
@@ -36,24 +38,26 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4rpx;
+  gap: 2px;
 }
 
 .nav-title {
-  font-size: 32rpx;
+  font-size: 16px;
   font-weight: 800;
   color: #5D4037;
+  line-height: 1.2;
 }
 
 .nav-sub {
-  font-size: 22rpx;
+  font-size: 11px;
   color: #A1887F;
   font-weight: 700;
+  line-height: 1.2;
 }
 
 .nav-right {
-  width: 72rpx;
-  height: 72rpx;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
