@@ -129,9 +129,8 @@ Page({
   onTutorialTap(e) {
     const tutorial = e.currentTarget.dataset.tutorial;
     if (tutorial && tutorial.videoUrl) {
-      wx.setClipboardData({
-        data: tutorial.videoUrl,
-        success: () => wx.showToast({ title: '视频链接已复制，请在浏览器打开', icon: 'none', duration: 2500 })
+      wx.navigateTo({
+        url: `/pages/tutorial-play/tutorial-play?url=${encodeURIComponent(tutorial.videoUrl)}&title=${encodeURIComponent(tutorial.title || '')}&desc=${encodeURIComponent(tutorial.description || '')}`
       });
     }
   },

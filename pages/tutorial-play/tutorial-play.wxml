@@ -1,0 +1,24 @@
+<view class="container">
+  <view class="video-wrapper">
+    <video
+      id="videoPlayer"
+      class="video"
+      src="{{videoUrl}}"
+      controls
+      show-center-play-btn
+      show-play-btn
+      enable-progress-gesture
+      binderror="onVideoError"
+      bindloadedmetadata="onVideoLoaded"
+    ></video>
+  </view>
+  
+  <view class="info" wx:if="{{title}}">
+    <text class="title">{{title}}</text>
+    <text class="desc">{{description}}</text>
+  </view>
+
+  <view class="error-tip" wx:if="{{showError}}">
+    <text>视频加载失败，请检查网络或稍后重试</text>
+  </view>
+</view>
