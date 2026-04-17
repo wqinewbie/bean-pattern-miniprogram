@@ -35,6 +35,7 @@ Page({
     templates: [],
     allTemplates: [],
     templatesLoading: true,
+    tutorials: [],
   },
 
   onLoad() {
@@ -53,6 +54,7 @@ Page({
     });
     this.loadBanners();
     this.loadTemplates();
+    this.loadTutorials();
   },
 
   onShow() {
@@ -114,6 +116,24 @@ Page({
         });
       })
       .catch(() => {});
+  },
+
+  loadTutorials() {
+    request.get('/tutorial/list')
+      .then((data) => {
+        this.setData({ tutorials: Array.isArray(data) ? data : [] });
+      })
+      .catch(() => {});
+  },
+
+  onTutorialTap(e) {
+    const tutorial = e.currentTarget.dataset.tutorial;
+    if (tutorial && tutorial.videoUrl) {
+      wx.setClipboardData({
+        data: tutorial.videoUrl,
+        success: () => wx.showToast({ title: '视频链接已复制，请在浏览器打开', icon: 'none', duration: 2500 })
+      });
+    }
   },
 
   onBannerTap() {
@@ -267,6 +287,7 @@ Page({
   onPullDownRefresh() {
     this.loadBanners();
     this.loadTemplates();
+    this.loadTutorials();
     setTimeout(() => wx.stopPullDownRefresh(), 400);
   },
 

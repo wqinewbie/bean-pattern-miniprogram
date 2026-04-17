@@ -45,20 +45,20 @@
   </view>
 
   <!-- 魔法小课堂 -->
-  <view class="tutorial-zone">
+  <view class="tutorial-zone" wx:if="{{tutorials.length > 0}}">
     <view class="tutorial-header">
       <view class="tutorial-title-row">
         <view class="title-bar"></view>
         <text class="tutorial-title">魔法小课堂</text>
       </view>
     </view>
-    <view class="tutorial-card">
+    <view class="tutorial-card" wx:for="{{tutorials}}" wx:key="id" bindtap="onTutorialTap" data-tutorial="{{item}}">
       <view class="tutorial-thumb">
         <text class="tutorial-play">▶</text>
       </view>
       <view class="tutorial-info">
-        <text class="tutorial-name">新手必看：如何拼出完美立体豆？</text>
-        <text class="tutorial-desc">了解熨烫技巧与温度控制，让你的作品更牢固漂亮！</text>
+        <text class="tutorial-name">{{item.title}}</text>
+        <text class="tutorial-desc">{{item.description}}</text>
       </view>
     </view>
   </view>
