@@ -1,7 +1,49 @@
 <view class="focus-page">
   <page-nav-bar title="沉浸拼豆" nav-top="{{navTop}}" bind:back="onBack">
-    <view slot="right" class="nav-reset" bindtap="onResetAll">重置</view>
+    <view slot="right" class="nav-actions">
+      <view class="nav-action" bindtap="onShowList">列表</view>
+      <view class="nav-action {{keepScreenOn?'nav-action--active':''}}" bindtap="onToggleKeepScreen">常亮</view>
+      <view class="nav-action" bindtap="onSaveProgress">保存</view>
+      <view class="nav-reset" bindtap="onResetAll">重置</view>
+    </view>
   </page-nav-bar>
+
+  <!-- 图纸列表弹窗 -->
+  <view class="list-modal {{showListModal?'list-modal--show':''}}" wx:if="{{showListModal}}">
+    <view class="list-modal-overlay" bindtap="onCloseList"></view>
+    <view class="list-modal-content">
+      <view class="list-modal-header">
+        <text class="list-modal-title">图纸列表</text>
+        <view class="list-modal-close" bindtap="onCloseList">✕</view>
+      </view>
+      <scroll-view class="list-modal-scroll" scroll-y>
+        <view class="box-list">
+          <view 
+            class="box-item {{item.id===boxId?'box-item--active':''}}"
+            wx:for="{{boxList}}"
+            wx:key="id"
+            bindtap="onSelectBox"
+            data-id="{{item.id}}"
+          >
+            <view class="box-info">
+              <text class="box-name">{{item.name || '未命名图纸'}}</text>
+              <text class="box-meta">{{item.brand}} · {{item.gridSize}}x{{item.gridSize}} · {{item.colorCount}}色</text>
+            </view>
+            <view class="box-check" wx:if="{{item.id===boxId}}">✓</view>
+          </view>
+          <view class="box-empty" wx:if="{{boxList.length===0}}">
+            <text>暂无图纸</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <!-- 进度提示 -->
+  <view class="progress-bar" wx:if="{{doneCount > 0}}">
+    <text class="progress-text">已完成 {{doneCount}} 色 / {{palette.length}} 色</text>
+    <text class="progress-percent">{{Math.floor(doneCount / palette.length * 100)}}%</text>
+  </view>
 
   <view class="summary" wx:if="{{currentColor}}">
     <view class="summary-btn" bindtap="onPrevColor">← 上一色</view>

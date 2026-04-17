@@ -12,7 +12,8 @@
     "pages/ai-generate/ai-generate",
     "pages/generating/generating",
     "pages/vip/vip",
-    "pages/convert/convert"
+    "pages/convert/convert",
+    "pages/draft/draft"
   ],
   "window": {
     "navigationBarTitleText": "Bean Pattern",
@@ -47,5 +48,7 @@
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",
-  "usingComponents": {}
+  "usingComponents": {
+    "global-popup": "/components/popup/index"
+  }
 }

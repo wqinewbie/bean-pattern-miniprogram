@@ -31,13 +31,18 @@ Page({
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
       this.setData({ loading: true });
-      request.get('/my-pattern/list')
+      request.get('/box/list')
         .then((data) => {
-          const nameMap = wx.getStorageSync('patternNameMap') || {};
           const patterns = (Array.isArray(data) ? data : []).map(item => ({
-            ...item,
-            patternName: item.patternName || nameMap[String(item.taskId)] || ('魔法图纸#' + item.taskId),
+            id: item.id,
+            name: item.name || ('图纸#' + item.id),
+            gridSize: item.gridSize,
+            colorCount: item.colorCount,
+            brand: item.brand,
+            gridData: item.gridData,
+            colorPalette: item.colorPalette,
             createdAt: this.formatTime(item.createdAt),
+            boxId: item.id,
           }));
           this.setData({ patterns, loading: false }, () => this.applyFilter());
         })
@@ -51,11 +56,11 @@ Page({
   onItemTap(e) {
     const item = e.currentTarget.dataset.item;
     wx.navigateTo({
-      url: '/pages/result/result?taskId=' + item.taskId +
-           '&originalUrl=' + encodeURIComponent(item.sourceUrl || '') +
-           '&resultUrl=' + encodeURIComponent(item.resultUrl || '') +
-           '&patternUrl=' + encodeURIComponent(item.patternUrl || '') +
-           '&colorStats=' + encodeURIComponent(item.colorStats || '')
+      url: '/pages/result/result?boxId=' + item.id +
+           '&gridSize=' + (item.gridSize || 64) +
+           '&gridData=' + encodeURIComponent(item.gridData || '[]') +
+           '&colorPalette=' + encodeURIComponent(item.colorPalette || '[]') +
+           '&sourceType=BOX'
     });
   },
 
@@ -64,16 +69,16 @@ Page({
   },
 
   onDelete(e) {
-    const taskId = e.currentTarget.dataset.taskid;
+    const id = e.currentTarget.dataset.id;
     wx.showModal({
-      title: '提示', content: '确认从我的图纸中移除？',
+      title: '提示', content: '确认删除此图纸？',
       success: (res) => {
         if (res.confirm) {
-          request.post('/my-pattern/unsave/' + taskId)
+          request.delete('/box/delete/' + id)
             .then(() => {
-              const patterns = this.data.patterns.filter(p => String(p.taskId) !== String(taskId));
+              const patterns = this.data.patterns.filter(p => String(p.id) !== String(id));
               this.setData({ patterns }, () => this.applyFilter());
-              wx.showToast({ title: '已移除', icon: 'success' });
+              wx.showToast({ title: '已删除', icon: 'success' });
             })
             .catch(() => wx.showToast({ title: '操作失败', icon: 'none' }));
         }
@@ -106,13 +111,9 @@ Page({
       return;
     }
     const filteredPatterns = source.filter((item) => {
-      const title = item && item.patternName ? String(item.patternName) : '未命名作品';
-      const colorStats = (item && item.colorStats) ? String(item.colorStats) : '';
-      const createdAt = item && item.createdAt ? String(item.createdAt) : '';
-      return title.toLowerCase().includes(kw)
-        || colorStats.toLowerCase().includes(kw)
-        || createdAt.toLowerCase().includes(kw)
-        || String(item.taskId || '').toLowerCase().includes(kw);
+      const name = item && item.name ? String(item.name) : '';
+      const brand = item && item.brand ? String(item.brand) : '';
+      return name.toLowerCase().includes(kw) || brand.toLowerCase().includes(kw);
     });
     this.setData({ filteredPatterns });
   },

@@ -1,7 +1,7 @@
 <view class="container">
   
   <!-- 顶部导航 -->
-  <page-nav-bar title="我的魔法图纸" nav-top="{{navTop}}" bind:back="onBack">
+  <page-nav-bar title="图纸箱" nav-top="{{navTop}}" bind:back="onBack">
     <view slot="right" class="nav-add" bindtap="onAdd">+</view>
   </page-nav-bar>
 
@@ -19,22 +19,20 @@
       <view class="empty-icon-wrap">
         <text class="empty-icon">📁</text>
       </view>
-      <text class="empty-text">还没有施展过魔法哦</text>
-      <text class="empty-sub">生成图纸后点击「保存到我的图纸」</text>
+      <text class="empty-text">还没有图纸哦</text>
+      <text class="empty-sub">生成图纸后点击「保存到图纸箱」</text>
     </view>
 
     <view class="list">
-      <view wx:for="{{filteredPatterns}}" wx:key="taskId" class="pattern-item">
+      <view wx:for="{{filteredPatterns}}" wx:key="id" class="pattern-item">
         <view class="item-thumb" bindtap="onItemTap" data-item="{{item}}">
-          <image wx:if="{{item.patternUrl}}" class="thumb-img" src="{{item.patternUrl}}" mode="aspectFill"/>
-          <image wx:elif="{{item.resultUrl}}" class="thumb-img" src="{{item.resultUrl}}" mode="aspectFill"/>
-          <view wx:else class="thumb-ph">🖼</view>
+          <view class="thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
         </view>
         <view class="item-info" bindtap="onItemTap" data-item="{{item}}">
-          <text class="item-title">{{item.patternName || ('魔法图纸#'+item.taskId)}}</text>
-          <text class="item-meta">拼豆图纸 · {{item.createdAt}}</text>
+          <text class="item-title">{{item.name || ('图纸#'+item.id)}}</text>
+          <text class="item-meta">{{item.brand || 'MARD'}} · {{item.colorCount || 0}}色 · {{item.createdAt}}</text>
         </view>
-        <view class="item-del" bindtap="onDelete" data-taskid="{{item.taskId}}">🗑</view>
+        <view class="item-del" bindtap="onDelete" data-id="{{item.id}}">🗑</view>
       </view>
     </view>
     <view style="height:120rpx"></view>

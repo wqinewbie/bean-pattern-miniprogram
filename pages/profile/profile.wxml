@@ -67,23 +67,15 @@
           <view class="action-icon orange">🕐</view>
           <text class="action-label">时光机</text>
         </view>
-        <view class="action-item">
-          <view class="action-icon red">⭐</view>
-          <text class="action-label">收藏夹</text>
+        <view class="action-item" bindtap="onGoDraft">
+          <view class="action-icon purple">📝</view>
+          <text class="action-label">草稿箱</text>
         </view>
       </view>
     </view>
 
     <!-- 菜单列表 -->
     <card-shell variant="plain" custom-class="menu-card">
-      <view class="menu-item" bindtap="onCreator">
-        <view class="menu-left">
-          <text class="menu-icon" style="background:#F3E5F5;color:#9C27B0">🎨</text>
-          <text class="menu-title">创作者中心</text>
-        </view>
-        <view class="menu-right"><text class="menu-sub">上传赚金币</text><text class="menu-arrow">›</text></view>
-      </view>
-      <view class="menu-divider"></view>
       <view class="menu-item" bindtap="onHelp">
         <view class="menu-left">
           <text class="menu-icon" style="background:#E8F5E9;color:#4CAF50">ℹ</text>
@@ -174,6 +166,17 @@
     <view class="sheet-handle"></view>
     <text class="sheet-title">账号设置</text>
     <view class="sheet-list">
+      <view class="sheet-row">
+        <view class="sheet-row-left">
+          <text class="sheet-row-icon">💧</text>
+          <view class="sheet-row-texts">
+            <text class="sheet-row-label">生成图纸水印</text>
+            <text class="sheet-row-desc">关闭后生成的图纸不带水印</text>
+          </view>
+        </view>
+        <switch class="sheet-switch" checked="{{watermarkEnabled}}" bindchange="onWatermarkChange" color="#FF9800"/>
+      </view>
+      <view class="sheet-divider"></view>
       <view class="sheet-row sheet-row--danger" bindtap="onLogout">
         <view class="sheet-row-left">
           <text class="sheet-row-icon">🚪</text>
@@ -233,41 +236,6 @@
       <textarea class="feedback-input" placeholder="你的建议是我们进步的魔法源泉～" value="{{feedbackText}}" bindinput="onFeedbackInput" maxlength="200"/>
       <view class="feedback-send-btn" bindtap="onSendFeedback">发送给小豆 ✉</view>
     </view>
-  </view>
-
-  <!-- 创作者中心 -->
-  <view class="bottom-sheet {{activeSheet==='creator'?'bottom-sheet--show':''}}">
-    <view class="sheet-handle"></view>
-    <text class="sheet-title">创作者中心</text>
-    <view class="creator-income-card">
-      <text class="income-label">累计收益（金币）</text>
-      <text class="income-num">{{creatorIncome}}</text>
-      <view class="income-withdraw-btn">申请提现</view>
-    </view>
-    <view class="sheet-list">
-      <view class="sheet-row" bindtap="onUploadPattern">
-        <view class="sheet-row-left">
-          <text class="sheet-row-icon">⬆</text>
-          <view class="sheet-row-texts">
-            <text class="sheet-row-label">上传原创图纸</text>
-            <text class="sheet-row-desc">每次被下载可获得金币奖励</text>
-          </view>
-        </view>
-        <text class="sheet-row-arrow">›</text>
-      </view>
-      <view class="sheet-divider"></view>
-      <view class="sheet-row">
-        <view class="sheet-row-left">
-          <text class="sheet-row-icon">📊</text>
-          <view class="sheet-row-texts">
-            <text class="sheet-row-label">我的作品数据</text>
-            <text class="sheet-row-desc">查看下载量和收益明细</text>
-          </view>
-        </view>
-        <text class="sheet-row-arrow">›</text>
-      </view>
-    </view>
-    <view class="sheet-cancel" bindtap="onCloseSheet">关闭</view>
   </view>
 
 </view>

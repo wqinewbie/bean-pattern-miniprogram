@@ -8,8 +8,17 @@
     <!-- 图纸大图预览区 -->
     <view class="preview-card">
       <view class="preview-wrap">
-        <image wx:if="{{currentPreviewUrl}}" class="preview-img" src="{{currentPreviewUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
-        <view wx:else class="image-placeholder">
+        <!-- 图片预览模式 -->
+        <image wx:if="{{activeTab !== 'pattern' && currentPreviewUrl}}" class="preview-img" src="{{currentPreviewUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+        <!-- 色号图 Canvas 渲染模式 -->
+        <canvas wx:if="{{activeTab === 'pattern'}}" canvas-id="patternCanvas" class="pattern-canvas" type="2d" />
+        <!-- 无内容占位 -->
+        <view wx:if="{{activeTab === 'pattern' && !hasPatternData}}" class="image-placeholder">
+          <text class="ph-icon">🖼️</text>
+          <text class="ph-text">暂无色号图数据</text>
+        </view>
+        <!-- 原图/效果图占位 -->
+        <view wx:if="{{activeTab !== 'pattern' && !currentPreviewUrl}}" class="image-placeholder">
           <text class="ph-icon">🖼️</text>
           <text class="ph-text">暂无图片</text>
         </view>
@@ -22,8 +31,8 @@
 
       <!-- 标签切换 -->
       <view class="tab-bar">
-        <view class="tab {{activeTab==='original'?'tab--active':''}}" bindtap="onTabChange" data-tab="original">原图</view>
-        <view class="tab {{activeTab==='result'?'tab--active':''}}" bindtap="onTabChange" data-tab="result">效果图</view>
+        <view wx:if="{{originalUrl}}" class="tab {{activeTab==='original'?'tab--active':''}}" bindtap="onTabChange" data-tab="original">原图</view>
+        <view wx:if="{{resultUrl}}" class="tab {{activeTab==='result'?'tab--active':''}}" bindtap="onTabChange" data-tab="result">效果图</view>
         <view class="tab {{activeTab==='pattern'?'tab--active':''}}" bindtap="onTabChange" data-tab="pattern">色号图</view>
       </view>
 
@@ -36,7 +45,7 @@
       </view>
 
       <!-- 沉浸拼豆模式 -->
-      <view class="focus-mode-btn" bindtap="onEnterFocusMode">进入沉浸拼豆模式</view>
+      <view class="focus-mode-btn {{!isSaved?'focus-mode-btn--disabled':''}}" bindtap="onEnterFocusMode">{{isSaved ? '进入沉浸拼豆模式' : '请先保存到图纸箱'}}</view>
     </view>
 
     <!-- 色号清单 -->

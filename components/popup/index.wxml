@@ -1,0 +1,24 @@
+<view wx:if="{{visible}}" class="popup-overlay" bindtap="onOverlayTap">
+  <view class="popup-card" catchtap="noop">
+    <view wx:if="{{config.closable !== false}}" class="popup-close" bindtap="onClose">×</view>
+    
+    <image wx:if="{{config.imageUrl}}" class="popup-image" src="{{config.imageUrl}}" mode="aspectFit" />
+    
+    <text wx:if="{{config.title}}" class="popup-title">{{config.title}}</text>
+    
+    <text wx:if="{{config.content}}" class="popup-content">{{config.content}}</text>
+    
+    <view class="popup-btn {{config.buttonUrl ? 'popup-btn--link' : ''}}" bindtap="onConfirm">
+      {{config.buttonText || '我知道了'}}
+    </view>
+    
+    <view wx:if="{{showNeverShow}}" class="popup-never" bindtap="onNeverShow">
+      <checkbox-group>
+        <label class="never-label">
+          <checkbox value="true" color="#FF9800" />
+          <text>不再显示</text>
+        </label>
+      </checkbox-group>
+    </view>
+  </view>
+</view>

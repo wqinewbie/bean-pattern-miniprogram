@@ -21,6 +21,7 @@ Page({
     cloudProcess: true,
     feedbackText: '',
     creatorIncome: 0,
+    watermarkEnabled: true,
     profileTopPaddingPx: 88,
     subTopSafePx: 20,
     subHeaderHeightPx: 88,
@@ -28,6 +29,7 @@ Page({
 
   onLoad() {
     this.calcSafeAreas();
+    this.loadWatermarkSetting();
   },
 
   calcSafeAreas() {
@@ -103,6 +105,10 @@ Page({
     wx.navigateTo({ url: '/pages/my-patterns/my-patterns' });
   },
 
+  onGoDraft() {
+    wx.navigateTo({ url: '/pages/draft/draft' });
+  },
+
   onVip() {
     wx.navigateTo({ url: '/pages/vip/vip' });
   },
@@ -138,6 +144,18 @@ Page({
     const enabled = !!e.detail.value;
     this.setData({ cloudProcess: enabled });
     wx.showToast({ title: enabled ? '已开启云端处理' : '已关闭云端处理', icon: 'none' });
+  },
+
+  loadWatermarkSetting() {
+    const enabled = wx.getStorageSync('watermarkEnabled');
+    this.setData({ watermarkEnabled: enabled !== false });
+  },
+
+  onWatermarkChange(e) {
+    const enabled = !!e.detail.value;
+    this.setData({ watermarkEnabled: enabled });
+    wx.setStorageSync('watermarkEnabled', enabled);
+    wx.showToast({ title: enabled ? '已开启水印' : '已关闭水印', icon: 'none' });
   },
 
   onClearTrace() {

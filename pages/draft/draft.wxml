@@ -1,0 +1,72 @@
+<view class="container">
+
+  <!-- 顶部导航 -->
+  <page-nav-bar title="草稿箱" subtitle="未完成的创意" nav-top="{{navTop}}" bind:back="onBack"/>
+
+  <scroll-view scroll-y class="scroll-body">
+
+    <!-- 说明卡片 -->
+    <view class="tip-card">
+      <text class="tip-icon">💡</text>
+      <view class="tip-text">
+        <text class="tip-title">草稿箱说明</text>
+        <text class="tip-desc">这里保存着您未完成的创作，可以继续编辑或保存到图纸箱</text>
+      </view>
+    </view>
+
+    <!-- 草稿列表 -->
+    <view class="list-area">
+      <view wx:if="{{loading}}" class="loading-state">
+        <view class="loading-spinner"></view>
+        <text class="loading-text">加载中...</text>
+      </view>
+
+      <view wx:elif="{{drafts.length === 0}}" class="empty-state">
+        <text class="empty-icon">📝</text>
+        <text class="empty-title">草稿箱空空如也</text>
+        <text class="empty-desc">在画板开始创作后自动保存到这里</text>
+        <view class="empty-btn" bindtap="onGoDraw">去画板</view>
+      </view>
+
+      <view wx:else class="draft-list">
+        <view wx:for="{{drafts}}" wx:key="id" class="draft-item">
+          <!-- 缩略图 -->
+          <view class="draft-thumb" bindtap="onDraftTap" data-item="{{item}}">
+            <canvas wx:if="{{item.hasCanvas}}" canvas-id="draftCanvas{{item.id}}" class="draft-canvas" type="2d"/>
+            <view wx:else class="draft-thumb-ph">🖼</view>
+          </view>
+          
+          <!-- 草稿信息 -->
+          <view class="draft-info" bindtap="onDraftTap" data-item="{{item}}">
+            <text class="draft-name">{{item.name || '未命名草稿'}}</text>
+            <text class="draft-meta">{{item.gridSize}}×{{item.gridSize}} · {{item.sourceType === 'DRAW' ? '画板' : '编辑'}}</text>
+            <text class="draft-time">{{item.updatedAt}}</text>
+          </view>
+
+          <!-- 操作按钮 -->
+          <view class="draft-actions">
+            <view class="draft-action" bindtap="onContinueEdit" data-item="{{item}}">✏️</view>
+            <view class="draft-action" bindtap="onSaveToBox" data-item="{{item}}">📦</view>
+            <view class="draft-action draft-action--del" bindtap="onDeleteDraft" data-id="{{item.id}}">🗑</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view style="height:200rpx"></view>
+  </scroll-view>
+
+  <!-- 保存到图纸箱弹窗 -->
+  <view wx:if="{{showSaveModal}}" class="modal-mask" bindtap="onCloseSaveModal"></view>
+  <view class="save-modal {{showSaveModal?'save-modal--show':''}}">
+    <view class="modal-handle"></view>
+    <text class="modal-title">保存到图纸箱</text>
+    <input class="modal-input" type="text" maxlength="20" value="{{patternName}}" bindinput="onNameInput" placeholder="给图纸起个名字" placeholder-class="modal-placeholder"/>
+    <view class="modal-hint">不填则自动命名为 "草稿#时间戳"</view>
+    <view class="modal-actions">
+      <view class="modal-btn modal-btn--cancel" bindtap="onCloseSaveModal">取消</view>
+      <view class="modal-btn modal-btn--confirm" bindtap="onConfirmSaveToBox">保存</view>
+    </view>
+  </view>
+
+</view>

@@ -54,10 +54,71 @@ Page({
   _pinchStartScale: 1,
   _renderTimer: null,
   _lastPaintKey: '',
+  _draftId: null,
 
-  onLoad() {
-    this._applyGridSize(this.data.gridSize);
+  onLoad(options) {
+    // 检查是否有草稿ID传入
+    if (options.draftId) {
+      this._draftId = parseInt(options.draftId);
+      const gridSize = options.gridSize ? parseInt(options.gridSize) : 64;
+      const brand = options.brand || 'MARD';
+      
+      this.setData({ gridSize, gridSizeIndex: this.data.gridSizeOptions.indexOf(gridSize) >= 0 ? this.data.gridSizeOptions.indexOf(gridSize) : 3 });
+      this._applyGridSize(gridSize);
+      
+      // 设置品牌
+      if (brand && this.data.brandList.includes(brand)) {
+        const brandIndex = this.data.brandList.indexOf(brand);
+        this.setData({ brandIndex });
+      }
+      
+      // 加载草稿数据
+      this._loadDraft(this._draftId);
+    } else {
+      this._applyGridSize(this.data.gridSize);
+    }
     this._loadDefaultBrand();
+  },
+
+  // 加载草稿数据
+  _loadDraft(draftId) {
+    wx.showLoading({ title: '加载中...' });
+    request.get('/draft/detail/' + draftId)
+      .then((draft) => {
+        wx.hideLoading();
+        if (!draft) return;
+        
+        // 解析数据
+        let gridData = [];
+        try {
+          gridData = JSON.parse(draft.gridData || '[]');
+        } catch (e) {}
+        
+        let colorPalette = [];
+        try {
+          colorPalette = JSON.parse(draft.colorPalette || '[]');
+        } catch (e) {}
+        
+        if (gridData.length > 0) {
+          // 恢复画板数据
+          this._grid = gridData.map(row => 
+            row.map(idx => {
+              const color = colorPalette[idx];
+              if (color) {
+                return '#' + [color.r, color.g, color.b].map(v => Number(v).toString(16).padStart(2, '0')).join('').toUpperCase();
+              }
+              return '#FFFFFF';
+            })
+          );
+          this._render();
+        }
+        
+        wx.showToast({ title: '已加载草稿', icon: 'success' });
+      })
+      .catch(() => {
+        wx.hideLoading();
+        wx.showToast({ title: '加载失败', icon: 'none' });
+      });
   },
 
   _initGrid(size) {
@@ -161,29 +222,47 @@ Page({
     if (this._renderTimer) return;
     this._renderTimer = setTimeout(() => {
       this._renderTimer = null;
-      const ctx = this._ctx;
-      if (!ctx) return;
-
-      const cs = this._cellSize;
-      const size = this.data.gridSize;
-
-      ctx.clearRect(0, 0, size * cs, size * cs);
-
-      for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-          ctx.setFillStyle(this._grid[y][x]);
-          ctx.fillRect(x * cs, y * cs, cs, cs);
-
-          if (this.data.showGrid) {
-            ctx.setStrokeStyle('rgba(210,210,210,0.5)');
-            ctx.setLineWidth(0.5);
-            ctx.strokeRect(x * cs, y * cs, cs, cs);
-          }
-        }
-      }
-
-      ctx.draw();
+      this._doRender();
     }, 16);
+  },
+
+  _doRender() {
+    const ctx = this._ctx;
+    if (!ctx) return;
+
+    const cs = this._cellSize;
+    const size = this.data.gridSize;
+    const totalSize = size * cs;
+
+    ctx.clearRect(0, 0, totalSize, totalSize);
+
+    // 批量绘制格子
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        ctx.setFillStyle(this._grid[y][x]);
+        ctx.fillRect(x * cs, y * cs, cs, cs);
+      }
+    }
+
+    // 网格单独绘制（条件绘制）
+    if (this.data.showGrid) {
+      ctx.setStrokeStyle('rgba(210,210,210,0.5)');
+      ctx.setLineWidth(0.5);
+      for (let y = 0; y <= size; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * cs);
+        ctx.lineTo(totalSize, y * cs);
+        ctx.stroke();
+      }
+      for (let x = 0; x <= size; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * cs, 0);
+        ctx.lineTo(x * cs, totalSize);
+        ctx.stroke();
+      }
+    }
+
+    ctx.draw();
   },
 
   _saveUndo() {
@@ -446,41 +525,46 @@ Page({
       }
 
       wx.showLoading({ title: '保存中...' });
-      const sid = wx.getStorageSync('sessionId') || '';
       const brand = this.data.brandList[this.data.brandIndex] || this._brandName || 'MARD';
 
       this._buildBeadCodeMap(stats).then((codeMap) => {
-        this._exportImage('result', codeMap, (resultUrl) => {
-          this._exportImage('pattern', codeMap, (patternUrl) => {
-            Promise.all([
-              this._uploadFile(resultUrl, sid),
-              this._uploadFile(patternUrl, sid)
-            ]).then(([ru, pu]) => {
-              return request.post('/bead/pattern-local', {
-                imageUrl: ru,
-                resultUrl: ru,
-                patternUrl: pu,
-                colorStats: JSON.stringify(stats)
-              });
-            }).then((data) => {
-              const taskId = data && data.taskId ? String(data.taskId) : '-1';
-              if (!taskId || taskId === '-1') {
-                wx.hideLoading();
-                this.setData({ showColorDetail: false });
-                wx.showToast({ title: '请先登录后保存', icon: 'none' });
-                return;
-              }
-              return request.post('/my-pattern/save/' + taskId).then(() => {
-                wx.hideLoading();
-                this.setData({ showColorDetail: false });
-                wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
-              });
-            }).catch(() => {
-              wx.hideLoading();
-              wx.showToast({ title: '保存失败', icon: 'none' });
-            });
-          });
+        // 构建 gridData
+        const gridData = [];
+        for (let y = 0; y < this.data.gridSize; y++) {
+          const row = [];
+          for (let x = 0; x < this.data.gridSize; x++) {
+            const colorIndex = this._grid[y] && this._grid[y][x] !== undefined ? this._grid[y][x] : 0;
+            row.push(colorIndex);
+          }
+          gridData.push(row);
+        }
+
+        // 构建 colorPalette
+        const colorPalette = stats.map(c => ({
+          id: c.id,
+          name: c.name,
+          r: c.r,
+          g: c.g,
+          b: c.b
+        }));
+
+        // 保存到草稿箱
+        return request.post('/draft/save', {
+          sourceType: 'DRAW',
+          brand: brand,
+          colorCount: stats.length,
+          name: '',
+          gridSize: this.data.gridSize,
+          gridData: JSON.stringify(gridData),
+          colorPalette: JSON.stringify(colorPalette)
         });
+      }).then((data) => {
+        wx.hideLoading();
+        this.setData({ showColorDetail: false });
+        wx.showToast({ title: '已保存到草稿箱', icon: 'success' });
+      }).catch(() => {
+        wx.hideLoading();
+        wx.showToast({ title: '保存失败', icon: 'none' });
       });
     });
   },
@@ -730,7 +814,57 @@ Page({
   },
 
   onDraft() {
-    wx.showToast({ title: '草稿已保存（本地）', icon: 'success' });
+    ensureProfileComplete().then((ok) => {
+      if (!ok) return;
+      
+      const stats = this._buildColorStats();
+      const brand = this.data.brandList[this.data.brandIndex] || this._brandName || 'MARD';
+      const colorCount = this.data.colorCountValue || 0;
+      const gridSize = this.data.gridSize;
+      
+      // 构建 colorPalette
+      const colorPalette = stats.map((s, idx) => ({
+        index: idx,
+        id: s.id,
+        name: s.name,
+        r: s.r,
+        g: s.g,
+        b: s.b,
+        count: s.count
+      }));
+      
+      // 构建 gridData（颜色值转索引）
+      const colorIndexMap = {};
+      stats.forEach((s, idx) => {
+        const hex = '#' + [s.r, s.g, s.b].map(v => Number(v).toString(16).padStart(2, '0')).join('').toUpperCase();
+        colorIndexMap[hex] = idx;
+      });
+      
+      const gridData = this._grid.map(row => 
+        row.map(hex => {
+          const upperHex = hex.toUpperCase();
+          return colorIndexMap[upperHex] !== undefined ? colorIndexMap[upperHex] : 0;
+        })
+      );
+      
+      wx.showLoading({ title: '保存中...' });
+      request.post('/draft/save', {
+        sourceType: 'DRAW',
+        brand: brand,
+        colorCount: colorCount,
+        gridSize: gridSize,
+        gridData: JSON.stringify(gridData),
+        colorPalette: JSON.stringify(colorPalette),
+      })
+        .then(() => {
+          wx.hideLoading();
+          wx.showToast({ title: '草稿已保存', icon: 'success' });
+        })
+        .catch(() => {
+          wx.hideLoading();
+          wx.showToast({ title: '保存失败', icon: 'none' });
+        });
+    });
   },
 
   onBack() {

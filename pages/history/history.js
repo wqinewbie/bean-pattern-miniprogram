@@ -1,4 +1,5 @@
 const request = require('../../utils/request');
+const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 
 Page({
@@ -25,32 +26,40 @@ Page({
   },
 
   loadHistory() {
-    this.setData({ loading: true });
-    request.get('/task/list?page=1&pageSize=50')
-      .then((data) => {
-        const raw = data.list || [];
-        const history = raw.map((item) => ({
-          taskId: item.id,
-          resultUrl: item.resultUrl || '',
-          originalUrl: item.sourceUrl || '',
-          patternUrl: item.patternUrl || '',
-          colorStats: item.colorStats || '',
-          gridSize: 64,
-          createdAt: this.formatTime(item.createdAt),
-        }));
-        this.setData({ history, loading: false });
-      })
-      .catch(() => { this.setData({ loading: false }); });
+    ensureProfileComplete().then((ok) => {
+      if (!ok) return;
+      this.setData({ loading: true });
+      request.get('/history/list')
+        .then((data) => {
+          const history = (Array.isArray(data) ? data : []).map((item) => ({
+            id: item.id,
+            name: item.name || ('记录#' + item.id),
+            gridSize: item.gridSize,
+            colorCount: item.colorCount,
+            brand: item.brand,
+            gridData: item.gridData,
+            colorPalette: item.colorPalette,
+            sourceUrl: item.sourceUrl,
+            boxId: item.boxId,
+            createdAt: this.formatTime(item.createdAt),
+          }));
+          this.setData({ history, loading: false });
+        })
+        .catch(() => {
+          this.setData({ loading: false });
+          wx.showToast({ title: '加载失败', icon: 'none' });
+        });
+    });
   },
 
   onItemTap(e) {
     const item = e.currentTarget.dataset.item;
     wx.navigateTo({
-      url: '/pages/result/result?taskId=' + item.taskId +
-           '&originalUrl=' + encodeURIComponent(item.originalUrl || '') +
-           '&resultUrl=' + encodeURIComponent(item.resultUrl || '') +
-           '&patternUrl=' + encodeURIComponent(item.patternUrl || '') +
-           '&colorStats=' + encodeURIComponent(item.colorStats || '')
+      url: '/pages/result/result?historyId=' + item.id +
+           '&gridSize=' + (item.gridSize || 64) +
+           '&gridData=' + encodeURIComponent(item.gridData || '[]') +
+           '&colorPalette=' + encodeURIComponent(item.colorPalette || '[]') +
+           '&sourceType=HISTORY'
     });
   },
 
@@ -58,13 +67,51 @@ Page({
     wx.navigateBack({ delta: 1 });
   },
 
-  onClear() {
+  onSaveToBox(e) {
+    const item = e.currentTarget.dataset.item;
+    ensureProfileComplete().then((ok) => {
+      if (!ok) return;
+      request.post('/history/to-box', { historyId: item.id })
+        .then(() => {
+          wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+          this.loadHistory();
+        })
+        .catch(() => {
+          wx.showToast({ title: '保存失败', icon: 'none' });
+        });
+    });
+  },
+
+  onDelete(e) {
+    const id = e.currentTarget.dataset.id;
     wx.showModal({
-      title: '提示', content: '确认清除历史记录？',
+      title: '提示', content: '确认删除此记录？',
       success: (res) => {
         if (res.confirm) {
-          this.setData({ history: [] });
-          wx.showToast({ title: '已清除', icon: 'success' });
+          request.delete('/history/delete/' + id)
+            .then(() => {
+              const history = this.data.history.filter(h => String(h.id) !== String(id));
+              this.setData({ history });
+              wx.showToast({ title: '已删除', icon: 'success' });
+            })
+            .catch(() => wx.showToast({ title: '操作失败', icon: 'none' }));
+        }
+      }
+    });
+  },
+
+  onClear() {
+    wx.showModal({
+      title: '提示', content: '确认清空历史记录？',
+      success: (res) => {
+        if (res.confirm) {
+          const ids = this.data.history.map(h => h.id);
+          Promise.all(ids.map(id => request.delete('/history/delete/' + id)))
+            .then(() => {
+              this.setData({ history: [] });
+              wx.showToast({ title: '已清空', icon: 'success' });
+            })
+            .catch(() => wx.showToast({ title: '清空失败', icon: 'none' }));
         }
       }
     });

@@ -36,8 +36,7 @@ Page({
       .then((data) => {
         clearTimeout(this._timeoutTimer);
         wx.redirectTo({
-          url: '/pages/result/result?taskId=' + (data.taskId || '') +
-               '&resultUrl=' + encodeURIComponent(data.resultUrl || '') +
+          url: '/pages/result/result?resultUrl=' + encodeURIComponent(data.resultUrl || '') +
                '&patternUrl=' + encodeURIComponent(data.patternUrl || '') +
                '&colorStats=' + encodeURIComponent(data.colorStats || '')
         });

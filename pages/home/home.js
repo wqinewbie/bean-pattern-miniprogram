@@ -36,6 +36,7 @@ Page({
     allTemplates: [],
     templatesLoading: true,
     tutorials: [],
+    currentPopup: {},
   },
 
   onLoad() {

@@ -42,6 +42,12 @@
   border-radius: 32rpx;
 }
 
+.pattern-canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 32rpx;
+}
+
 .image-placeholder {
   display: flex;
   flex-direction: column;
@@ -155,6 +161,14 @@
   transform: translateY(3rpx);
   border-bottom-width: 2rpx;
   opacity: 0.92;
+}
+
+/* 沉浸模式按钮禁用状态 */
+.focus-mode-btn--disabled {
+  background: #E0E0E0;
+  color: #9E9E9E;
+  box-shadow: none;
+  border-bottom: 6rpx solid #BDBDBD;
 }
 
 /* ─── 色号清单 ─── */
