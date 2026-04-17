@@ -259,6 +259,12 @@
   color: rgba(255,255,255,0.9);
 }
 
+.tutorial-thumb-img {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 24rpx;
+}
+
 .tutorial-info { flex: 1; display: flex; flex-direction: column; gap: 12rpx; }
 
 .tutorial-name {

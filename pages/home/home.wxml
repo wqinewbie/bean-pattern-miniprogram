@@ -54,7 +54,8 @@
     </view>
     <view class="tutorial-card" wx:for="{{tutorials}}" wx:key="id" bindtap="onTutorialTap" data-tutorial="{{item}}">
       <view class="tutorial-thumb">
-        <text class="tutorial-play">▶</text>
+        <image wx:if="{{item.thumbnailUrl}}" src="{{item.thumbnailUrl}}" class="tutorial-thumb-img" mode="aspectFill" />
+        <text wx:else class="tutorial-play">▶</text>
       </view>
       <view class="tutorial-info">
         <text class="tutorial-name">{{item.title}}</text>
