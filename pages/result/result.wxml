@@ -8,17 +8,29 @@
     <!-- 图纸大图预览区 -->
     <view class="preview-card">
       <view class="preview-wrap">
-        <!-- 图片预览模式 -->
-        <image wx:if="{{activeTab !== 'pattern' && currentPreviewUrl}}" class="preview-img" src="{{currentPreviewUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
-        <!-- 色号图 Canvas 渲染模式 -->
-        <canvas wx:if="{{activeTab === 'pattern'}}" canvas-id="patternCanvas" class="pattern-canvas" type="2d" />
-        <!-- 无内容占位 -->
-        <view wx:if="{{activeTab === 'pattern' && !hasPatternData}}" class="image-placeholder">
+        <!-- 图片预览模式（原图） -->
+        <image wx:if="{{activeTab === 'original' && currentPreviewUrl}}" class="preview-img" src="{{currentPreviewUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+        
+        <!-- 效果图：优先显示预渲染图片，否则显示 Canvas -->
+        <image wx:if="{{activeTab === 'result' && renderedResultUrl !== ''}}" class="preview-img" src="{{renderedResultUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+        <canvas wx:elif="{{activeTab === 'result' && rgbData.length > 0 && renderedResultUrl === ''}}" canvas-id="resultCanvas" class="result-canvas" style="width:100%;height:100%" />
+        
+        <!-- 色号图：优先显示预渲染图片，否则显示 Canvas -->
+        <image wx:if="{{activeTab === 'pattern' && renderedPatternUrl !== ''}}" class="preview-img" src="{{renderedPatternUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+        <canvas wx:elif="{{activeTab === 'pattern' && hasPatternData && renderedPatternUrl === ''}}" canvas-id="patternCanvas" class="pattern-canvas" style="width:100%;height:100%" />
+        
+        <!-- 效果图占位（无数据时） -->
+        <view wx:if="{{activeTab === 'result' && rgbData.length === 0 && renderedResultUrl === '' && !currentPreviewUrl}}" class="image-placeholder">
+          <text class="ph-icon">🖼️</text>
+          <text class="ph-text">暂无效果图数据</text>
+        </view>
+        <!-- 色号图占位（无数据时） -->
+        <view wx:if="{{activeTab === 'pattern' && !hasPatternData && renderedPatternUrl === ''}}" class="image-placeholder">
           <text class="ph-icon">🖼️</text>
           <text class="ph-text">暂无色号图数据</text>
         </view>
-        <!-- 原图/效果图占位 -->
-        <view wx:if="{{activeTab !== 'pattern' && !currentPreviewUrl}}" class="image-placeholder">
+        <!-- 原图占位 -->
+        <view wx:if="{{activeTab === 'original' && !currentPreviewUrl}}" class="image-placeholder">
           <text class="ph-icon">🖼️</text>
           <text class="ph-text">暂无图片</text>
         </view>
@@ -27,12 +39,17 @@
           <view class="preview-spinner"></view>
           <text class="preview-loading-text">处理中...</text>
         </view>
+        <!-- 渲染中遮罩（只有 canvasReady 为 false 时显示） -->
+        <view wx:if="{{!canvasReady}}" class="preview-loading">
+          <view class="preview-spinner"></view>
+          <text class="preview-loading-text">正在渲染...</text>
+        </view>
       </view>
 
       <!-- 标签切换 -->
       <view class="tab-bar">
         <view wx:if="{{originalUrl}}" class="tab {{activeTab==='original'?'tab--active':''}}" bindtap="onTabChange" data-tab="original">原图</view>
-        <view wx:if="{{resultUrl}}" class="tab {{activeTab==='result'?'tab--active':''}}" bindtap="onTabChange" data-tab="result">效果图</view>
+        <view wx:if="{{resultUrl || rgbData.length > 0}}" class="tab {{activeTab==='result'?'tab--active':''}}" bindtap="onTabChange" data-tab="result">效果图</view>
         <view class="tab {{activeTab==='pattern'?'tab--active':''}}" bindtap="onTabChange" data-tab="pattern">色号图</view>
       </view>
 
@@ -45,20 +62,20 @@
       </view>
 
       <!-- 沉浸拼豆模式 -->
-      <view class="focus-mode-btn {{!isSaved?'focus-mode-btn--disabled':''}}" bindtap="onEnterFocusMode">{{isSaved ? '进入沉浸拼豆模式' : '请先保存到图纸箱'}}</view>
+      <view class="focus-mode-btn {{!isSaved?'focus-mode-btn--disabled':''}}" bindtap="onEnterFocusMode">进入沉浸式拼豆</view>
     </view>
 
     <!-- 色号清单 -->
-    <view wx:if="{{colorStats.length>0}}" class="stats-card">
+    <view wx:if="{{colorPalette.length>0}}" class="stats-card">
       <view class="stats-header">
         <view class="stats-title-row">
           <view class="stats-bar"></view>
           <text class="stats-title">所需色号清单</text>
         </view>
-        <text class="stats-count">共 {{colorStats.length}} 色 / {{totalBeads}} 颗</text>
+        <text class="stats-count">共 {{colorPalette.length}} 色 / {{totalBeads}} 颗</text>
       </view>
       <view class="stats-grid">
-        <view wx:for="{{colorStats}}" wx:key="id" class="stat-item" bindtap="onColorTap"
+        <view wx:for="{{colorPalette}}" wx:key="id" class="stat-item" bindtap="onColorTap"
           data-name="{{item.name}}" data-id="{{item.id}}" data-count="{{item.count}}">
           <view class="stat-left">
             <text class="stat-idx">{{index+1}}.</text>
@@ -75,6 +92,9 @@
 
     <view style="height:200rpx"></view>
   </scroll-view>
+
+  <!-- 临时高分辨率保存用 Canvas（隐藏） -->
+  <canvas canvas-id="tempSaveCanvas" style="position:fixed;left:-9999px;top:-9999px;width:2048px;height:2048px" />
 
   <!-- 命名弹框 -->
   <view wx:if="{{showNameModal}}" class="name-mask" bindtap="onCloseNameModal"></view>

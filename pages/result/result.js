@@ -19,8 +19,12 @@ Page({
     gridData: [],
     colorPalette: [],
     totalBeads: 0,
+    // 效果图数据
+    rgbData: [],
+    rgbWidth: 0,
+    rgbHeight: 0,
     // UI状态
-    activeTab: 'result',
+    activeTab: 'original',
     saving: false,
     isSaved: false,
     currentPreviewUrl: '',
@@ -33,10 +37,22 @@ Page({
     hasPatternData: false,
     // 水印配置
     watermarkConfig: null,
-    renderedPatternUrl: '', // 渲染后的色号图URL
+    renderedPatternUrl: '', // 预渲染的色号图URL
+    renderedResultUrl: '', // 预渲染的效果图URL
+    // 加载状态
+    canvasReady: true, // 默认设为 true，加载完成后会更新
+    hasRgbData: false,
+    hasPatternData2: false,
+    resultReady: false, // 效果图渲染完成
+    patternReady: false, // 色号图渲染完成
+    // 来源标签
+    sourceTypeTag: '',
   },
 
   onLoad(options) {
+    console.log('=== result.js onLoad ===');
+    console.log('options:', options);
+    
     const layout = getSafeAreaLayout();
     this.setData({ navTop: layout.navTop });
 
@@ -44,16 +60,239 @@ Page({
       taskId, originalUrl, resultUrl, patternUrl, colorStats,
       gridSize, brand, colorCount,
       boxId, historyId, sourceType,
-      gridData, colorPalette
+      gridData, colorPalette, rgbData,
+      renderedPatternUrl, renderedResultUrl,  // 预渲染好的图片
+      storageKey  // 从本地存储读取的 key
     } = options;
 
-    // 解析新格式数据
+    // 如果有 boxId 或 historyId，调用接口获取完整数据
+    if (boxId || historyId) {
+      this.loadDataFromServer(boxId, historyId, options);
+      return;
+    }
+
+    // 否则使用 URL 参数中的数据（生成页面跳转过来的情况）
+    this.loadDataFromUrl(options);
+  },
+
+  // 从接口加载数据
+  loadDataFromServer(boxId, historyId, options) {
+    const sourceType = options.sourceType || (boxId ? 'BOX' : 'HISTORY');
+    const apiUrl = boxId ? '/box/detail/' + boxId : '/history/detail/' + historyId;
+    
+    console.log('=== 从接口加载数据 ===', apiUrl);
+    
+    request.get(apiUrl)
+      .then((data) => {
+        console.log('接口返回数据:', data);
+        if (!data) {
+          wx.showToast({ title: '数据加载失败', icon: 'none' });
+          return;
+        }
+        
+        // 解析数据
+        let parsedGridData = [];
+        let parsedColorPalette = [];
+        let parsedRgbData = [];
+        
+        try {
+          if (data.gridData) {
+            parsedGridData = typeof data.gridData === 'string' 
+              ? JSON.parse(data.gridData) 
+              : data.gridData;
+          }
+          if (data.colorPalette) {
+            parsedColorPalette = typeof data.colorPalette === 'string' 
+              ? JSON.parse(data.colorPalette) 
+              : data.colorPalette;
+          }
+          if (data.rgbData) {
+            parsedRgbData = typeof data.rgbData === 'string' 
+              ? JSON.parse(data.rgbData) 
+              : data.rgbData;
+          }
+        } catch (e) {
+          console.error('解析数据失败:', e);
+        }
+        
+        const gridSize = data.gridSize || 64;
+        const hasPatternData = parsedGridData.length > 0 && parsedColorPalette.length > 0;
+        const hasRgbData = parsedRgbData.length > 0;
+        
+        // 计算 rgb 尺寸
+        let rgbWidth = 0, rgbHeight = 0;
+        if (hasRgbData && parsedRgbData.length > 0) {
+          if (Array.isArray(parsedRgbData[0]) && Array.isArray(parsedRgbData[0][0])) {
+            rgbHeight = parsedRgbData.length;
+            rgbWidth = parsedRgbData[0].length;
+          }
+        }
+        
+        // 计算总豆数
+        const totalBeads = parsedColorPalette.reduce((a, c) => a + (c.count || 0), 0);
+        
+        // 确定默认显示的 tab
+        let activeTab = 'original';
+        if (hasRgbData) {
+          activeTab = 'result';
+        } else if (hasPatternData) {
+          activeTab = 'pattern';
+        }
+        
+        // 来源类型标签
+        const sourceTypeMap = {
+          'LOCAL': '📷 图片转图纸',
+          'AI': '🤖 AI生成',
+          'DRAW': '🎨 画板',
+          'BOX': '📦 图纸箱',
+          'HISTORY': '⏰ 时光机'
+        };
+        const sourceTypeTag = sourceTypeMap[sourceType] || sourceTypeMap['LOCAL'];
+        
+        this.setData({
+          // ID
+          boxId: boxId || null,
+          historyId: historyId || null,
+          // 数据
+          gridSize: gridSize,
+          gridData: parsedGridData,
+          colorPalette: parsedColorPalette,
+          rgbData: parsedRgbData,
+          rgbWidth: rgbWidth,
+          rgbHeight: rgbHeight,
+          // 元信息
+          brandName: (data.brand || 'MARD').toUpperCase(),
+          colorCount: data.colorCount || parsedColorPalette.length,
+          totalBeads: totalBeads,
+          name: data.name,
+          // 图片
+          originalUrl: data.sourceUrl || '',
+          currentPreviewUrl: data.sourceUrl || '',
+          // 状态
+          activeTab: activeTab,
+          currentSize: gridSize,
+          hasPatternData: hasPatternData,
+          hasPatternData2: hasPatternData,
+          hasRgbData: hasRgbData,
+          // 渲染状态（Canvas 模式）- 先设置为 true，如果需要渲染再改为 false
+          canvasReady: !hasRgbData && !hasPatternData,
+          renderedPatternUrl: '',
+          renderedResultUrl: '',
+          // 来源
+          sourceType: sourceType,
+          sourceTypeTag: sourceTypeTag,
+        });
+        
+        // 如果有数据需要渲染，先设为 false，渲染完成后再设为 true
+        if (hasRgbData || hasPatternData) {
+          this.setData({ canvasReady: false });
+          // 初始化渲染计数器
+          this._pendingRenderCount = (hasRgbData ? 1 : 0) + (hasPatternData ? 1 : 0);
+          // 10秒超时
+          this._renderTimeout = setTimeout(() => {
+            if (this._pendingRenderCount > 0) {
+              console.log('渲染超时，强制显示');
+              this._pendingRenderCount = 0;
+              this.setData({ canvasReady: true });
+              wx.hideLoading();
+            }
+          }, 10000);
+          // 延迟触发渲染
+          setTimeout(() => {
+            if (hasRgbData) this.renderResultCanvas();
+            if (hasPatternData) this.renderPatternCanvas();
+          }, 100);
+        } else {
+          // 无需渲染，直接隐藏加载
+          wx.hideLoading();
+        }
+      })
+      .catch((err) => {
+        console.error('加载数据失败:', err);
+        wx.hideLoading();
+        wx.showToast({ title: '加载失败', icon: 'none' });
+      });
+  },
+
+  // 从 URL 参数加载数据（生成页面跳转过来的情况）
+  loadDataFromUrl(options) {
+    const {
+      taskId, originalUrl, resultUrl, patternUrl, colorStats,
+      gridSize, brand, colorCount,
+      boxId, historyId, sourceType,
+      gridData, colorPalette, rgbData,
+      renderedPatternUrl, renderedResultUrl,
+      storageKey
+    } = options;
+
+    console.log('原始参数:');
+    console.log('  gridData:', gridData ? '存在' : '空');
+    console.log('  colorPalette:', colorPalette ? '存在' : '空');
+    console.log('  storageKey:', storageKey);
+
+    // 优先从本地存储读取数据
     let parsedGridData = [];
     let parsedColorPalette = [];
-    try {
-      if (gridData) parsedGridData = JSON.parse(decodeURIComponent(gridData));
-      if (colorPalette) parsedColorPalette = JSON.parse(decodeURIComponent(colorPalette));
-    } catch (e) {}
+    let parsedRgbData = [];
+    let rgbWidth = 0;
+    let rgbHeight = 0;
+    let storedOriginalUrl = '';
+    let storedBrand = '';
+    let storedHistoryId = null;
+    let storedRenderedPatternUrl = '';
+    let storedRenderedResultUrl = '';
+    
+    if (storageKey) {
+      try {
+        const storedData = wx.getStorageSync(storageKey);
+        if (storedData) {
+          console.log('=== 从本地存储读取数据 ===');
+          parsedGridData = storedData.gridData || [];
+          parsedColorPalette = storedData.colorPalette || [];
+          parsedRgbData = storedData.rgbData || [];
+          storedOriginalUrl = storedData.originalUrl || '';
+          storedBrand = storedData.brand || '';
+          storedHistoryId = storedData.historyId;
+          storedRenderedPatternUrl = storedData.renderedPatternUrl || '';
+          storedRenderedResultUrl = storedData.renderedResultUrl || '';
+          console.log('storedRenderedPatternUrl:', storedRenderedPatternUrl);
+          console.log('storedRenderedResultUrl:', storedRenderedResultUrl);
+          // 清理存储
+          wx.removeStorageSync(storageKey);
+        }
+      } catch (e) {
+        console.error('读取存储数据失败:', e);
+      }
+    }
+    
+    // 如果本地存储没有数据，解析 URL 参数
+    if (parsedGridData.length === 0 && gridData) {
+      try {
+        console.log('=== 从 URL 参数解析数据 ===');
+        console.log('gridData 原值:', gridData ? gridData.substring(0, 200) + '...' : '空');
+        if (gridData) parsedGridData = JSON.parse(decodeURIComponent(gridData));
+        console.log('parsedGridData 长度:', parsedGridData.length);
+        if (colorPalette) parsedColorPalette = JSON.parse(decodeURIComponent(colorPalette));
+        console.log('parsedColorPalette 长度:', parsedColorPalette.length);
+        if (rgbData) {
+          parsedRgbData = JSON.parse(decodeURIComponent(rgbData));
+          console.log('parsedRgbData 长度:', parsedRgbData.length);
+        }
+      } catch (e) { console.error('解析错误:', e); }
+    }
+    
+    // 计算 rgb 尺寸
+    if (parsedRgbData.length > 0) {
+      if (Array.isArray(parsedRgbData[0]) && Array.isArray(parsedRgbData[0][0]) && Array.isArray(parsedRgbData[0][0][0])) {
+        rgbHeight = parsedRgbData.length;
+        rgbWidth = parsedRgbData[0].length;
+      } else if (Array.isArray(parsedRgbData[0])) {
+        rgbWidth = parsedGridData.length > 0 ? parsedGridData[0].length : 0;
+        rgbHeight = parsedGridData.length;
+      }
+    }
+    
+    console.log('parsedGridData:', parsedGridData.length, 'parsedColorPalette:', parsedColorPalette.length);
 
     // 兼容旧格式
     let stats = [];
@@ -65,20 +304,54 @@ Page({
     const totalBeads = parsedColorPalette.reduce((a, c) => a + (c.count || 0), 0) ||
                        stats.reduce((a, c) => a + (c.count || 0), 0);
 
-    const size = gridSize ? parseInt(gridSize) : 64;
-    const brandName = brand ? decodeURIComponent(brand) : 'MARD';
+    const size = gridSize ? parseInt(gridSize) : (parsedGridData.length || 64);
+    const brandName = (storedBrand || (brand ? decodeURIComponent(brand) : 'MARD')).toUpperCase();
     const cnt = colorCount ? parseInt(colorCount) : (parsedColorPalette.length || stats.length || 0);
     const hasPatternData = parsedGridData.length > 0 && parsedColorPalette.length > 0;
+    const effectiveHistoryId = storedHistoryId || (historyId ? parseInt(historyId) : null);
+    const effectiveOriginalUrl = storedOriginalUrl || decodeURIComponent(originalUrl || '');
+    const effectiveRenderedPatternUrl = storedRenderedPatternUrl || decodeURIComponent(renderedPatternUrl || '');
+    const effectiveRenderedResultUrl = storedRenderedResultUrl || decodeURIComponent(renderedResultUrl || '');
+    const effectiveSourceUrl = decodeURIComponent(options.sourceUrl || storedOriginalUrl || '');
+
+    // 计算来源类型标签
+    const sourceTypeMap = {
+      'LOCAL': '📷 图片转图纸',
+      'AI': '🤖 AI生成',
+      'DRAW': '🎨 画板',
+      'BOX': '📦 图纸箱',
+      'HISTORY': '⏰ 时光机'
+    };
+    const sourceTypeTag = effectiveHistoryId ? sourceTypeMap['HISTORY'] : 
+                          (effectiveSourceUrl ? sourceTypeMap[sourceType] || sourceTypeMap['LOCAL'] : '');
+    const effectiveSourceType = effectiveHistoryId ? 'HISTORY' : (sourceType || 'LOCAL');
+
+    // 确定默认显示的tab
+    let activeTab = 'original';
+    let currentPreviewUrl = effectiveOriginalUrl;
+    const hasRgbData = parsedRgbData.length > 0;
+    if (hasRgbData) {
+      // 有效果图数据，优先显示效果图
+      activeTab = 'result';
+      currentPreviewUrl = '';
+    } else if (hasPatternData) {
+      // 有色号图数据，显示色号图
+      activeTab = 'pattern';
+      currentPreviewUrl = '';
+    } else if (resultUrl) {
+      activeTab = 'result';
+      currentPreviewUrl = decodeURIComponent(resultUrl);
+    }
 
     this.setData({
       taskId: taskId || null,
-      originalUrl: decodeURIComponent(originalUrl || ''),
+      originalUrl: effectiveOriginalUrl,
       resultUrl: decodeURIComponent(resultUrl || ''),
       patternUrl: decodeURIComponent(patternUrl || ''),
       colorStats: stats,
       // 新参数
       boxId: boxId ? parseInt(boxId) : null,
-      historyId: historyId ? parseInt(historyId) : null,
+      historyId: effectiveHistoryId,
       sourceType: sourceType || '',
       // 核心数据
       gridSize: size,
@@ -87,12 +360,38 @@ Page({
       totalBeads,
       colorCount: cnt,
       hasPatternData,
+      // 效果图数据
+      rgbData: parsedRgbData,
+      rgbWidth,
+      rgbHeight,
       // UI
-      activeTab: resultUrl ? 'result' : 'original',
-      currentPreviewUrl: decodeURIComponent(resultUrl || '') || decodeURIComponent(originalUrl || ''),
+      activeTab,
+      currentPreviewUrl,
       currentSize: size,
-      brandName: brandName.toUpperCase(),
+      brandName: brandName,
+      sourceType: effectiveSourceType,
+      sourceTypeTag: sourceTypeTag,
+      // 加载状态
+      hasRgbData,
+      hasPatternData2: hasPatternData,
+      // 如果有预渲染图片，直接设为 true（不需要等待渲染）
+      canvasReady: !!(effectiveRenderedPatternUrl || effectiveRenderedResultUrl),
+      // 预渲染的图片
+      renderedPatternUrl: effectiveRenderedPatternUrl,
+      renderedResultUrl: effectiveRenderedResultUrl,
     });
+
+    // 如果有预渲染图片，不需要再渲染，直接使用
+    if (effectiveRenderedPatternUrl || effectiveRenderedResultUrl) {
+      console.log('=== 使用预渲染图片 ===');
+      console.log('renderedPatternUrl:', effectiveRenderedPatternUrl);
+      console.log('renderedResultUrl:', effectiveRenderedResultUrl);
+      // 如果效果图的预渲染图片也传了，需要更新 resultUrl
+      if (effectiveRenderedResultUrl) {
+        this.setData({ resultUrl: effectiveRenderedResultUrl });
+      }
+      return; // 跳过渲染逻辑
+    }
 
     // 检查是否已在图纸箱
     if (boxId) {
@@ -116,165 +415,237 @@ Page({
   onTabChange(e) {
     const tab = e.currentTarget.dataset.tab;
     let nextUrl = '';
+    
     if (tab === 'original') {
       nextUrl = this.data.originalUrl;
     } else if (tab === 'result') {
-      nextUrl = this.data.resultUrl;
+      if (this.data.rgbData && this.data.rgbData.length > 0) {
+        nextUrl = '';
+      } else {
+        nextUrl = this.data.resultUrl;
+      }
     } else if (tab === 'pattern') {
-      // 色号图模式，渲染 Canvas
       nextUrl = '';
-      this.renderPatternCanvas();
     }
+    
     this.setData({
       activeTab: tab,
       currentPreviewUrl: nextUrl
     });
   },
 
-  // 渲染色号图 Canvas
+  // 渲染色号图 Canvas（使用传统 API）
   renderPatternCanvas() {
-    const { gridData, colorPalette, gridSize, watermarkConfig } = this.data;
+    const { gridData, colorPalette, gridSize } = this.data;
+
+    console.log('=== renderPatternCanvas 开始 ===');
 
     if (!gridData || !gridData.length || !colorPalette || !colorPalette.length) {
+      console.log('数据为空');
       return;
     }
 
-    const canvasId = 'patternCanvas';
+    // 获取容器尺寸
     const query = wx.createSelectorQuery();
-    query.select('#' + canvasId)
-      .fields({ node: true, size: true })
-      .exec((res) => {
-        if (!res[0] || !res[0].node) {
-          console.error('Canvas 获取失败');
-          return;
-        }
+    query.select('.preview-wrap').boundingClientRect((rect) => {
+      if (!rect) {
+        console.log('容器尺寸获取失败');
+        return;
+      }
+      
+      const canvasSize = rect.width;
+      console.log('容器尺寸:', canvasSize);
 
-        const canvas = res[0].node;
-        const ctx = canvas.getContext('2d');
-        const dpr = wx.getWindowInfo().pixelRatio || 2;
-        const canvasWidth = res[0].width;
-        const canvasHeight = res[0].height;
+      const ctx = wx.createCanvasContext('patternCanvas');
 
-        // 设置 Canvas 尺寸
-        canvas.width = canvasWidth * dpr;
-        canvas.height = canvasHeight * dpr;
-        ctx.scale(dpr, dpr);
+      // 每个格子填满整个 Canvas
+      const cellSize = canvasSize / gridSize;
+      const offsetX = 0;
+      const offsetY = 0;
 
-        // 计算每个格子的大小
-        const cellSize = Math.min(
-          Math.floor((canvasWidth - 40) / gridSize),
-          Math.floor((canvasHeight - 40) / gridSize),
-          40
-        );
-        const offsetX = (canvasWidth - cellSize * gridSize) / 2;
-        const offsetY = (canvasHeight - cellSize * gridSize) / 2;
+      console.log('cellSize:', cellSize);
 
-        // 建立颜色索引
-        const colorIndexMap = {};
-        colorPalette.forEach((color, index) => {
-          colorIndexMap[color.index !== undefined ? color.index : index] = color;
-        });
-
-        // 绘制底色
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-        // 绘制每个格子
-        for (let y = 0; y < gridSize; y++) {
-          for (let x = 0; x < gridSize; x++) {
-            const colorIndex = gridData[y] ? gridData[y][x] : 0;
-            const color = colorIndexMap[colorIndex];
-            if (color) {
-              ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
-              ctx.fillRect(
-                offsetX + x * cellSize,
-                offsetY + y * cellSize,
-                cellSize,
-                cellSize
-              );
-
-              // 绘制色码文字（格子足够大时）
-              if (cellSize >= 20) {
-                const lum = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
-                ctx.fillStyle = lum > 140 ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.85)';
-                ctx.font = `${Math.max(8, cellSize * 0.4)}px sans-serif`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(
-                  color.id || '',
-                  offsetX + x * cellSize + cellSize / 2,
-                  offsetY + y * cellSize + cellSize / 2
-                );
-              }
-            }
+      // 绘制每个格子
+      let drawnCount = 0;
+      for (let y = 0; y < gridSize; y++) {
+        for (let x = 0; x < gridSize; x++) {
+          const row = gridData[y];
+          const colorIndex = row ? row[x] : 0;
+          const color = colorPalette[colorIndex];
+          
+          if (color) {
+            ctx.setFillStyle(`rgb(${color.r},${color.g},${color.b})`);
+            ctx.fillRect(
+              offsetX + x * cellSize,
+              offsetY + y * cellSize,
+              cellSize + 0.5,
+              cellSize + 0.5
+            );
+            drawnCount++;
+          } else {
+            ctx.setFillStyle('#cccccc');
+            ctx.fillRect(
+              offsetX + x * cellSize,
+              offsetY + y * cellSize,
+              cellSize + 0.5,
+              cellSize + 0.5
+            );
           }
         }
-
-        // 绘制边框
-        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-        ctx.lineWidth = 0.5;
-        for (let i = 0; i <= gridSize; i++) {
-          // 垂直线
-          ctx.beginPath();
-          ctx.moveTo(offsetX + i * cellSize, offsetY);
-          ctx.lineTo(offsetX + i * cellSize, offsetY + gridSize * cellSize);
-          ctx.stroke();
-          // 水平线
-          ctx.beginPath();
-          ctx.moveTo(offsetX, offsetY + i * cellSize);
-          ctx.lineTo(offsetX + gridSize * cellSize, offsetY + i * cellSize);
-          ctx.stroke();
+      }
+      
+      console.log('绘制完成: drawnCount=', drawnCount);
+      
+      // 绘制色号文字（小格子也要显示）
+      ctx.setTextAlign('center');
+      ctx.setTextBaseline('middle');
+      
+      for (let y = 0; y < gridSize; y++) {
+        for (let x = 0; x < gridSize; x++) {
+          const row = gridData[y];
+          const colorIndex = row ? row[x] : 0;
+          const color = colorPalette[colorIndex];
+          if (color) {
+            const lum = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
+            const textColor = lum > 140 ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.9)';
+            
+            // 提取色码中的数字部分用于显示
+            const colorId = color.id || '';
+            const text = colorId.replace(/\D/g, '') || colorId;
+            
+            // 计算字体大小：格子越小字体相对越大
+            let fontSize = Math.max(3, Math.floor(cellSize * 0.5));
+            
+            // 测量文字宽度
+            ctx.setFontSize(fontSize);
+            let textWidth = ctx.measureText(text).width;
+            if (!textWidth) textWidth = fontSize * text.length * 0.6;
+            
+            // 如果文字超出格子，继续缩小
+            while (textWidth > cellSize * 0.9 && fontSize > 3) {
+              fontSize--;
+              ctx.setFontSize(fontSize);
+              textWidth = ctx.measureText(text).width;
+              if (!textWidth) textWidth = fontSize * text.length * 0.6;
+            }
+            
+            ctx.setFontSize(fontSize);
+            ctx.setFillStyle(textColor);
+            ctx.fillText(text, offsetX + x * cellSize + cellSize / 2, offsetY + y * cellSize + cellSize / 2);
+          }
         }
-
-        // 应用水印
-        this.applyWatermark(ctx, canvasWidth, canvasHeight, watermarkConfig);
+      }
+      console.log('色号文字绘制完成');
+      
+      console.log('色号图渲染完成');
+      // 使用 setTimeout 备用机制：1秒后强制触发回调
+      const backupTimeout = setTimeout(() => {
+        console.log('色号图渲染回调备用触发');
+        this.onCanvasRendered('pattern');
+      }, 1000);
+      
+      ctx.draw(false, () => {
+        clearTimeout(backupTimeout); // 清除备用定时器
+        this.onCanvasRendered('pattern');
       });
+    }).exec();
   },
 
-  // 应用水印
+  // 渲染效果图 Canvas（使用传统 API）
+  renderResultCanvas() {
+    const { rgbData, rgbWidth, rgbHeight, gridData, colorPalette, gridSize } = this.data;
+
+    console.log('=== renderResultCanvas 开始 ===');
+
+    if (!gridData || !gridData.length || !colorPalette || !colorPalette.length) {
+      console.log('gridData 或 colorPalette 为空，跳过渲染');
+      return;
+    }
+
+    // 获取容器尺寸
+    const query = wx.createSelectorQuery();
+    query.select('.preview-wrap').boundingClientRect((rect) => {
+      if (!rect) {
+        console.log('容器尺寸获取失败');
+        return;
+      }
+      
+      const canvasSize = rect.width;
+      console.log('容器尺寸:', canvasSize);
+
+      const ctx = wx.createCanvasContext('resultCanvas');
+      const cellSize = canvasSize / gridSize;
+
+      console.log('cellSize:', cellSize);
+
+      // 绘制每个格子
+      let drawnCount = 0;
+      for (let y = 0; y < gridSize; y++) {
+        for (let x = 0; x < gridSize; x++) {
+          const colorIndex = gridData[y] ? gridData[y][x] : 0;
+          const color = colorPalette[colorIndex];
+          
+          if (color) {
+            ctx.setFillStyle(`rgb(${color.r},${color.g},${color.b})`);
+            ctx.fillRect(x * cellSize, y * cellSize, cellSize + 0.5, cellSize + 0.5);
+            drawnCount++;
+          }
+        }
+      }
+      
+      console.log('效果图绘制完成:', drawnCount);
+      // 使用 setTimeout 备用机制：1秒后强制触发回调
+      const backupTimeout = setTimeout(() => {
+        console.log('效果图渲染回调备用触发');
+        this.onCanvasRendered('result');
+      }, 1000);
+      
+      ctx.draw(false, () => {
+        clearTimeout(backupTimeout); // 清除备用定时器
+        this.onCanvasRendered('result');
+      });
+    }).exec();
+  },
+
+  // canvas 渲染完成回调
+  onCanvasRendered(type) {
+    console.log('Canvas 渲染完成:', type);
+    
+    // 减少待完成的渲染数量
+    if (this._pendingRenderCount > 0) {
+      this._pendingRenderCount--;
+    }
+    
+    // 所有渲染都完成（或超时），显示内容
+    if (this._pendingRenderCount <= 0) {
+      // 清除超时定时器
+      if (this._renderTimeout) {
+        clearTimeout(this._renderTimeout);
+        this._renderTimeout = null;
+      }
+      this.setData({ canvasReady: true });
+      wx.hideLoading();
+    }
+  },
+
+  // 应用水印（兼容传统 Canvas API）
   applyWatermark(ctx, width, height, config) {
     if (!config || config.enabled !== 1) {
       return;
     }
 
     const text = config.text || '';
-    const fontSize = config.fontSize || 24;
+    const fontSize = config.fontSize || 16;
     const color = config.color || 'rgba(128,128,128,0.5)';
     const position = config.position || '右下';
-    const opacity = config.opacity || 0.5;
-    const margin = config.margin || 20;
+    const margin = config.margin || 10;
 
-    ctx.font = `${fontSize}px sans-serif`;
-    ctx.textBaseline = 'middle';
-
-    const metrics = ctx.measureText(text);
-    const textWidth = metrics.width;
-    const textHeight = fontSize;
-
-    ctx.globalAlpha = opacity;
-
-    if (position === '平铺') {
-      // 平铺水印
-      ctx.fillStyle = color;
-      const spacingX = textWidth + 60;
-      const spacingY = textHeight + 40;
-      for (let y = 0; y < height + spacingY; y += spacingY) {
-        for (let x = 0; x < width + spacingX; x += spacingX) {
-          ctx.save();
-          ctx.translate(x, y);
-          ctx.rotate(-Math.PI / 6);
-          ctx.fillText(text, 0, 0);
-          ctx.restore();
-        }
-      }
-    } else {
-      // 单个水印
-      ctx.fillStyle = color;
-      ctx.textAlign = position === '右下' ? 'right' : 'left';
-      ctx.fillText(text, position === '右下' ? width - margin : margin, height - margin);
-    }
-
-    ctx.globalAlpha = 1;
+    ctx.setFontSize(fontSize);
+    ctx.setFillStyle(color);
+    ctx.setTextAlign(position === '右下' ? 'right' : 'left');
+    ctx.setTextBaseline('bottom');
+    
+    ctx.fillText(text, position === '右下' ? width - margin : margin, height - margin);
   },
 
   getCurrentUrl() {
@@ -282,20 +653,41 @@ Page({
   },
 
   onPreviewImage() {
-    const url = this.getCurrentUrl();
-    if (!url) return;
-    const urls = [this.data.originalUrl, this.data.resultUrl, this.data.renderedPatternUrl].filter(Boolean);
-    wx.previewImage({ urls, current: url });
+    const { activeTab, rgbData, renderedPatternUrl, renderedResultUrl } = this.data;
+    let urls = [this.data.originalUrl, this.data.resultUrl].filter(Boolean);
+
+    // 添加渲染后的图片
+    if (renderedPatternUrl) {
+      urls.push(renderedPatternUrl);
+    }
+    if (renderedResultUrl) {
+      urls.push(renderedResultUrl);
+    }
+
+    let current = '';
+    if (activeTab === 'pattern' && renderedPatternUrl) {
+      current = renderedPatternUrl;
+    } else {
+      current = this.getCurrentUrl();
+    }
+
+    if (!current) return;
+    wx.previewImage({ urls, current });
   },
 
   onSaveImage() {
-    const { activeTab } = this.data;
+    const { activeTab, rgbData } = this.data;
     let url = '';
-    let saveFunc = null;
 
     if (activeTab === 'pattern') {
       // 保存渲染的色号图
       this.savePatternCanvas();
+      return;
+    }
+
+    if (activeTab === 'result' && rgbData && rgbData.length > 0) {
+      // 保存渲染的效果图
+      this.saveResultCanvas();
       return;
     }
 
@@ -316,21 +708,157 @@ Page({
     }
   },
 
-  // 保存渲染的色号图
+  // 保存渲染的色号图（使用高分辨率渲染）
   savePatternCanvas() {
     this.setData({ saving: true });
-    const canvasId = 'patternCanvas';
-    wx.canvasToTempFilePath({
-      canvasId,
-      success: (res) => {
-        this.setData({ renderedPatternUrl: res.tempFilePath });
-        this.saveToAlbum(res.tempFilePath);
-      },
-      fail: (err) => {
-        console.error('保存色号图失败', err);
-        this.setData({ saving: false });
-        wx.showToast({ title: '保存失败', icon: 'none' });
+    const { gridData, colorPalette, gridSize } = this.data;
+    
+    if (!gridData || !gridData.length || !colorPalette || !colorPalette.length) {
+      this.setData({ saving: false });
+      wx.showToast({ title: '暂无色号图', icon: 'none' });
+      return;
+    }
+    
+    // 高分辨率：64x64 -> 1920x1920 (30倍)，可看清色号文字
+    const highResSize = Math.min(gridSize * 30, 2048);
+    console.log('保存分辨率:', highResSize, 'x', highResSize);
+    const tempCanvasId = 'tempSaveCanvas';
+    
+    const ctx = wx.createCanvasContext(tempCanvasId);
+    
+    // 计算格子尺寸
+    const cellSize = highResSize / gridSize;
+    console.log('格子尺寸:', cellSize);
+    
+    // 绘制背景
+    ctx.setFillStyle('#ffffff');
+    ctx.fillRect(0, 0, highResSize, highResSize);
+    
+    // 绘制每个格子
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        const colorIndex = gridData[y] ? gridData[y][x] : 0;
+        const color = colorPalette[colorIndex];
+        if (color) {
+          ctx.setFillStyle(`rgb(${color.r},${color.g},${color.b})`);
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
       }
+    }
+    
+    // 绘制色号文字（小格子也显示）
+    ctx.setTextAlign('center');
+    ctx.setTextBaseline('middle');
+    
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        const colorIndex = gridData[y] ? gridData[y][x] : 0;
+        const color = colorPalette[colorIndex];
+        if (color) {
+          const lum = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
+          const textColor = lum > 140 ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.9)';
+          
+          // 提取色码中的数字部分用于显示
+          const colorId = color.id || '';
+          const text = colorId.replace(/\D/g, '') || colorId;
+          
+          // 计算字体大小
+          let fontSize = Math.max(4, Math.floor(cellSize * 0.5));
+          
+          // 测量文字宽度
+          ctx.setFontSize(fontSize);
+          let textWidth = ctx.measureText(text).width;
+          if (!textWidth) textWidth = fontSize * text.length * 0.6;
+          
+          // 如果文字超出格子，缩小
+          while (textWidth > cellSize * 0.9 && fontSize > 4) {
+            fontSize--;
+            ctx.setFontSize(fontSize);
+            textWidth = ctx.measureText(text).width;
+            if (!textWidth) textWidth = fontSize * text.length * 0.6;
+          }
+          
+          ctx.setFontSize(fontSize);
+          ctx.setFillStyle(textColor);
+          ctx.fillText(text, x * cellSize + cellSize / 2, y * cellSize + cellSize / 2);
+        }
+      }
+    }
+    
+    ctx.draw(false, () => {
+      wx.canvasToTempFilePath({
+        canvasId: tempCanvasId,
+        x: 0,
+        y: 0,
+        width: highResSize,
+        height: highResSize,
+        destWidth: highResSize,
+        destHeight: highResSize,
+        success: (res) => {
+          console.log('保存成功:', res.tempFilePath);
+          this.setData({ renderedPatternUrl: res.tempFilePath });
+          this.saveToAlbum(res.tempFilePath);
+        },
+        fail: (err) => {
+          console.error('保存色号图失败', err);
+          this.setData({ saving: false });
+          wx.showToast({ title: '保存失败', icon: 'none' });
+        }
+      });
+    });
+  },
+
+  // 保存渲染的效果图（使用高分辨率渲染）
+  saveResultCanvas() {
+    this.setData({ saving: true });
+    const { rgbData, rgbWidth, rgbHeight, gridData, colorPalette, gridSize } = this.data;
+    
+    if (!gridData || !gridData.length || !colorPalette || !colorPalette.length) {
+      this.setData({ saving: false });
+      wx.showToast({ title: '暂无效果图', icon: 'none' });
+      return;
+    }
+    
+    // 创建临时的高分辨率 Canvas
+    const highResSize = gridSize * 10;
+    const tempCanvasId = 'tempSaveCanvas';
+    
+    const ctx = wx.createCanvasContext(tempCanvasId);
+    
+    // 计算格子尺寸
+    const cellSize = highResSize / gridSize;
+    
+    // 绘制每个格子（使用与色号图相同的颜色）
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        const colorIndex = gridData[y] ? gridData[y][x] : 0;
+        const color = colorPalette[colorIndex];
+        if (color) {
+          ctx.setFillStyle(`rgb(${color.r},${color.g},${color.b})`);
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+    
+    ctx.draw(false, () => {
+      wx.canvasToTempFilePath({
+        canvasId: tempCanvasId,
+        x: 0,
+        y: 0,
+        width: highResSize,
+        height: highResSize,
+        destWidth: highResSize,
+        destHeight: highResSize,
+        success: (res) => {
+          this.setData({ renderedPatternUrl: res.tempFilePath });
+          this.saveToAlbum(res.tempFilePath);
+        },
+        fail: (err) => {
+          console.error('保存效果图失败', err);
+          this.setData({ saving: false });
+          wx.showToast({ title: '保存失败', icon: 'none' });
+        }
+      });
     });
   },
 
@@ -351,15 +879,13 @@ Page({
   },
 
   onEnterFocusMode() {
-    const { gridData, colorPalette, currentSize, brandName, boxId, isSaved } = this.data;
+    const { boxId, isSaved } = this.data;
     if (!isSaved || !boxId) {
       wx.showToast({ title: '请先保存到图纸箱', icon: 'none' });
       return;
     }
     wx.navigateTo({
-      url: '/pages/focus-mode/focus-mode?boxId=' + boxId +
-        '&gridSize=' + currentSize +
-        '&brand=' + encodeURIComponent(brandName)
+      url: '/pages/focus-mode/focus-mode?boxId=' + boxId
     });
   },
 
@@ -389,15 +915,7 @@ Page({
     const { patternNameInput, historyId, sourceType } = this.data;
     const name = (patternNameInput || '').trim() || ('图纸#' + Date.now());
 
-    // 根据来源决定保存到哪
-    if (historyId) {
-      // 时光机已有，直接关联即可
-      this.setData({ isSaved: true, showNameModal: false, patternNameInput: name });
-      wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
-      return;
-    }
-
-    // 保存到图纸箱
+    // 保存到图纸箱（可能关联到已有的历史记录）
     request.post('/box/save', {
       name: name,
       sourceType: sourceType || 'LOCAL',
@@ -406,6 +924,8 @@ Page({
       gridSize: this.data.gridSize,
       gridData: JSON.stringify(this.data.gridData),
       colorPalette: JSON.stringify(this.data.colorPalette),
+      rgbData: JSON.stringify(this.data.rgbData || []),
+      historyId: historyId || null,
     })
       .then((box) => {
         this.setData({
@@ -461,7 +981,24 @@ Page({
 
   onColorTap(e) {
     const { name, id, count } = e.currentTarget.dataset;
-    wx.showToast({ title: '#' + id + ' ' + name + '(' + count + '颗)', icon: 'none', duration: 2000 });
+    const message = name ? '#' + id + ' ' + name : '#' + id;
+    wx.showToast({ title: message + ' (' + count + '颗)', icon: 'none', duration: 2000 });
+  },
+
+  onUnload() {
+    // 清除渲染超时定时器，防止内存泄漏
+    if (this._renderTimeout) {
+      clearTimeout(this._renderTimeout);
+      this._renderTimeout = null;
+    }
+    if (this._resultRenderTimeout) {
+      clearTimeout(this._resultRenderTimeout);
+      this._resultRenderTimeout = null;
+    }
+    if (this._patternRenderTimeout) {
+      clearTimeout(this._patternRenderTimeout);
+      this._patternRenderTimeout = null;
+    }
   },
 
   noop() {}

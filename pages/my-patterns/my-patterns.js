@@ -41,6 +41,7 @@ Page({
             brand: item.brand,
             gridData: item.gridData,
             colorPalette: item.colorPalette,
+            sourceUrl: item.sourceUrl,
             createdAt: this.formatTime(item.createdAt),
             boxId: item.id,
           }));
@@ -55,12 +56,14 @@ Page({
 
   onItemTap(e) {
     const item = e.currentTarget.dataset.item;
+    // 显示加载提示
+    wx.showLoading({ title: '正在加载...' });
+    // 只传递 ID，避免 URL 超长，数据从接口获取
     wx.navigateTo({
-      url: '/pages/result/result?boxId=' + item.id +
-           '&gridSize=' + (item.gridSize || 64) +
-           '&gridData=' + encodeURIComponent(item.gridData || '[]') +
-           '&colorPalette=' + encodeURIComponent(item.colorPalette || '[]') +
-           '&sourceType=BOX'
+      url: '/pages/result/result?boxId=' + item.id + '&sourceType=BOX',
+      fail: () => {
+        wx.hideLoading();
+      }
     });
   },
 

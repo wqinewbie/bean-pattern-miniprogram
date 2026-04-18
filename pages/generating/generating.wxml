@@ -1,5 +1,9 @@
 <view class="container">
 
+  <!-- 隐藏的 Canvas 用于渲染（渲染完成后传递给结果页） -->
+  <canvas canvas-id="patternCanvas" style="width:300px;height:300px;position:fixed;left:-9999px;top:-9999px;"></canvas>
+  <canvas canvas-id="resultCanvas" style="width:300px;height:300px;position:fixed;left:-9999px;top:-9999px;"></canvas>
+
   <view wx:if="{{!isTimeout}}" class="main">
     <view class="anim-wrap">
       <view class="ring ring1"></view>
@@ -8,8 +12,8 @@
         <view class="spinner"></view>
       </view>
     </view>
-    <text class="title">正在施展魔法</text>
-    <text class="sub">正在生成图纸，预计10秒内完成...</text>
+    <text class="title">{{loadingText}}</text>
+    <text class="sub">请稍候，马上就好...</text>
   </view>
 
   <view wx:else class="main">

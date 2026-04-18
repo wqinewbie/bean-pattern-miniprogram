@@ -54,12 +54,14 @@ Page({
 
   onItemTap(e) {
     const item = e.currentTarget.dataset.item;
+    // 显示加载提示
+    wx.showLoading({ title: '正在加载...' });
+    // 只传递 ID，避免 URL 超长，数据从接口获取
     wx.navigateTo({
-      url: '/pages/result/result?historyId=' + item.id +
-           '&gridSize=' + (item.gridSize || 64) +
-           '&gridData=' + encodeURIComponent(item.gridData || '[]') +
-           '&colorPalette=' + encodeURIComponent(item.colorPalette || '[]') +
-           '&sourceType=HISTORY'
+      url: '/pages/result/result?historyId=' + item.id + '&sourceType=HISTORY',
+      fail: () => {
+        wx.hideLoading();
+      }
     });
   },
 

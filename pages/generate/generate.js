@@ -184,116 +184,21 @@ Page({
         this.onChooseImage();
         return;
       }
-      this.startGenerateDataMode();
-    });
-  },
-
-  // ========== 数据模式生成 ==========
-  startGenerateDataMode() {
-    const { imageUrl, gridSizeOptions, gridSizeIndex, brandList, brandIndex, algoOptions, algoIndex, colorCountValue, mirrorOn } = this.data;
-    const gridSize = gridSizeOptions[gridSizeIndex].value;
-    const brand = brandList[brandIndex] || 'MARD';
-    const algo = algoOptions[algoIndex].value;
-    const colorCount = colorCountValue || 0;
-
-    this.setData({ loading: true, loadingText: '处理中...' });
-
-    // 1. 上传原图获取URL
-    const sessionId = wx.getStorageSync('sessionId') || '';
-    this.uploadFile(imageUrl, sessionId)
-      .then((imageUrlResult) => {
-        this.setData({ loadingText: '生成效果图...' });
-        // 2. 调用 generate-result 接口获取 rgbData
-        return request.post('/bead/generate-result', {
-          imageUrl: imageUrlResult,
-          gridSize: gridSize
-        }).then((result) => ({ ...result, imageUrl: imageUrlResult }));
-      })
-      .then(({ rgbData, gridSize: resultSize, imageUrl: originalUrl }) => {
-        this.setData({ loadingText: '生成色号图...' });
-        // 3. 调用 generate-pattern 接口获取 gridData + colorPalette
-        return request.post('/bead/generate-pattern', {
-          rgbData: rgbData,
-          brand: brand,
-          colorCount: colorCount,
-          algo: algo
-        }).then((pattern) => ({ ...pattern, rgbData, originalUrl, resultSize }));
-      })
-      .then(({ gridData, colorPalette, gridSize: resultGridSize, originalUrl }) => {
-        this.setData({ loading: false });
-        // 4. 跳转到结果页，传递数据
-        wx.navigateTo({
-          url: '/pages/result/result?' +
-               'originalUrl=' + encodeURIComponent(originalUrl || '') +
-               '&gridSize=' + resultGridSize +
-               '&gridData=' + encodeURIComponent(JSON.stringify(gridData)) +
-               '&colorPalette=' + encodeURIComponent(JSON.stringify(colorPalette)) +
-               '&sourceType=LOCAL' +
-               '&brand=' + encodeURIComponent(brand)
-        });
-      })
-      .catch((err) => {
-        this.setData({ loading: false });
-        console.error('[generate-data-mode][failed]', err);
-        wx.showModal({
-          title: '生成失败',
-          content: (err && err.message) ? err.message : '请稍后重试',
-          showCancel: false
-        });
-      });
-  },
-
-  uploadFile(filePath, sessionId) {
-    return new Promise((resolve, reject) => {
-      const uploadUrl = API_BASE_URL + '/api/image/upload';
-      const startUpload = (targetPath) => {
-        wx.uploadFile({
-          url: uploadUrl,
-          filePath: targetPath,
-          name: 'file',
-          header: { 'X-Session-Id': sessionId },
-          success: (res) => {
-            const raw = res && res.data ? String(res.data) : '';
-            try {
-              const body = JSON.parse(raw || '{}');
-              if (res.statusCode === 200 && body.code === 0) {
-                resolve(body.data.imageUrl || body.data.originalUrl);
-                return;
-              }
-              const message = (body && body.message) ? body.message : ('HTTP ' + res.statusCode);
-              reject(new Error('[upload] ' + message));
-              return;
-            } catch (e) {
-              reject(new Error('[upload] HTTP ' + res.statusCode));
-            }
-          },
-          fail: (err) => {
-            reject(new Error('[upload] ' + ((err && err.errMsg) || '上传失败')));
-          }
-        });
-      };
-
-      if (!filePath || String(filePath).startsWith('http')) {
-        startUpload(filePath);
-        return;
-      }
-
-      wx.getFileInfo({
-        filePath,
-        success: (info) => {
-          const limit = 900 * 1024;
-          if (!info || !info.size || info.size <= limit) {
-            startUpload(filePath);
-            return;
-          }
-          wx.compressImage({
-            src: filePath,
-            quality: 60,
-            success: (r) => startUpload((r && r.tempFilePath) ? r.tempFilePath : filePath),
-            fail: () => startUpload(filePath)
-          });
-        },
-        fail: () => startUpload(filePath)
+      
+      const { imageUrl, gridSizeOptions, gridSizeIndex, brandList, brandIndex, algoOptions, algoIndex, colorCountValue } = this.data;
+      const gridSize = gridSizeOptions[gridSizeIndex].value;
+      const brand = brandList[brandIndex] || 'MARD';
+      const algo = algoOptions[algoIndex].value;
+      const colorCount = colorCountValue || 0;
+      
+      // 跳转到生成等待页面
+      wx.redirectTo({
+        url: '/pages/generating/generating?mode=image' +
+             '&imageUrl=' + encodeURIComponent(imageUrl) +
+             '&gridSize=' + gridSize +
+             '&brand=' + encodeURIComponent(brand) +
+             '&colorCount=' + colorCount +
+             '&algo=' + encodeURIComponent(algo)
       });
     });
   },

@@ -157,32 +157,13 @@ Page({
   },
 
   loadTemplates() {
-    this.setData({ templatesLoading: true });
-    const app = getApp();
-    const cache = app && app.globalData && app.globalData.prefetch;
-    if (cache && Array.isArray(cache.templates) && cache.templates.length) {
-      const list = cache.templates;
-      this.setData({
-        allTemplates: list,
-        templates: list,
-        activeCategory: '推荐',
-        templatesLoading: false,
-      });
-      return;
-    }
-    request.get('/creator/patterns?limit=100')
-      .then((data) => {
-        const list = Array.isArray(data) ? data : [];
-        this.setData({
-          allTemplates: list,
-          templates: list,
-          activeCategory: '推荐',
-          templatesLoading: false,
-        });
-      })
-      .catch(() => {
-        this.setData({ templatesLoading: false });
-      });
+    // 创作者中心已废弃，模板功能暂不开放
+    this.setData({
+      allTemplates: [],
+      templates: [],
+      activeCategory: '推荐',
+      templatesLoading: false,
+    });
   },
 
   onCategoryTap(e) {

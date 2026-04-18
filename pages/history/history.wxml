@@ -16,7 +16,8 @@
     <view class="list">
       <view wx:for="{{history}}" wx:key="id" class="history-item">
         <view class="item-thumb" bindtap="onItemTap" data-item="{{item}}">
-          <view class="thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
+          <image wx:if="{{item.sourceUrl}}" class="thumb-img" src="{{item.sourceUrl}}" mode="aspectFill" />
+          <view wx:else class="thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
         </view>
         <view class="item-info" bindtap="onItemTap" data-item="{{item}}">
           <text class="item-title">{{item.name || ('记录#'+item.id)}}</text>
