@@ -40,12 +40,14 @@ Page({
     renderedPatternUrl: '', // 预渲染的色号图URL
     renderedResultUrl: '', // 预渲染的效果图URL
     // 加载状态
-    pageLoading: false, // 页面整体加载中
+    pageLoading: true, // 页面整体加载中（从列表进入时默认显示）
     canvasReady: true, // 默认设为 true，加载完成后会更新
     hasRgbData: false,
     hasPatternData2: false,
     resultReady: false, // 效果图渲染完成
     patternReady: false, // 色号图渲染完成
+    resultRendered: false, // 效果图是否已渲染
+    patternRendered: false, // 色号图是否已渲染
     // 来源标签
     sourceTypeTag: '',
   },
@@ -76,6 +78,7 @@ Page({
     }
 
     // 否则使用 URL 参数中的数据（生成页面跳转过来的情况）
+    this.setData({ pageLoading: false });
     this.loadDataFromUrl(options);
   },
 
@@ -181,8 +184,10 @@ Page({
           hasPatternData: hasPatternData,
           hasPatternData2: hasPatternData,
           hasRgbData: hasRgbData,
-          // 渲染状态（Canvas 模式）- 先设置为 true，如果需要渲染再改为 false
+          // 渲染状态 - 标记未渲染，切换 tab 时重新渲染
           canvasReady: !hasRgbData && !hasPatternData,
+          resultRendered: !hasRgbData,
+          patternRendered: !hasPatternData,
           renderedPatternUrl: '',
           renderedResultUrl: '',
           // 来源
@@ -420,24 +425,45 @@ Page({
 
   onTabChange(e) {
     const tab = e.currentTarget.dataset.tab;
+    const { rgbData, resultRendered, patternRendered } = this.data;
     let nextUrl = '';
+    let needsRender = false;
     
     if (tab === 'original') {
       nextUrl = this.data.originalUrl;
     } else if (tab === 'result') {
-      if (this.data.rgbData && this.data.rgbData.length > 0) {
+      if (rgbData && rgbData.length > 0) {
         nextUrl = '';
+        // 如果效果图还没渲染，触发渲染
+        if (!resultRendered) {
+          needsRender = true;
+        }
       } else {
         nextUrl = this.data.resultUrl;
       }
     } else if (tab === 'pattern') {
       nextUrl = '';
+      // 如果色号图还没渲染，触发渲染
+      if (!patternRendered) {
+        needsRender = true;
+      }
     }
     
     this.setData({
       activeTab: tab,
       currentPreviewUrl: nextUrl
     });
+    
+    // 如果需要渲染，等待 DOM 更新后触发（tab切换渲染不计入待渲染计数）
+    if (needsRender) {
+      setTimeout(() => {
+        if (tab === 'result' && rgbData && rgbData.length > 0) {
+          this.renderResultCanvas();
+        } else if (tab === 'pattern') {
+          this.renderPatternCanvas();
+        }
+      }, 100);
+    }
   },
 
   // 渲染色号图 Canvas（使用传统 API）
@@ -617,19 +643,26 @@ Page({
   onCanvasRendered(type) {
     console.log('Canvas 渲染完成:', type);
     
+    // 设置对应的渲染标记
+    const update = {};
+    if (type === 'result') {
+      update.resultRendered = true;
+    } else if (type === 'pattern') {
+      update.patternRendered = true;
+    }
+    
     // 减少待完成的渲染数量
     if (this._pendingRenderCount > 0) {
       this._pendingRenderCount--;
+      update.canvasReady = this._pendingRenderCount <= 0;
     }
     
-    // 所有渲染都完成（或超时），显示内容
-    if (this._pendingRenderCount <= 0) {
-      // 清除超时定时器
-      if (this._renderTimeout) {
-        clearTimeout(this._renderTimeout);
-        this._renderTimeout = null;
-      }
-      this.setData({ canvasReady: true });
+    this.setData(update);
+    
+    // 所有渲染都完成（或超时），清除超时定时器
+    if (this._pendingRenderCount <= 0 && this._renderTimeout) {
+      clearTimeout(this._renderTimeout);
+      this._renderTimeout = null;
     }
   },
 
