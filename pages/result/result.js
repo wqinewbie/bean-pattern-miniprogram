@@ -40,6 +40,7 @@ Page({
     renderedPatternUrl: '', // 预渲染的色号图URL
     renderedResultUrl: '', // 预渲染的效果图URL
     // 加载状态
+    pageLoading: false, // 页面整体加载中
     canvasReady: true, // 默认设为 true，加载完成后会更新
     hasRgbData: false,
     hasPatternData2: false,
@@ -55,6 +56,9 @@ Page({
     
     const layout = getSafeAreaLayout();
     this.setData({ navTop: layout.navTop });
+
+    // 页面加载时隐藏导航页的 loading
+    wx.hideLoading();
 
     const {
       taskId, originalUrl, resultUrl, patternUrl, colorStats,
@@ -81,6 +85,7 @@ Page({
     const apiUrl = boxId ? '/box/detail/' + boxId : '/history/detail/' + historyId;
     
     console.log('=== 从接口加载数据 ===', apiUrl);
+    this.setData({ pageLoading: true });
     
     request.get(apiUrl)
       .then((data) => {
@@ -153,6 +158,8 @@ Page({
           // ID
           boxId: boxId || null,
           historyId: historyId || null,
+          // 保存状态回显
+          isSaved: !!boxId,
           // 数据
           gridSize: gridSize,
           gridData: parsedGridData,
@@ -181,6 +188,8 @@ Page({
           // 来源
           sourceType: sourceType,
           sourceTypeTag: sourceTypeTag,
+          // 关闭页面加载遮罩
+          pageLoading: false,
         });
         
         // 如果有数据需要渲染，先设为 false，渲染完成后再设为 true
@@ -194,7 +203,6 @@ Page({
               console.log('渲染超时，强制显示');
               this._pendingRenderCount = 0;
               this.setData({ canvasReady: true });
-              wx.hideLoading();
             }
           }, 10000);
           // 延迟触发渲染
@@ -202,13 +210,11 @@ Page({
             if (hasRgbData) this.renderResultCanvas();
             if (hasPatternData) this.renderPatternCanvas();
           }, 100);
-        } else {
-          // 无需渲染，直接隐藏加载
-          wx.hideLoading();
         }
       })
       .catch((err) => {
         console.error('加载数据失败:', err);
+        this.setData({ pageLoading: false });
         wx.hideLoading();
         wx.showToast({ title: '加载失败', icon: 'none' });
       });
@@ -624,7 +630,6 @@ Page({
         this._renderTimeout = null;
       }
       this.setData({ canvasReady: true });
-      wx.hideLoading();
     }
   },
 
@@ -926,6 +931,7 @@ Page({
       colorPalette: JSON.stringify(this.data.colorPalette),
       rgbData: JSON.stringify(this.data.rgbData || []),
       historyId: historyId || null,
+      sourceUrl: this.data.originalUrl || '',
     })
       .then((box) => {
         this.setData({

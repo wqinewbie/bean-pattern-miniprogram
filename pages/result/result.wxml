@@ -3,6 +3,14 @@
   <!-- 顶部导航 -->
   <page-nav-bar title="图纸预览" subtitle="{{brandName}} · {{currentSize}}×{{currentSize}}" nav-top="{{navTop}}" bind:back="onBack"/>
 
+  <!-- 页面加载遮罩 -->
+  <view wx:if="{{pageLoading}}" class="page-loading-mask">
+    <view class="page-loading-content">
+      <view class="page-spinner"></view>
+      <text class="page-loading-text">正在加载...</text>
+    </view>
+  </view>
+
   <scroll-view scroll-y class="scroll-body">
 
     <!-- 图纸大图预览区 -->
