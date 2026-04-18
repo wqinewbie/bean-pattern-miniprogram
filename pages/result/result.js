@@ -59,9 +59,6 @@ Page({
     const layout = getSafeAreaLayout();
     this.setData({ navTop: layout.navTop });
 
-    // 页面加载时隐藏导航页的 loading
-    wx.hideLoading();
-
     const {
       taskId, originalUrl, resultUrl, patternUrl, colorStats,
       gridSize, brand, colorCount,
@@ -434,19 +431,13 @@ Page({
     } else if (tab === 'result') {
       if (rgbData && rgbData.length > 0) {
         nextUrl = '';
-        // 如果效果图还没渲染，触发渲染
-        if (!resultRendered) {
-          needsRender = true;
-        }
+        needsRender = true;
       } else {
         nextUrl = this.data.resultUrl;
       }
     } else if (tab === 'pattern') {
       nextUrl = '';
-      // 如果色号图还没渲染，触发渲染
-      if (!patternRendered) {
-        needsRender = true;
-      }
+      needsRender = true;
     }
     
     this.setData({
@@ -454,7 +445,7 @@ Page({
       currentPreviewUrl: nextUrl
     });
     
-    // 如果需要渲染，等待 DOM 更新后触发（tab切换渲染不计入待渲染计数）
+    // 每次切换到效果图/色号图都重新渲染 Canvas
     if (needsRender) {
       setTimeout(() => {
         if (tab === 'result' && rgbData && rgbData.length > 0) {
@@ -462,7 +453,7 @@ Page({
         } else if (tab === 'pattern') {
           this.renderPatternCanvas();
         }
-      }, 100);
+      }, 50);
     }
   },
 
