@@ -323,6 +323,16 @@ Page({
   // ========== 转换为 mappedPixelData ==========
   _convertToMappedPixelData(matchedGrid) {
     return new Promise((resolve) => {
+      console.log('=== _convertToMappedPixelData ===');
+      console.log('matchedGrid:', matchedGrid);
+      console.log('matchedGrid.length:', matchedGrid ? matchedGrid.length : 'null/undefined');
+      
+      if (!matchedGrid || !matchedGrid.length) {
+        console.error('matchedGrid 为空!');
+        resolve({ mappedPixelData: [], colorStats: [] });
+        return;
+      }
+      
       const mappedData = [];
       const colorStatsMap = {};
       
@@ -330,8 +340,15 @@ Page({
         const row = [];
         const matchedRow = matchedGrid[y];
         
+        if (!matchedRow) {
+          console.error('matchedRow 为空 at y:', y);
+          continue;
+        }
+        
         for (let x = 0; x < matchedRow.length; x++) {
           const cell = matchedRow[x];
+          if (!cell) continue;
+          
           const colorObj = {
             id: cell.id || 'T1',
             name: cell.name || '',
@@ -363,6 +380,9 @@ Page({
       
       // 转换为数组并排序
       const colorStats = Object.values(colorStatsMap).sort((a, b) => b.count - a.count);
+      
+      console.log('mappedData.length:', mappedData.length);
+      console.log('colorStats.length:', colorStats.length);
       
       resolve({ mappedPixelData: mappedData, colorStats });
     });
