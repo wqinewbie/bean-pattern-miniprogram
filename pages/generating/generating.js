@@ -443,8 +443,10 @@ Page({
     return new Promise((resolve) => {
       const canvasWidth = 300;
       // 使用实际的网格尺寸（非正方形图片会返回非正方形网格）
-      const actualRows = mappedPixelData.length;
-      const actualCols = mappedPixelData.length > 0 ? mappedPixelData[0].length : 0;
+      // 注意：mappedPixelData 可能是 { mappedPixelData: [...], colorStats: [...] } 或直接是数组
+      const actualPixelData = mappedPixelData.mappedPixelData || mappedPixelData;
+      const actualRows = actualPixelData.length;
+      const actualCols = actualPixelData.length > 0 ? actualPixelData[0].length : 0;
       const cellSize = canvasWidth / Math.max(actualRows, actualCols);
       
       console.log('=== 渲染预览图 ===');
@@ -463,7 +465,7 @@ Page({
           // 绘制每个格子
           for (let y = 0; y < actualRows; y++) {
             for (let x = 0; x < actualCols; x++) {
-              const cell = mappedPixelData[y] && mappedPixelData[y][x];
+              const cell = actualPixelData[y] && actualPixelData[y][x];
               if (cell) {
                 patternCtx.setFillStyle('rgb(' + cell.r + ',' + cell.g + ',' + cell.b + ')');
                 patternCtx.fillRect(x * cellSize + 0.5, y * cellSize + 0.5, cellSize, cellSize);
@@ -478,7 +480,7 @@ Page({
             
             for (let y = 0; y < actualRows; y++) {
               for (let x = 0; x < actualCols; x++) {
-                const cell = mappedPixelData[y] && mappedPixelData[y][x];
+                const cell = actualPixelData[y] && actualPixelData[y][x];
                 if (cell) {
                   const lum = 0.299 * cell.r + 0.587 * cell.g + 0.114 * cell.b;
                   const textColor = lum > 140 ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.9)';
@@ -530,7 +532,7 @@ Page({
           
           for (let y = 0; y < actualRows; y++) {
             for (let x = 0; x < actualCols; x++) {
-              const cell = mappedPixelData[y] && mappedPixelData[y][x];
+              const cell = actualPixelData[y] && actualPixelData[y][x];
               if (cell) {
                 resultCtx.setFillStyle('rgb(' + cell.r + ',' + cell.g + ',' + cell.b + ')');
                 resultCtx.fillRect(x * cellSize + 0.5, y * cellSize + 0.5, cellSize, cellSize);
@@ -571,9 +573,9 @@ Page({
         .then(([patternUrl, resultUrl]) => {
           // 重新计算颜色统计
           const colorStatsMap = {};
-          for (let y = 0; y < mappedPixelData.length; y++) {
-            for (let x = 0; x < mappedPixelData[y].length; x++) {
-              const cell = mappedPixelData[y][x];
+          for (let y = 0; y < actualPixelData.length; y++) {
+            for (let x = 0; x < actualPixelData[y].length; x++) {
+              const cell = actualPixelData[y][x];
               const id = cell.id;
               if (!colorStatsMap[id]) {
                 colorStatsMap[id] = { ...cell, count: 0 };
@@ -584,7 +586,7 @@ Page({
           const colorStats = Object.values(colorStatsMap).sort((a, b) => b.count - a.count);
           
           resolve({ 
-            mappedPixelData, 
+            mappedPixelData: actualPixelData, 
             colorStats, 
             patternUrl, 
             resultUrl 
