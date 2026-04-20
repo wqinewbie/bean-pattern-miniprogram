@@ -69,7 +69,7 @@
       </view>
     </view>
 
-    <!-- 品牌 + 色号 + 镜像 -->
+    <!-- 品牌 + 色号 + 模式 -->
     <view class="setting-row-3col">
       <view class="setting-col">
         <text class="setting-label">品牌</text>
@@ -88,11 +88,17 @@
         </view>
       </view>
       <view class="setting-col">
-        <text class="setting-label">镜像</text>
-        <view class="mirror-btn {{mirrorOn?'mirror-btn--on':''}}" bindtap="onMirrorToggle">
-          <text>{{mirrorOn?'开':'关'}}</text>
+        <text class="setting-label">风格</text>
+        <view class="picker-row" bindtap="onShowModeSheet">
+          <text class="picker-val">{{pixelationModeOptions[pixelationModeIndex].label}}</text>
+          <text class="picker-arrow">▾</text>
         </view>
       </view>
+    </view>
+    
+    <!-- 风格说明提示 -->
+    <view class="mode-hint">
+      <text class="mode-hint-text">{{pixelationModeOptions[pixelationModeIndex].value === 'dominant' ? '卡通风格：适合插画、emoji、logo等，保留主色调' : '真实风格：适合照片、写实图像，颜色过渡自然'}}</text>
     </view>
 
     <!-- 生成按钮 -->
@@ -112,6 +118,22 @@
     <view class="sheet-btns">
       <view class="sheet-btn-cancel" bindtap="onHideColorSheet">取消</view>
       <view class="sheet-btn-confirm" bindtap="onHideColorSheet">确定</view>
+    </view>
+  </view>
+
+  <!-- 风格底部弹窗 -->
+  <view wx:if="{{showModeSheet}}" class="sheet-mask" bindtap="onHideModeSheet"></view>
+  <view class="color-sheet {{showModeSheet?'color-sheet--show':''}}">
+    <view class="sheet-list">
+      <view wx:for="{{pixelationModeOptions}}" wx:key="value"
+        class="sheet-item {{pixelationModeIndex === index ? 'sheet-item--active':''}}"
+        bindtap="onPixelationModeChange" data-index="{{index}}">
+        {{item.label}}
+      </view>
+    </view>
+    <view class="sheet-btns">
+      <view class="sheet-btn-cancel" bindtap="onHideModeSheet">取消</view>
+      <view class="sheet-btn-confirm" bindtap="onHideModeSheet">确定</view>
     </view>
   </view>
 

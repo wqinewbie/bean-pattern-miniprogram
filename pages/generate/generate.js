@@ -31,12 +31,15 @@ Page({
       { value: 78, label: '78×78' },
       { value: 104, label: '104×104' }
     ],
-    algoIndex: 0,
-    algoOptions: [
-      { value: 'standard', label: '标准模式' },
-      { value: 'portrait', label: '人像模式' },
-      { value: 'pixel',    label: '像素风格' }
+    // 像素化模式
+    pixelationModeIndex: 0,
+    pixelationModeOptions: [
+      { value: 'dominant', label: '卡通风格' },
+      { value: 'average', label: '真实风格' }
     ],
+    // 相似度阈值
+    similarityThreshold: 30,
+    showModeSheet: false,
   },
 
   onBack() {
@@ -173,6 +176,25 @@ Page({
     this.setData({ algoIndex: parseInt(e.detail.value) });
   },
 
+  onPixelationModeChange(e) {
+    const index = e.currentTarget.dataset.index !== undefined 
+      ? parseInt(e.currentTarget.dataset.index) 
+      : parseInt(e.detail.value);
+    this.setData({ pixelationModeIndex: index });
+  },
+
+  onSimilarityThresholdChange(e) {
+    this.setData({ similarityThreshold: parseInt(e.detail.value) || 0 });
+  },
+
+  onShowModeSheet() {
+    this.setData({ showModeSheet: true });
+  },
+
+  onHideModeSheet() {
+    this.setData({ showModeSheet: false });
+  },
+
   onTabChange(e) {
     this.setData({ activeTab: e.currentTarget.dataset.tab });
   },
@@ -185,11 +207,23 @@ Page({
         return;
       }
       
-      const { imageUrl, gridSizeOptions, gridSizeIndex, brandList, brandIndex, algoOptions, algoIndex, colorCountValue } = this.data;
+      const { 
+        imageUrl, 
+        gridSizeOptions, 
+        gridSizeIndex, 
+        brandList, 
+        brandIndex, 
+        colorCountValue,
+        pixelationModeOptions,
+        pixelationModeIndex,
+        similarityThreshold
+      } = this.data;
+      
       const gridSize = gridSizeOptions[gridSizeIndex].value;
       const brand = brandList[brandIndex] || 'MARD';
-      const algo = algoOptions[algoIndex].value;
+      const algo = 'standard'; // 兼容旧接口
       const colorCount = colorCountValue || 0;
+      const pixelationMode = pixelationModeOptions[pixelationModeIndex].value;
       
       // 跳转到生成等待页面
       wx.redirectTo({
@@ -198,7 +232,9 @@ Page({
              '&gridSize=' + gridSize +
              '&brand=' + encodeURIComponent(brand) +
              '&colorCount=' + colorCount +
-             '&algo=' + encodeURIComponent(algo)
+             '&algo=' + encodeURIComponent(algo) +
+             '&pixelationMode=' + encodeURIComponent(pixelationMode) +
+             '&similarityThreshold=' + similarityThreshold
       });
     });
   },

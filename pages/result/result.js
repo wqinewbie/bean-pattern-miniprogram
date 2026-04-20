@@ -62,15 +62,23 @@ Page({
     const {
       taskId, originalUrl, resultUrl, patternUrl, colorStats,
       gridSize, brand, colorCount,
-      boxId, historyId, sourceType,
+      boxId, historyId, draftId, sourceType,
       gridData, colorPalette, rgbData,
       renderedPatternUrl, renderedResultUrl,  // 预渲染好的图片
       storageKey  // 从本地存储读取的 key
     } = options;
 
-    // 如果有 boxId 或 historyId，调用接口获取完整数据
-    if (boxId || historyId) {
-      this.loadDataFromServer(boxId, historyId, options);
+    // 保存预渲染图片到 data
+    const preRenderedPattern = renderedPatternUrl ? decodeURIComponent(renderedPatternUrl) : '';
+    const preRenderedResult = renderedResultUrl ? decodeURIComponent(renderedResultUrl) : '';
+    
+    // 保存从 URL 传递的参数（用于沉浸模式）
+    const urlOriginalUrl = originalUrl ? decodeURIComponent(originalUrl) : '';
+    const urlColorStats = colorStats ? decodeURIComponent(colorStats) : '';
+
+    // 如果有 boxId, historyId 或 draftId，调用接口获取完整数据
+    if (boxId || historyId || draftId) {
+      this.loadDataFromServer(boxId, historyId, draftId, options, preRenderedPattern, preRenderedResult, urlOriginalUrl, urlColorStats);
       return;
     }
 
@@ -80,11 +88,20 @@ Page({
   },
 
   // 从接口加载数据
-  loadDataFromServer(boxId, historyId, options) {
-    const sourceType = options.sourceType || (boxId ? 'BOX' : 'HISTORY');
-    const apiUrl = boxId ? '/box/detail/' + boxId : '/history/detail/' + historyId;
+  loadDataFromServer(boxId, historyId, draftId, options, preRenderedPattern, preRenderedResult, urlOriginalUrl, urlColorStats) {
+    const sourceType = options.sourceType || (boxId ? 'BOX' : (historyId ? 'HISTORY' : 'DRAFT'));
+    let apiUrl = '';
+    
+    if (boxId) {
+      apiUrl = '/box/detail/' + boxId;
+    } else if (historyId) {
+      apiUrl = '/history/detail/' + historyId;
+    } else if (draftId) {
+      apiUrl = '/draft/detail/' + draftId;
+    }
     
     console.log('=== 从接口加载数据 ===', apiUrl);
+    console.log('预渲染图片:', preRenderedPattern, preRenderedResult);
     this.setData({ pageLoading: true });
     
     request.get(apiUrl)
@@ -120,6 +137,9 @@ Page({
           console.error('解析数据失败:', e);
         }
         
+        // 同时设置 colorStats（兼容沉浸模式）
+        let parsedColorStats = parsedColorPalette;
+        
         const gridSize = data.gridSize || 64;
         const hasPatternData = parsedGridData.length > 0 && parsedColorPalette.length > 0;
         const hasRgbData = parsedRgbData.length > 0;
@@ -150,20 +170,26 @@ Page({
           'AI': '🤖 AI生成',
           'DRAW': '🎨 画板',
           'BOX': '📦 图纸箱',
-          'HISTORY': '⏰ 时光机'
+          'HISTORY': '⏰ 时光机',
+          'DRAFT': '📝 草稿箱'
         };
         const sourceTypeTag = sourceTypeMap[sourceType] || sourceTypeMap['LOCAL'];
+
+        // 是否有预渲染图片
+        const hasPreRendered = preRenderedPattern || preRenderedResult;
         
         this.setData({
           // ID
           boxId: boxId || null,
           historyId: historyId || null,
+          draftId: draftId || null,
           // 保存状态回显
           isSaved: !!boxId,
           // 数据
           gridSize: gridSize,
           gridData: parsedGridData,
           colorPalette: parsedColorPalette,
+          colorStats: parsedColorStats,  // 用于沉浸模式
           rgbData: parsedRgbData,
           rgbWidth: rgbWidth,
           rgbHeight: rgbHeight,
@@ -172,21 +198,24 @@ Page({
           colorCount: data.colorCount || parsedColorPalette.length,
           totalBeads: totalBeads,
           name: data.name,
-          // 图片
-          originalUrl: data.sourceUrl || '',
-          currentPreviewUrl: data.sourceUrl || '',
+          // 图片 - 优先使用 URL 参数
+          originalUrl: urlOriginalUrl || data.sourceUrl || '',
+          currentPreviewUrl: urlOriginalUrl || data.sourceUrl || '',
           // 状态
           activeTab: activeTab,
           currentSize: gridSize,
           hasPatternData: hasPatternData,
           hasPatternData2: hasPatternData,
           hasRgbData: hasRgbData,
-          // 渲染状态 - 标记未渲染，切换 tab 时重新渲染
-          canvasReady: !hasRgbData && !hasPatternData,
-          resultRendered: !hasRgbData,
-          patternRendered: !hasPatternData,
-          renderedPatternUrl: '',
-          renderedResultUrl: '',
+          // 如果有预渲染图片，不需要等待渲染
+          canvasReady: !hasRgbData && !hasPatternData || !!hasPreRendered,
+          resultRendered: !hasRgbData || !!preRenderedResult,
+          patternRendered: !hasPatternData || !!preRenderedPattern,
+          // 预渲染图片
+          renderedPatternUrl: preRenderedPattern,
+          renderedResultUrl: preRenderedResult,
+          // colorStats - 优先使用 URL 参数（用于沉浸模式）
+          colorStats: urlColorStats ? JSON.parse(urlColorStats) : parsedColorPalette,
           // 来源
           sourceType: sourceType,
           sourceTypeTag: sourceTypeTag,
@@ -194,8 +223,8 @@ Page({
           pageLoading: false,
         });
         
-        // 如果有数据需要渲染，先设为 false，渲染完成后再设为 true
-        if (hasRgbData || hasPatternData) {
+        // 如果没有预渲染图片且有数据需要渲染
+        if (!hasPreRendered && (hasRgbData || hasPatternData)) {
           this.setData({ canvasReady: false });
           // 初始化渲染计数器
           this._pendingRenderCount = (hasRgbData ? 1 : 0) + (hasPatternData ? 1 : 0);
@@ -212,6 +241,12 @@ Page({
             if (hasRgbData) this.renderResultCanvas();
             if (hasPatternData) this.renderPatternCanvas();
           }, 100);
+        } else if (hasPreRendered) {
+          console.log('=== 使用预渲染图片，跳过渲染 ===');
+          // 如果有预渲染效果图，更新 resultUrl
+          if (preRenderedResult) {
+            this.setData({ resultUrl: preRenderedResult });
+          }
         }
       })
       .catch((err) => {
@@ -422,22 +457,32 @@ Page({
 
   onTabChange(e) {
     const tab = e.currentTarget.dataset.tab;
-    const { rgbData, resultRendered, patternRendered } = this.data;
+    const { rgbData, renderedResultUrl, renderedPatternUrl, hasPatternData } = this.data;
     let nextUrl = '';
     let needsRender = false;
     
     if (tab === 'original') {
       nextUrl = this.data.originalUrl;
     } else if (tab === 'result') {
-      if (rgbData && rgbData.length > 0) {
+      // 如果已有预渲染图片，不需要渲染
+      if (renderedResultUrl) {
+        nextUrl = '';
+        needsRender = false;
+      } else if (rgbData && rgbData.length > 0) {
         nextUrl = '';
         needsRender = true;
       } else {
         nextUrl = this.data.resultUrl;
       }
     } else if (tab === 'pattern') {
-      nextUrl = '';
-      needsRender = true;
+      // 如果已有预渲染图片，不需要渲染
+      if (renderedPatternUrl) {
+        nextUrl = '';
+        needsRender = false;
+      } else if (hasPatternData) {
+        nextUrl = '';
+        needsRender = true;
+      }
     }
     
     this.setData({
@@ -445,7 +490,7 @@ Page({
       currentPreviewUrl: nextUrl
     });
     
-    // 每次切换到效果图/色号图都重新渲染 Canvas
+    // 只有在没有预渲染图片且需要渲染时才重新渲染 Canvas
     if (needsRender) {
       setTimeout(() => {
         if (tab === 'result' && rgbData && rgbData.length > 0) {
@@ -908,14 +953,26 @@ Page({
   },
 
   onEnterFocusMode() {
-    const { boxId, isSaved } = this.data;
+    const { boxId, isSaved, renderedPatternUrl, colorPalette } = this.data;
     if (!isSaved || !boxId) {
       wx.showToast({ title: '请先保存到图纸箱', icon: 'none' });
       return;
     }
-    wx.navigateTo({
-      url: '/pages/focus-mode/focus-mode?boxId=' + boxId
-    });
+    
+    // 传递 patternUrl 和 colorStats 给沉浸模式
+    let url = '/pages/focus-mode/focus-mode?boxId=' + boxId;
+    
+    // 如果有预渲染的色号图，传递给沉浸模式
+    if (renderedPatternUrl) {
+      url += '&patternUrl=' + encodeURIComponent(renderedPatternUrl);
+    }
+    
+    // 传递色盘数据
+    if (colorPalette && colorPalette.length > 0) {
+      url += '&colorStats=' + encodeURIComponent(JSON.stringify(colorPalette));
+    }
+    
+    wx.navigateTo({ url });
   },
 
   onSaveToMyPatterns() {

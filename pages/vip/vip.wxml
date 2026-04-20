@@ -1,50 +1,37 @@
-<view class="container">
-
-  <!-- 状态栏 -->
-  <view style="height:{{statusBarHeight}}px"></view>
-
+<view class="vip-page">
+  <!-- 安全区域占位 -->
+  <view style="height: {{statusBarHeight}}px; width: 100%;"></view>
+  
   <!-- 顶部导航 -->
   <view class="nav-bar">
-    <view class="nav-back" bindtap="onBack"><text class="nav-back-icon">‹</text></view>
-    <text class="nav-title">高级魔法师</text>
+    <view class="nav-back" bindtap="onBack"><text class="nav-back-icon">←</text></view>
+    <view class="nav-tabs">
+      <view class="nav-tab {{vipTab==='vip'?'nav-tab--active':''}}" bindtap="onSwitchTab" data-tab="vip">会员卡</view>
+      <view class="nav-tab {{vipTab==='cards'?'nav-tab--active':''}}" bindtap="onSwitchTab" data-tab="cards">次卡</view>
+      <view class="nav-tab {{vipTab==='orders'?'nav-tab--active':''}}" bindtap="onSwitchTab" data-tab="orders">订单记录</view>
+    </view>
     <view style="width:72rpx"></view>
   </view>
 
   <!-- 滚动内容 -->
   <scroll-view scroll-y class="scroll-body">
 
-    <!-- 顶部 Banner -->
-    <view class="hero-banner">
-      <view class="hero-crown">👑</view>
-      <view class="hero-texts">
-        <text class="hero-title">解锁全部魔法特权</text>
-        <text class="hero-sub">加入高级魔法师，享受无限创作自由</text>
+    <!-- 会员卡 Tab -->
+    <view wx:if="{{vipTab==='vip'}}" class="tab-content">
+      <!-- 顶部 Banner -->
+      <view class="hero-banner">
+        <view class="hero-crown">👑</view>
+        <text class="hero-title">{{isVip ? '您已是至尊魔法会员' : '开通至尊特权'}}</text>
+        <text class="hero-sub">{{isVip ? '享受所有特权，无限制使用' : '纯净无广告·AI生图次数·定制化水印'}}</text>
       </view>
-      <!-- 装饰圆 -->
-      <view class="hero-deco hero-deco1"></view>
-      <view class="hero-deco hero-deco2"></view>
-    </view>
 
-    <!-- 特权列表 -->
-    <view class="benefits-zone">
-      <view class="benefits-grid">
-        <view wx:for="{{benefits}}" wx:key="icon" class="benefit-item">
-          <text class="benefit-icon">{{item.icon}}</text>
-          <text class="benefit-title">{{item.title}}</text>
-          <text class="benefit-desc">{{item.desc}}</text>
-        </view>
-      </view>
-    </view>
-
-    <!-- 套餐选择 -->
-    <view class="plans-zone">
-      <text class="plans-title">选择套餐</text>
-      <view class="plans-list">
-        <view
-          wx:for="{{plans}}"
-          wx:key="id"
-          class="plan-item {{selectedPlan===item.id?'plan-item--active':''}}"
-          bindtap="onSelectPlan"
+      <!-- 套餐选择 -->
+      <view class="plans-zone">
+        <view 
+          wx:for="{{vipPackages}}" 
+          wx:key="id" 
+          class="plan-item {{selectedVipId===item.id?'plan-item--active':''}}"
+          bindtap="onSelectVipPlan"
           data-id="{{item.id}}"
         >
           <view wx:if="{{item.tag}}" class="plan-tag">{{item.tag}}</view>
@@ -53,31 +40,140 @@
             <text class="plan-unit">¥</text>
             <text class="plan-price">{{item.price}}</text>
           </view>
-          <text class="plan-period">/{{item.unit}}</text>
-          <view wx:if="{{selectedPlan===item.id}}" class="plan-check">✓</view>
+          <text class="plan-original">¥{{item.originalPrice}}</text>
+          <view wx:if="{{selectedVipId===item.id}}" class="plan-check">✓</view>
+        </view>
+      </view>
+
+      <!-- 权益对比表 -->
+      <view class="privilege-table">
+        <view class="privilege-header">
+          <text class="privilege-col-title">魔法特权对比</text>
+          <text class="privilege-col">普通学徒</text>
+          <text class="privilege-col privilege-col-vip">至尊会员</text>
+        </view>
+        <view wx:for="{{privileges}}" wx:key="name" class="privilege-row">
+          <text class="privilege-col-title">{{item.name}}</text>
+          <text class="privilege-col">{{item.normal}}</text>
+          <text class="privilege-col privilege-col-vip">{{item.vip}}</text>
         </view>
       </view>
     </view>
 
-    <!-- 权益说明 -->
-    <view class="notice-zone">
-      <text class="notice-text">· 订阅后自动续费，可随时取消</text>
-      <text class="notice-text">· 开通即视为同意《VIP服务协议》</text>
-      <text class="notice-text">· 如有问题请联系在线客服</text>
+    <!-- 次卡 Tab -->
+    <view wx:if="{{vipTab==='cards'}}" class="tab-content">
+      <!-- 顶部 Banner -->
+      <view class="cards-banner">
+        <text class="cards-banner-title">✨ AI魔法次卡</text>
+        <text class="cards-banner-sub">灵活充值，即充即用，永不过期</text>
+        <view wx:if="{{isVip}}" class="cards-vip-tip">
+          <text class="cards-vip-text">至尊会员购买次卡专享 8折 优惠</text>
+        </view>
+      </view>
+
+      <!-- 次卡选择 -->
+      <view class="plans-zone">
+        <view 
+          wx:for="{{cardPackages}}" 
+          wx:key="id" 
+          class="plan-item {{selectedCardId===item.id?'plan-item--active':''}}"
+          bindtap="onSelectCardPlan"
+          data-id="{{item.id}}"
+        >
+          <view wx:if="{{item.tag}}" class="plan-tag">{{item.tag}}</view>
+          <text class="plan-name">{{item.name}}</text>
+          <view class="plan-price-row">
+            <text class="plan-unit">¥</text>
+            <text class="plan-price">{{isVip ? item.isVipPrice : item.price}}</text>
+          </view>
+          <text class="plan-original">¥{{item.originalPrice}}</text>
+          <view wx:if="{{selectedCardId===item.id}}" class="plan-check">✓</view>
+        </view>
+      </view>
+
+      <!-- 次卡说明 -->
+      <view class="cards-notice">
+        <text class="notice-item">· 购买成功后，魔法次数即刻到账，次卡不区分使用期限，但建议及时使用。</text>
+        <text class="notice-item">· 多次购买次卡，AI魔法次数可无限叠加。</text>
+        <text class="notice-item">· 次卡购买后7天内未使用可申请退款；已使用或超时除特殊原因外不支持退款。</text>
+      </view>
+
+      <!-- 权益对比表 -->
+      <view class="privilege-table">
+        <view class="privilege-header">
+          <text class="privilege-col-title">魔法特权对比</text>
+          <text class="privilege-col">普通学徒</text>
+          <text class="privilege-col privilege-col-vip">至尊会员</text>
+        </view>
+        <view wx:for="{{privileges}}" wx:key="name" class="privilege-row">
+          <text class="privilege-col-title">{{item.name}}</text>
+          <text class="privilege-col">{{item.normal}}</text>
+          <text class="privilege-col privilege-col-vip">{{item.vip}}</text>
+        </view>
+      </view>
     </view>
 
-    <view style="height:200rpx"></view>
+    <!-- 订单记录 Tab -->
+    <view wx:if="{{vipTab==='orders'}}" class="tab-content">
+      <!-- 提示 -->
+      <view class="orders-tip">
+        <text class="orders-tip-icon">ℹ</text>
+        <text class="orders-tip-text">赠送类型（含活动附赠、任务奖励等）属于额外发放权益，无法进行售后退款。</text>
+      </view>
+
+      <!-- 订单列表 -->
+      <view class="orders-list">
+        <view wx:if="{{orders.length===0}}" class="orders-empty">暂无订单记录</view>
+        <view wx:for="{{orders}}" wx:key="id" class="order-item">
+          <view class="order-header">
+            <view class="order-type">
+              <text wx:if="{{item.type==='次卡'}}" class="order-type-icon">✨</text>
+              <text wx:if="{{item.type==='会员卡'}}" class="order-type-icon">👑</text>
+              <text wx:if="{{item.type==='赠送'}}" class="order-type-icon">🎁</text>
+              <text class="order-type-name">{{item.type}}</text>
+            </view>
+            <text class="order-status {{item.status==='支付成功'?'order-status-success':item.status==='赠送'?'order-status-gift':'order-status-pending'}}">{{item.status}}</text>
+          </view>
+          <view class="order-detail">
+            <view class="order-row">
+              <text class="order-label">套餐详情</text>
+              <text class="order-value">{{item.detail}}</text>
+            </view>
+            <view class="order-row">
+              <text class="order-label">有效期限</text>
+              <text class="order-value">{{item.validity}}</text>
+            </view>
+            <view class="order-row">
+              <text class="order-label">{{item.type==='赠送'?'获取时间':'支付时间'}}</text>
+              <text class="order-value">{{item.time}}</text>
+            </view>
+          </view>
+          <view class="order-footer">
+            <text class="order-label">实付金额</text>
+            <text class="order-amount">¥{{item.amount}}</text>
+          </view>
+        </view>
+      </view>
+
+      <text class="orders-footnote">仅展示近半年的订单记录</text>
+    </view>
+
+    <view style="height:180rpx"></view>
   </scroll-view>
 
-  <!-- 底部支付按钮（固定）-->
-  <view class="pay-bar">
+  <!-- 底部操作栏（会员卡和次卡 Tab） -->
+  <view wx:if="{{vipTab!=='orders'}}" class="pay-bar">
     <view class="pay-price-info">
-      <text class="pay-label">当前套餐</text>
-      <text class="pay-amount">¥{{plans[selectedPlan==='month'?0:selectedPlan==='quarter'?1:2].price}}</text>
+      <text class="pay-label">应付金额</text>
+      <view class="pay-amount-row">
+        <text class="pay-unit">¥</text>
+        <text class="pay-amount">{{currentPrice}}</text>
+      </view>
+      <text wx:if="{{vipTab==='cards' && isVip}}" class="pay-vip-tip">已享会员专属折扣</text>
     </view>
-    <view class="pay-btn" bindtap="onPay">
-      <text>立即开通特权 ✨</text>
+    <view class="pay-btn {{isPaying?'pay-btn--loading':''}}" bindtap="onPay">
+      <text wx:if="{{!isPaying}}">立即充值</text>
+      <text wx:else>处理中...</text>
     </view>
   </view>
-
 </view>

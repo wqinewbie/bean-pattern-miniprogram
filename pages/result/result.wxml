@@ -1,5 +1,9 @@
 <view class="container">
 
+  <!-- 隐藏的 Canvas 用于渲染 -->
+  <canvas canvas-id="resultCanvas" style="width:300px;height:300px;position:fixed;left:-9999px;top:-9999px;"></canvas>
+  <canvas canvas-id="patternCanvas" style="width:300px;height:300px;position:fixed;left:-9999px;top:-9999px;"></canvas>
+
   <!-- 顶部导航 -->
   <page-nav-bar title="图纸预览" subtitle="{{brandName}} · {{currentSize}}×{{currentSize}}" nav-top="{{navTop}}" bind:back="onBack"/>
 

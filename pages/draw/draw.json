@@ -1,4 +1,5 @@
 {
-  "navigationBarTitleText": "空白画板",
+  "usingComponents": {},
+  "navigationBarTitleText": "拼豆画板",
   "navigationStyle": "custom"
 }

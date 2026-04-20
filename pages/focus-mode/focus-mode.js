@@ -1,5 +1,6 @@
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const request = require('../../utils/request');
+const floodFill = require('../../utils/floodFill');
 
 Page({
   data: {
@@ -16,16 +17,26 @@ Page({
     mode: 'colorId',
     completedMap: {},
     doneCount: 0,
-    boardPx: 340,
+    boardPx: 352,
     navTop: 88,
-    // 新增功能
-    keepScreenOn: true,  // 屏幕常亮
-    showGridNumber: false,  // 显示格数编号
-    showListModal: false,  // 图纸列表弹窗
-    boxList: [],  // 图纸箱列表
-    boxId: null,  // 图纸箱ID
-    gridData: [],  // gridData数据
-    colorPalette: [],  // colorPalette数据
+    keepScreenOn: true,
+    showGridNumber: false,
+    showListModal: false,
+    boxList: [],
+    boxId: null,
+    // 新增：支持 mappedPixelData 格式
+    mappedPixelData: null,
+    // 缩放相关
+    scale: 1,
+    canvasSize: 352,
+    canvasLeft: 0,
+    canvasTop: 0,
+    isRendering: false,
+    // 区域追踪相关
+    regions: [],           // 当前颜色的所有连通区域
+    currentRegion: null,   // 当前推荐的区域
+    guidanceMode: 'nearest', // 引导模式：nearest/largest/edge
+    recommendedCell: null,  // 推荐格子位置
   },
 
   _ctx: null,
@@ -37,6 +48,115 @@ Page({
   _vRun: [],
 
   onLoad(options) {
+    // 尝试从 storageKey 加载新格式数据
+    const storageKey = options.storageKey;
+    
+    if (storageKey) {
+      this._loadFromStorage(storageKey, options);
+    } else {
+      // 兼容旧格式
+      this._loadLegacyFormat(options);
+    }
+  },
+
+  _loadFromStorage(storageKey, options) {
+    try {
+      const data = wx.getStorageSync(storageKey);
+      if (data && data.mappedPixelData) {
+        console.log('=== 使用新格式数据 ===');
+        this._initWithMappedData(data, options);
+        return;
+      }
+    } catch (e) {
+      console.error('加载数据失败:', e);
+    }
+    
+    // 降级到旧格式
+    this._loadLegacyFormat(options);
+  },
+
+  _initWithMappedData(data, options) {
+    const layout = getSafeAreaLayout();
+    const gridSize = data.gridSize || 64;
+    const cellSize = 5.5;
+    const boardPx = Math.floor(gridSize * cellSize);
+
+    // 构建调色板和颜色统计
+    const colorStats = data.colorStats || [];
+    const palette = colorStats.map(c => ({
+      id: c.id,
+      name: c.name || '',
+      r: c.r,
+      g: c.g,
+      b: c.b,
+      hex: c.hex,
+      count: c.count || 0
+    }));
+
+    // 构建颜色映射
+    const colorMap = {};
+    palette.forEach(c => {
+      colorMap[c.id] = c;
+    });
+
+    // 构建 RGB 网格和 ID 网格
+    const mappedPixelData = data.mappedPixelData;
+    const rgbGrid = [];
+    const idGrid = [];
+
+    for (let y = 0; y < gridSize; y++) {
+      const rgbRow = [];
+      const idRow = [];
+      for (let x = 0; x < gridSize; x++) {
+        const cell = mappedPixelData[y] && mappedPixelData[y][x];
+        if (cell) {
+          rgbRow.push({ r: cell.r, g: cell.g, b: cell.b });
+          idRow.push(cell.id);
+        } else {
+          rgbRow.push(null);
+          idRow.push('');
+        }
+      }
+      rgbGrid.push(rgbRow);
+      idGrid.push(idRow);
+    }
+
+    this._rgbGrid = rgbGrid;
+    this._idGrid = idGrid;
+    this._colorMap = colorMap;
+
+    this.setData({
+      patternUrl: data.originalUrl || '',
+      brandName: data.brand || 'MARD',
+      currentSize: gridSize,
+      boardPx,
+      canvasSize: boardPx,
+      navTop: layout.navTop,
+      colorStats,
+      palette,
+      currentColorId: palette[0] ? palette[0].id : '',
+      mappedPixelData,
+      completedMap: data.completedMap || {},
+      boxId: data.id || null,
+      scale: 1,
+      canvasLeft: 0,
+      canvasTop: 0,
+    });
+
+    this._ctx = wx.createCanvasContext('focus-canvas', this);
+    this._baseCtx = wx.createCanvasContext('focus-base-canvas', this);
+    wx.setKeepScreenOn({ keepScreenOn: true });
+
+    // 计算连通区域
+    this._updateRegions();
+
+    wx.nextTick(() => {
+      this._calcRuns();
+      this._renderBoard();
+    });
+  },
+
+  _loadLegacyFormat(options) {
     let stats = [];
     try {
       if (options.colorStats) stats = JSON.parse(decodeURIComponent(options.colorStats));
@@ -48,8 +168,8 @@ Page({
     const boxId = options.boxId ? parseInt(options.boxId) : null;
 
     const layout = getSafeAreaLayout();
-    const sys = wx.getSystemInfoSync ? wx.getSystemInfoSync() : {};
-    const boardPx = Math.min(Math.floor((sys.windowWidth || 375) * 0.9), 400);
+    const cellSize = 5.5;
+    const boardPx = Math.floor(currentSize * cellSize);
 
     const colorMap = {};
     (stats || []).forEach((c) => {
@@ -70,18 +190,17 @@ Page({
       currentSize,
       colorStats: stats,
       boardPx,
+      canvasSize: boardPx,
       navTop: layout.navTop,
       currentColorId: stats[0] ? stats[0].id : '',
       boxId,
+      scale: 1,
     });
 
     this._ctx = wx.createCanvasContext('focus-canvas', this);
     this._baseCtx = wx.createCanvasContext('focus-base-canvas', this);
-
-    // 屏幕常亮
     wx.setKeepScreenOn({ keepScreenOn: true });
 
-    // 如果有boxId，尝试加载进度
     if (boxId) {
       this._loadProgress(boxId);
     } else {
@@ -90,11 +209,11 @@ Page({
   },
 
   onUnload() {
-    // 退出时关闭常亮
     wx.setKeepScreenOn({ keepScreenOn: false });
+    // 保存进度
+    this._saveProgress();
   },
 
-  // 加载进度
   _loadProgress(boxId) {
     request.get('/box/detail/' + boxId)
       .then((data) => {
@@ -114,30 +233,34 @@ Page({
       });
   },
 
-  // 保存进度
   _saveProgress() {
-    const { boxId, completedMap } = this.data;
+    const { boxId, completedMap, mappedPixelData } = this.data;
     if (!boxId) return;
-
+    
+    // 如果有新格式数据，更新存储
+    if (mappedPixelData) {
+      try {
+        const patternId = boxId;
+        const key = 'bead_pattern_' + patternId;
+        const data = wx.getStorageSync(key);
+        if (data) {
+          data.completedMap = completedMap;
+          data.updatedAt = new Date().toISOString();
+          wx.setStorageSync(key, data);
+        }
+      } catch (e) {}
+    }
+    
+    // 同时保存到服务器
     request.post('/box/progress', {
       boxId: boxId,
       progressData: JSON.stringify({ completedMap })
-    }).catch(() => {
-      // 静默失败
-    });
-  },
-
-  _distance2(a, b, r, g, bl) {
-    const dr = a - r;
-    const dg = b - g;
-    const db = bl - g; // placeholder to satisfy style
-    return dr * dr + dg * dg + db * db;
+    }).catch(() => {});
   },
 
   _matchColorId(r, g, b) {
     const palette = this.data.colorStats || [];
     if (!palette.length) return '';
-
     let best = palette[0];
     let bestD = Number.MAX_SAFE_INTEGER;
     palette.forEach((c) => {
@@ -205,12 +328,13 @@ Page({
 
               const nextId = this.data.currentColorId || (palette[0] ? palette[0].id : '');
               this.setData({ palette, currentColorId: nextId }, () => {
+                this._updateRegions();
                 this._calcRuns();
                 this._renderBoard();
               });
             },
             fail: () => {
-              this._renderFallbackImage(src);
+              this._renderBoard();
             }
           }, this);
         });
@@ -222,12 +346,69 @@ Page({
     });
   },
 
-  _renderFallbackImage(src) {
-    if (!this._ctx) return;
-    const { boardPx } = this.data;
-    this._ctx.clearRect(0, 0, boardPx, boardPx);
-    this._ctx.drawImage(src, 0, 0, boardPx, boardPx);
-    this._ctx.draw();
+  // 更新连通区域
+  _updateRegions() {
+    const { currentColorId, currentSize } = this.data;
+    if (!currentColorId) {
+      this.setData({ regions: [], currentRegion: null, recommendedCell: null });
+      return;
+    }
+
+    // 使用 mappedPixelData 或 idGrid
+    let grid;
+    if (this.data.mappedPixelData) {
+      grid = this.data.mappedPixelData;
+    } else if (this._idGrid.length) {
+      // 转换为简单格式
+      grid = this._idGrid.map(row => row.map(id => ({ id, isExternal: false })));
+    } else {
+      return;
+    }
+
+    // 获取所有连通区域
+    const regions = floodFill.getAllConnectedRegions(grid, currentColorId);
+    
+    // 根据引导模式排序
+    let sortedRegions = regions;
+    const centerPoint = { row: Math.floor(currentSize / 2), col: Math.floor(currentSize / 2) };
+    
+    switch (this.data.guidanceMode) {
+      case 'largest':
+        sortedRegions = floodFill.sortRegionsBySize(regions);
+        break;
+      case 'edge':
+        sortedRegions = floodFill.sortRegionsByEdge(regions, currentSize);
+        break;
+      case 'nearest':
+      default:
+        sortedRegions = floodFill.sortRegionsByDistance(regions, centerPoint);
+        break;
+    }
+
+    // 找到第一个未完成的区域
+    const completedMap = this.data.completedMap || {};
+    let currentRegion = null;
+    let recommendedCell = null;
+
+    for (const region of sortedRegions) {
+      if (!floodFill.isRegionCompleted(region, new Set(Object.keys(completedMap)))) {
+        currentRegion = region;
+        const center = floodFill.getRegionCenter(region);
+        recommendedCell = center;
+        break;
+      }
+    }
+
+    this.setData({ regions: sortedRegions, currentRegion, recommendedCell });
+  },
+
+  // 切换引导模式
+  onGuidanceModeChange(e) {
+    const mode = e.currentTarget.dataset.mode;
+    this.setData({ guidanceMode: mode }, () => {
+      this._updateRegions();
+      this._renderBoard();
+    });
   },
 
   _calcRuns() {
@@ -270,41 +451,47 @@ Page({
     this._vRun = v;
   },
 
-  // 渲染节流定时器
   _renderTimer: null,
+  _lastRenderParams: '',
 
   _renderBoard() {
-    // 节流：100ms内避免重复渲染
-    if (this._renderTimer) return;
-    this._renderTimer = setTimeout(() => {
-      this._renderTimer = null;
-      this._doRender();
-    }, 100);
+    const { currentColorId, contrast, mode, completedMap, canvasSize } = this.data;
+    const params = `${currentColorId}|${contrast}|${mode}|${canvasSize}|${JSON.stringify(completedMap)}`;
+    
+    if (this._lastRenderParams === params) return;
+    this._lastRenderParams = params;
+
+    this._doRender();
   },
 
-  _doRender() {
+  _doRender(callback) {
     const ctx = this._ctx;
-    if (!ctx || !this._rgbGrid.length) return;
+    if (!ctx || !this._rgbGrid.length) {
+      this.setData({ isRendering: false });
+      callback && callback();
+      return;
+    }
 
     const {
-      boardPx,
+      canvasSize,
       currentSize,
       currentColorId,
       contrast,
       mode,
-      completedMap
+      completedMap,
+      recommendedCell
     } = this.data;
 
-    const cs = boardPx / currentSize;
+    const size = canvasSize;
+    const cs = size / currentSize;
     const radius = Math.max(1.2, cs * 0.42);
     const dimAlpha = contrast / 100;
     const hasFocus = !!currentColorId;
 
-    ctx.clearRect(0, 0, boardPx, boardPx);
+    ctx.clearRect(0, 0, size, size);
     ctx.setFillStyle('#f5f5f4');
-    ctx.fillRect(0, 0, boardPx, boardPx);
+    ctx.fillRect(0, 0, size, size);
 
-    // 预设颜色，避免重复创建
     const fontSize = Math.max(5, Math.min(10, Math.floor(cs * 0.58)));
 
     for (let y = 0; y < currentSize; y++) {
@@ -318,20 +505,17 @@ Page({
         const cx = x * cs + cs / 2;
         const cy = y * cs + cs / 2;
 
-        // 设置透明度
         if (done) {
           ctx.setGlobalAlpha(0.28);
         } else {
           ctx.setGlobalAlpha(focused ? 1 : dimAlpha);
         }
 
-        // 绘制圆形
         ctx.setFillStyle(`rgb(${rgb.r},${rgb.g},${rgb.b})`);
         ctx.beginPath();
         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
         ctx.fill();
 
-        // 绘制完成标记
         if (done && focused) {
           ctx.setGlobalAlpha(0.6);
           ctx.setFillStyle('#22c55e');
@@ -340,7 +524,6 @@ Page({
           ctx.fill();
         }
 
-        // 绘制文字
         let text = '';
         if (id && focused) {
           if (mode === 'colorId') {
@@ -362,8 +545,33 @@ Page({
       }
     }
 
+    // 绘制推荐格子高亮
+    if (recommendedCell && currentColorId) {
+      const rx = recommendedCell.col * cs + cs / 2;
+      const ry = recommendedCell.row * cs + cs / 2;
+      
+      ctx.setGlobalAlpha(0.8);
+      ctx.setStrokeStyle('#FF9800');
+      ctx.setLineWidth(2);
+      ctx.beginPath();
+      ctx.arc(rx, ry, radius + 2, 0, Math.PI * 2);
+      ctx.stroke();
+      
+      // 绘制脉冲动画效果
+      ctx.setStrokeStyle('rgba(255, 152, 0, 0.4)');
+      ctx.setLineWidth(1);
+      ctx.beginPath();
+      ctx.arc(rx, ry, radius + 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     ctx.setGlobalAlpha(1);
     ctx.draw();
+
+    setTimeout(() => {
+      this.setData({ isRendering: false });
+      callback && callback();
+    }, 50);
   },
 
   onBack() {
@@ -388,6 +596,7 @@ Page({
     const id = e.currentTarget.dataset.id;
     const next = this.data.currentColorId === id ? '' : id;
     this.setData({ currentColorId: next }, () => {
+      this._updateRegions();
       this._calcRuns();
       this._renderBoard();
     });
@@ -402,7 +611,11 @@ Page({
     this.setData({
       completedMap: map,
       doneCount: Object.keys(map).length,
-    }, () => this._renderBoard());
+    }, () => {
+      this._updateRegions();
+      this._renderBoard();
+      this._saveProgress();
+    });
   },
 
   onPrevColor() {
@@ -411,6 +624,7 @@ Page({
     const i = list.findIndex((x) => x.id === this.data.currentColorId);
     const idx = i <= 0 ? list.length - 1 : i - 1;
     this.setData({ currentColorId: list[idx].id }, () => {
+      this._updateRegions();
       this._calcRuns();
       this._renderBoard();
     });
@@ -422,6 +636,7 @@ Page({
     const i = list.findIndex((x) => x.id === this.data.currentColorId);
     const idx = i >= list.length - 1 ? 0 : i + 1;
     this.setData({ currentColorId: list[idx].id }, () => {
+      this._updateRegions();
       this._calcRuns();
       this._renderBoard();
     });
@@ -436,13 +651,13 @@ Page({
       completedMap: {},
       doneCount: 0,
     }, () => {
+      this._updateRegions();
       this._calcRuns();
       this._renderBoard();
       this._saveProgress();
     });
   },
 
-  // 切换屏幕常亮
   onToggleKeepScreen() {
     const keepScreenOn = !this.data.keepScreenOn;
     this.setData({ keepScreenOn });
@@ -453,24 +668,106 @@ Page({
     });
   },
 
-  // 切换格数编号显示
-  onToggleGridNumber() {
-    const showGridNumber = !this.data.showGridNumber;
-    this.setData({ showGridNumber }, () => {
+  // ============ 缩放相关 ============
+  _minScale: 0.5,
+  _maxScale: 2,
+
+  onZoomIn() {
+    const newScale = Math.min(this.data.scale + 0.25, this._maxScale);
+    const newSize = Math.floor(this.data.boardPx * newScale);
+    if (newScale === this.data.scale) return;
+    
+    const canvasLeft = (this.data.boardPx - newSize) / 2;
+    const canvasTop = (this.data.boardPx - newSize) / 2;
+    
+    this.setData({ 
+      scale: newScale, 
+      canvasSize: newSize,
+      canvasLeft,
+      canvasTop,
+      isRendering: true 
+    }, () => {
       this._renderBoard();
+      setTimeout(() => this.setData({ isRendering: false }), 50);
     });
   },
 
-  // 打开图纸列表弹窗
+  onZoomOut() {
+    const newScale = Math.max(this.data.scale - 0.25, this._minScale);
+    const newSize = Math.floor(this.data.boardPx * newScale);
+    if (newScale === this.data.scale) return;
+    
+    const canvasLeft = (this.data.boardPx - newSize) / 2;
+    const canvasTop = (this.data.boardPx - newSize) / 2;
+    
+    this.setData({ 
+      scale: newScale, 
+      canvasSize: newSize,
+      canvasLeft,
+      canvasTop,
+      isRendering: true 
+    }, () => {
+      this._renderBoard();
+      setTimeout(() => this.setData({ isRendering: false }), 50);
+    });
+  },
+
+  onZoomReset() {
+    this.setData({ 
+      scale: 1, 
+      canvasSize: this.data.boardPx,
+      canvasLeft: 0,
+      canvasTop: 0,
+      isRendering: true 
+    }, () => {
+      this._renderBoard();
+      setTimeout(() => this.setData({ isRendering: false }), 50);
+    });
+  },
+
+  // ============ 滑动相关 ============
+  _touchStartX: 0,
+  _touchStartY: 0,
+  _panStartLeft: 0,
+  _panStartTop: 0,
+
+  onBoardTouchStart(e) {
+    const touch = e.touches[0];
+    this._touchStartX = touch.clientX;
+    this._touchStartY = touch.clientY;
+    this._panStartLeft = this.data.canvasLeft;
+    this._panStartTop = this.data.canvasTop;
+  },
+
+  onBoardTouchMove(e) {
+    const touch = e.touches[0];
+    const dx = touch.clientX - this._touchStartX;
+    const dy = touch.clientY - this._touchStartY;
+
+    const { canvasSize, boardPx } = this.data;
+    const maxLeft = 0;
+    const minLeft = boardPx - canvasSize;
+    const maxTop = 0;
+    const minTop = boardPx - canvasSize;
+    
+    let newLeft = this._panStartLeft + dx;
+    let newTop = this._panStartTop + dy;
+    newLeft = Math.max(minLeft, Math.min(maxLeft, newLeft));
+    newTop = Math.max(minTop, Math.min(maxTop, newTop));
+
+    this.setData({ canvasLeft: newLeft, canvasTop: newTop });
+  },
+
+  onBoardTouchEnd(e) {},
+
+  // ============ 图纸列表弹窗 ============
   onShowList() {
     this.setData({ showListModal: true });
-    // 加载图纸箱列表
     if (!this.data.boxList.length) {
       this._loadBoxList();
     }
   },
 
-  // 加载图纸箱列表
   _loadBoxList() {
     request.get('/box/list')
       .then((data) => {
@@ -481,18 +778,15 @@ Page({
       });
   },
 
-  // 选择图纸
   onSelectBox(e) {
     const boxId = e.currentTarget.dataset.id;
     if (!boxId) return;
     
-    // 如果是当前图纸，直接关闭
     if (boxId === this.data.boxId) {
       this.setData({ showListModal: false });
       return;
     }
 
-    // 切换到新图纸
     wx.showLoading({ title: '加载中...' });
     request.get('/box/detail/' + boxId)
       .then((box) => {
@@ -501,18 +795,25 @@ Page({
           return;
         }
 
-        // 更新数据
+        const newSize = box.gridSize || 64;
+        const cellSize = 5.5;
+        const newBoardPx = Math.floor(newSize * cellSize);
+
         this.setData({
           boxId: box.id,
           boxList: this.data.boxList.map(b => 
             b.id === box.id ? { ...b, _active: true } : { ...b, _active: false }
           ),
           showListModal: false,
-          currentSize: box.gridSize || 64,
+          currentSize: newSize,
           brandName: box.brand || 'MARD',
+          boardPx: newBoardPx,
+          canvasSize: newBoardPx,
+          canvasLeft: 0,
+          canvasTop: 0,
+          scale: 1,
         });
 
-        // 解析图纸数据
         if (box.gridData) {
           try {
             const gridData = JSON.parse(box.gridData);
@@ -526,7 +827,6 @@ Page({
           } catch (e) {}
         }
 
-        // 重新构建视图
         this._buildGridFromBox(box);
         wx.hideLoading();
       })
@@ -536,18 +836,14 @@ Page({
       });
   },
 
-  // 从图纸箱数据构建视图
   _buildGridFromBox(box) {
-    const { boardPx } = this.data;
     const gridSize = box.gridSize || 64;
 
-    // 如果有色盘数据，直接构建
     if (box.gridData && box.colorPalette) {
       try {
         const gridData = JSON.parse(box.gridData);
         const colorPalette = JSON.parse(box.colorPalette);
-        
-        // 构建颜色统计
+
         const counts = {};
         gridData.forEach(row => {
           row.forEach(id => {
@@ -563,37 +859,18 @@ Page({
           .sort((a, b) => b.count - a.count);
 
         this.setData({ palette: palette || [], currentSize: gridSize }, () => {
+          this._updateRegions();
           this._calcRuns();
           this._renderBoard();
         });
-      } catch (e) {
-        console.error('解析图纸数据失败', e);
-      }
+      } catch (e) {}
     }
   },
 
-  // 关闭图纸列表弹窗
   onCloseList() {
     this.setData({ showListModal: false });
   },
 
-  // 切换完成状态时保存进度
-  onToggleDone(e) {
-    const id = e.currentTarget.dataset.id;
-    if (!id) return;
-    const map = { ...this.data.completedMap };
-    if (map[id]) delete map[id];
-    else map[id] = true;
-    this.setData({
-      completedMap: map,
-      doneCount: Object.keys(map).length,
-    }, () => {
-      this._renderBoard();
-      this._saveProgress();
-    });
-  },
-
-  // 保存当前进度
   onSaveProgress() {
     this._saveProgress();
     wx.showToast({ title: '进度已保存', icon: 'success' });

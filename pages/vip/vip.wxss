@@ -1,293 +1,514 @@
-/* vip.wxss */
-.container {
-  height: 100vh;
-  background: #1A1A1A;
+/* vip.wxss - VIP页面样式 */
+
+.vip-page {
+  min-height: 100vh;
+  background: #1C1A1A;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
-/* 导航栏 */
+/* ─── 导航栏 ─── */
 .nav-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16rpx 32rpx;
+  padding: 0 24rpx;
+  height: 88rpx;
+  background: #1C1A1A;
   flex-shrink: 0;
 }
 
 .nav-back {
-  width: 72rpx; height: 72rpx;
-  background: rgba(255,255,255,0.1);
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
+  width: 72rpx;
+  display: flex;
+  align-items: center;
 }
 
 .nav-back-icon {
-  font-size: 56rpx;
-  color: rgba(255,255,255,0.8);
-  line-height: 1;
-  margin-top: -4rpx;
+  font-size: 44rpx;
+  color: rgba(255,255,255,0.7);
 }
 
-.nav-title {
-  font-size: 36rpx;
-  font-weight: 800;
-  color: #FFD54F;
-  letter-spacing: 2rpx;
+.nav-tabs {
+  display: flex;
+  background: rgba(0,0,0,0.4);
+  border-radius: 40rpx;
+  padding: 8rpx;
+  border: 1rpx solid rgba(255,255,255,0.05);
 }
 
-/* 滚动区 */
+.nav-tab {
+  padding: 12rpx 24rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: rgba(255,255,255,0.6);
+  border-radius: 32rpx;
+  transition: all 0.3s;
+}
+
+.nav-tab--active {
+  background: linear-gradient(135deg, #FFD54F, #FF9800);
+  color: #3E2723;
+  box-shadow: 0 4rpx 16rpx rgba(255,152,0,0.3);
+}
+
+/* ─── 滚动区域 ─── */
 .scroll-body {
   flex: 1;
-  height: 0;
+  overflow-y: auto;
 }
 
-/* 顶部 Hero Banner */
+.tab-content {
+  padding: 32rpx;
+}
+
+/* ─── 会员卡 Banner ─── */
 .hero-banner {
-  margin: 16rpx 32rpx 0;
-  background: linear-gradient(135deg, #FFD54F, #FF9800);
+  background: linear-gradient(135deg, #FFD54F, #FFB74D, #FF9800);
   border-radius: 48rpx;
-  padding: 56rpx 48rpx;
+  padding: 48rpx;
+  margin-bottom: 32rpx;
   position: relative;
   overflow: hidden;
-  border-bottom: 6rpx solid #E65100;
 }
 
 .hero-crown {
-  font-size: 80rpx;
-  line-height: 1;
-  margin-bottom: 20rpx;
-  position: relative; z-index: 1;
+  position: absolute;
+  right: -24rpx;
+  bottom: -24rpx;
+  font-size: 240rpx;
+  opacity: 0.2;
+  transform: rotate(-15deg);
 }
 
-.hero-texts { position: relative; z-index: 1; }
-
 .hero-title {
-  display: block;
   font-size: 44rpx;
-  font-weight: 800;
+  font-weight: 700;
   color: #3E2723;
+  display: block;
   margin-bottom: 12rpx;
+  position: relative;
+  z-index: 1;
 }
 
 .hero-sub {
-  display: block;
   font-size: 26rpx;
-  font-weight: 700;
-  color: rgba(62,39,35,0.7);
-}
-
-.hero-deco {
-  position: absolute;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.15);
-}
-
-.hero-deco1 {
-  width: 300rpx; height: 300rpx;
-  right: -80rpx; top: -80rpx;
-}
-
-.hero-deco2 {
-  width: 180rpx; height: 180rpx;
-  right: 60rpx; bottom: -60rpx;
-}
-
-/* 特权列表 */
-.benefits-zone {
-  padding: 40rpx 32rpx 0;
-}
-
-.benefits-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20rpx;
-}
-
-.benefit-item {
-  background: rgba(255,255,255,0.06);
-  border: 2rpx solid rgba(255,213,79,0.2);
-  border-radius: 32rpx;
-  padding: 32rpx 28rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 10rpx;
-}
-
-.benefit-icon {
-  font-size: 48rpx;
-  line-height: 1;
-}
-
-.benefit-title {
-  font-size: 28rpx;
-  font-weight: 800;
-  color: #FFD54F;
-}
-
-.benefit-desc {
-  font-size: 22rpx;
-  font-weight: 600;
-  color: rgba(255,255,255,0.5);
-  line-height: 1.4;
-}
-
-/* 套餐选择 */
-.plans-zone {
-  padding: 40rpx 32rpx 0;
-}
-
-.plans-title {
+  font-weight: 500;
+  color: #3E2723;
+  opacity: 0.9;
   display: block;
-  font-size: 32rpx;
-  font-weight: 800;
-  color: rgba(255,255,255,0.9);
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── 次卡 Banner ─── */
+.cards-banner {
+  background: #2A2A2A;
+  border-radius: 48rpx;
+  padding: 48rpx;
+  margin-bottom: 32rpx;
+  border: 1rpx solid rgba(255,255,255,0.05);
+}
+
+.cards-banner-title {
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #FFD54F;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.cards-banner-sub {
+  font-size: 26rpx;
+  color: rgba(255,255,255,0.6);
+  display: block;
   margin-bottom: 24rpx;
 }
 
-.plans-list {
-  display: flex;
-  gap: 20rpx;
+.cards-vip-tip {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255,213,79,0.2);
+  border: 1rpx solid rgba(255,213,79,0.3);
+  border-radius: 40rpx;
+  padding: 12rpx 24rpx;
+}
+
+.cards-vip-text {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #FFD54F;
+}
+
+/* ─── 套餐选择 ─── */
+.plans-zone {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16rpx;
+  margin-bottom: 32rpx;
 }
 
 .plan-item {
-  flex: 1;
-  background: rgba(255,255,255,0.06);
-  border: 3rpx solid rgba(255,255,255,0.12);
-  border-radius: 36rpx;
-  padding: 36rpx 20rpx;
+  background: rgba(255,255,255,0.05);
+  border: 6rpx solid rgba(255,255,255,0.1);
+  border-radius: 32rpx;
+  padding: 32rpx 16rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8rpx;
+  text-align: center;
   position: relative;
-  transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  transition: all 0.3s;
 }
 
 .plan-item--active {
-  background: rgba(255,213,79,0.12);
   border-color: #FFD54F;
-  transform: translateY(-8rpx);
-  box-shadow: 0 16rpx 40rpx rgba(255,213,79,0.2);
+  background: rgba(255,213,79,0.1);
+  transform: translateY(-4rpx);
+  box-shadow: 0 16rpx 40rpx rgba(255,213,79,0.15);
 }
 
 .plan-tag {
   position: absolute;
   top: -20rpx;
-  background: #FF6B6B;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #FF9800;
   color: #fff;
   font-size: 20rpx;
-  font-weight: 800;
-  padding: 6rpx 18rpx;
-  border-radius: 40rpx;
+  font-weight: 700;
+  padding: 6rpx 20rpx;
+  border-radius: 20rpx;
+  white-space: nowrap;
+}
+
+.plan-item:not(.plan-item--active) .plan-tag {
+  background: rgba(255,255,255,0.2);
 }
 
 .plan-name {
   font-size: 26rpx;
-  font-weight: 800;
+  font-weight: 700;
   color: rgba(255,255,255,0.8);
+  margin-bottom: 12rpx;
+}
+
+.plan-item--active .plan-name {
+  color: #FFD54F;
 }
 
 .plan-price-row {
   display: flex;
-  align-items: flex-end;
-  gap: 4rpx;
-  margin-top: 8rpx;
+  align-items: baseline;
+  margin-bottom: 4rpx;
 }
 
 .plan-unit {
-  font-size: 28rpx;
-  font-weight: 800;
-  color: #FFD54F;
-  line-height: 1.6;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #fff;
 }
 
 .plan-price {
-  font-size: 56rpx;
-  font-weight: 900;
-  color: #FFD54F;
-  line-height: 1;
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #fff;
 }
 
-.plan-period {
+.plan-item--active .plan-price {
+  color: #FFD54F;
+}
+
+.plan-original {
   font-size: 22rpx;
-  font-weight: 700;
   color: rgba(255,255,255,0.4);
+  text-decoration: line-through;
 }
 
 .plan-check {
   position: absolute;
-  top: 20rpx; right: 20rpx;
-  width: 36rpx; height: 36rpx;
+  right: 16rpx;
+  top: 16rpx;
+  width: 32rpx;
+  height: 32rpx;
   background: #FFD54F;
-  border-radius: 50%;
   color: #3E2723;
-  font-size: 22rpx;
-  font-weight: 900;
-  display: flex; align-items: center; justify-content: center;
-}
-
-/* 权益说明 */
-.notice-zone {
-  padding: 32rpx 40rpx 0;
+  border-radius: 50%;
   display: flex;
-  flex-direction: column;
-  gap: 10rpx;
+  align-items: center;
+  justify-content: center;
+  font-size: 20rpx;
+  font-weight: 700;
 }
 
-.notice-text {
+/* ─── 权益对比表 ─── */
+.privilege-table {
+  background: rgba(255,255,255,0.05);
+  border-radius: 32rpx;
+  overflow: hidden;
+  border: 1rpx solid rgba(255,255,255,0.1);
+  margin-bottom: 32rpx;
+}
+
+.privilege-header {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  background: rgba(255,255,255,0.05);
+  border-bottom: 1rpx solid rgba(255,255,255,0.1);
+}
+
+.privilege-row {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 32rpx;
+  border-bottom: 1rpx solid rgba(255,255,255,0.05);
+}
+
+.privilege-row:last-child {
+  border-bottom: none;
+}
+
+.privilege-col-title {
+  flex: 1;
   font-size: 22rpx;
-  color: rgba(255,255,255,0.3);
-  font-weight: 600;
+  font-weight: 500;
+  color: rgba(255,255,255,0.9);
+}
+
+.privilege-col {
+  width: 140rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  color: rgba(255,255,255,0.5);
+  text-align: center;
+}
+
+.privilege-col-vip {
+  color: #FFD54F;
+  font-weight: 700;
+}
+
+/* ─── 次卡说明 ─── */
+.cards-notice {
+  background: #2A2A2A;
+  border-radius: 32rpx;
+  padding: 32rpx;
+  margin-bottom: 32rpx;
+  border: 1rpx solid rgba(255,255,255,0.05);
+}
+
+.notice-item {
+  font-size: 22rpx;
+  color: rgba(255,255,255,0.5);
+  line-height: 1.8;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.notice-item:last-child {
+  margin-bottom: 0;
+}
+
+/* ─── 订单提示 ─── */
+.orders-tip {
+  background: rgba(255,152,0,0.2);
+  border: 1rpx solid rgba(255,152,0,0.3);
+  border-radius: 24rpx;
+  padding: 24rpx;
+  display: flex;
+  align-items: flex-start;
+  gap: 16rpx;
+  margin-bottom: 32rpx;
+}
+
+.orders-tip-icon {
+  font-size: 28rpx;
+  color: #FF9800;
+  flex-shrink: 0;
+}
+
+.orders-tip-text {
+  font-size: 24rpx;
+  color: rgba(255,255,255,0.7);
   line-height: 1.6;
 }
 
-/* 底部支付栏 */
-.pay-bar {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  background: #212121;
-  border-top: 2rpx solid rgba(255,213,79,0.2);
-  padding: 24rpx 32rpx;
-  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+.orders-empty {
+  text-align: center;
+  padding: 80rpx 0;
+  font-size: 28rpx;
+  color: rgba(255,255,255,0.3);
+}
+
+/* ─── 订单列表 ─── */
+.orders-list {
+  margin-bottom: 32rpx;
+}
+
+.order-item {
+  background: rgba(255,255,255,0.05);
+  border: 1rpx solid rgba(255,255,255,0.1);
+  border-radius: 32rpx;
+  padding: 32rpx;
+  margin-bottom: 24rpx;
+}
+
+.order-header {
   display: flex;
   align-items: center;
-  gap: 24rpx;
+  justify-content: space-between;
+  padding-bottom: 24rpx;
+  border-bottom: 1rpx solid rgba(255,255,255,0.1);
+  margin-bottom: 24rpx;
+}
+
+.order-type {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.order-type-icon {
+  font-size: 32rpx;
+}
+
+.order-type-name {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #fff;
+}
+
+.order-status {
+  font-size: 24rpx;
+  font-weight: 700;
+  padding: 8rpx 20rpx;
+  border-radius: 8rpx;
+}
+
+.order-status-success {
+  background: rgba(76,175,80,0.2);
+  color: #4CAF50;
+}
+
+.order-status-gift {
+  background: rgba(255,152,0,0.2);
+  color: #FF9800;
+}
+
+.order-status-pending {
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.5);
+}
+
+.order-detail {
+  margin-bottom: 24rpx;
+}
+
+.order-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+
+.order-row:last-child {
+  margin-bottom: 0;
+}
+
+.order-label {
+  font-size: 24rpx;
+  color: rgba(255,255,255,0.5);
+}
+
+.order-value {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #fff;
+}
+
+.order-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 24rpx;
+  border-top: 1rpx solid rgba(255,255,255,0.1);
+}
+
+.order-amount {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #FFD54F;
+}
+
+.orders-footnote {
+  display: block;
+  text-align: center;
+  font-size: 22rpx;
+  color: rgba(255,255,255,0.3);
+  padding-bottom: 40rpx;
+}
+
+/* ─── 底部支付栏 ─── */
+.pay-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32rpx 40rpx;
+  background: #1C1A1A;
+  border-top: 1rpx solid rgba(255,255,255,0.05);
+  flex-shrink: 0;
+  padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
 }
 
 .pay-price-info {
   display: flex;
   flex-direction: column;
-  gap: 4rpx;
 }
 
 .pay-label {
   font-size: 22rpx;
-  color: rgba(255,255,255,0.4);
-  font-weight: 600;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 4rpx;
 }
 
-.pay-amount {
-  font-size: 40rpx;
-  font-weight: 900;
+.pay-amount-row {
+  display: flex;
+  align-items: baseline;
+}
+
+.pay-unit {
+  font-size: 28rpx;
+  font-weight: 700;
   color: #FFD54F;
 }
 
-.pay-btn {
-  flex: 1;
-  height: 96rpx;
-  background: linear-gradient(135deg, #FFD54F, #FF9800);
-  border-radius: 48rpx;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 30rpx;
-  font-weight: 800;
-  color: #3E2723;
-  border-bottom: 4rpx solid #E65100;
-  box-shadow: 0 8rpx 24rpx rgba(255,152,0,0.4);
+.pay-amount {
+  font-size: 56rpx;
+  font-weight: 700;
+  color: #FFD54F;
+  line-height: 1;
 }
 
-.pay-btn:active {
-  transform: translateY(4rpx);
-  border-bottom-width: 0;
+.pay-vip-tip {
+  font-size: 20rpx;
+  color: rgba(255,213,79,0.7);
+  background: rgba(255,213,79,0.1);
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  margin-top: 8rpx;
+  display: inline-block;
+}
+
+.pay-btn {
+  background: linear-gradient(135deg, #FFD54F, #FF9800);
+  color: #3E2723;
+  font-size: 32rpx;
+  font-weight: 700;
+  padding: 24rpx 60rpx;
+  border-radius: 48rpx;
+  box-shadow: 0 12rpx 40rpx rgba(255,152,0,0.25);
+}
+
+.pay-btn--loading {
+  opacity: 0.7;
 }

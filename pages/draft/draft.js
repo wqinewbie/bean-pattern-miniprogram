@@ -108,16 +108,27 @@ Page({
     const { item } = e.currentTarget.dataset;
     // 显示操作选项
     wx.showActionSheet({
-      itemList: ['继续编辑', '保存到图纸箱', '删除'],
+      itemList: ['继续编辑', '保存到图纸箱', '预览图纸', '删除'],
       success: (res) => {
         if (res.tapIndex === 0) {
           this.onContinueEdit({ currentTarget: { dataset: { item } } });
         } else if (res.tapIndex === 1) {
           this.onSaveToBox({ currentTarget: { dataset: { item } } });
         } else if (res.tapIndex === 2) {
+          this.onPreviewDraft({ currentTarget: { dataset: { item } } });
+        } else if (res.tapIndex === 3) {
           this.onDeleteDraft({ currentTarget: { dataset: { id: item.id } } });
         }
       }
+    });
+  },
+
+  // 预览草稿
+  onPreviewDraft(e) {
+    const { item } = e.currentTarget.dataset;
+    // 跳转到预加载页面，先渲染再显示预览
+    wx.navigateTo({
+      url: '/pages/result-loading/result-loading?draftId=' + item.id + '&sourceType=DRAFT'
     });
   },
 

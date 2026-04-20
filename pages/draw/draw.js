@@ -1,890 +1,545 @@
+// 拼豆画板 - 参考 perlerBeadsApplet 实现
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
-const { API_BASE_URL } = require('../../utils/config');
+
+// 默认颜色
+const DEFAULT_COLORS = [
+  '#FFFFFF', '#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00',
+  '#FF6B35', '#FF69B4', '#00CED1', '#9370DB', '#FFA500', '#008B8B',
+  '#DC143C', '#32CD32', '#4169E1', '#FFD700', '#808080', '#2F4F4F',
+  '#FF6B6B', '#90EE90', '#87CEEB', '#DDA0DD', '#F0E68C', '#E6E6FA'
+];
 
 Page({
   data: {
-    activeTool: 'brush',
-    currentColor: '#000000',
+    gridSize: 32,
+    canvasWidth: 320,
+    canvasHeight: 320,
+    tool: 'pen',
     brushSize: 1,
+    showGrid: true,
     symmetry: false,
+    currentColor: '#FF6B35',
+    currentCode: 'C01',
+    colors: DEFAULT_COLORS,
+    showColorModal: false,
+    colorCount: 0,
+    loading: false,
+    loadingText: '处理中...',
     canUndo: false,
     canRedo: false,
-    gridSize: 64,
-    gridSizeOptions: [24, 36, 50, 64, 78, 104],
-    gridSizeIndex: 3,
-    paletteItems: [
-      { hex: '#000000', code: 'K01' },
-      { hex: '#FFFFFF', code: 'W01' }
-    ],
-    colors: [
-      '#000000', '#FFFFFF'
-    ],
-    canvasSize: 320,
-    showGrid: true,
-    offsetX: 0,
-    offsetY: 0,
-    scale: 1,
-    brandList: ['MARD'],
-    brandIndex: 0,
-    colorCountOptions: [{ value: 0, label: '全部色号' }],
-    colorCountIndex: 0,
-    colorCountValue: 0,
-    paletteLoading: false,
-    currentColorCode: 'K01',
-    currentColorName: '黑色',
-    showColorDetail: false,
-    colorUsageCount: 0,
+    zoomPercent: 100,
   },
 
-  _grid: [],
+  _ctx: null,
+  _canvas: null,
+  _offscreenCanvas: null,
+  _offscreenCtx: null,
+  _gridData: null,
+  _cellSize: 10,
   _undoStack: [],
   _redoStack: [],
-  _ctx: null,
-  _exportCtx: null,
-  _cellSize: 8,
   _isDrawing: false,
-  _canvasRect: null,
-  _isPanning: false,
-  _startPanX: 0,
-  _startPanY: 0,
-  _startOffsetX: 0,
-  _startOffsetY: 0,
-  _pinchStartDistance: 0,
-  _pinchStartScale: 1,
-  _renderTimer: null,
-  _lastPaintKey: '',
-  _draftId: null,
+  _lastPos: null,
 
   onLoad(options) {
-    // 检查是否有草稿ID传入
-    if (options.draftId) {
-      this._draftId = parseInt(options.draftId);
-      const gridSize = options.gridSize ? parseInt(options.gridSize) : 64;
-      const brand = options.brand || 'MARD';
-      
-      this.setData({ gridSize, gridSizeIndex: this.data.gridSizeOptions.indexOf(gridSize) >= 0 ? this.data.gridSizeOptions.indexOf(gridSize) : 3 });
-      this._applyGridSize(gridSize);
-      
-      // 设置品牌
-      if (brand && this.data.brandList.includes(brand)) {
-        const brandIndex = this.data.brandList.indexOf(brand);
-        this.setData({ brandIndex });
-      }
-      
-      // 加载草稿数据
-      this._loadDraft(this._draftId);
-    } else {
-      this._applyGridSize(this.data.gridSize);
-    }
-    this._loadDefaultBrand();
+    this._initData();
   },
 
-  // 加载草稿数据
-  _loadDraft(draftId) {
-    wx.showLoading({ title: '加载中...' });
-    request.get('/draft/detail/' + draftId)
-      .then((draft) => {
-        wx.hideLoading();
-        if (!draft) return;
-        
-        // 解析数据
-        let gridData = [];
-        try {
-          gridData = JSON.parse(draft.gridData || '[]');
-        } catch (e) {}
-        
-        let colorPalette = [];
-        try {
-          colorPalette = JSON.parse(draft.colorPalette || '[]');
-        } catch (e) {}
-        
-        if (gridData.length > 0) {
-          // 恢复画板数据
-          this._grid = gridData.map(row => 
-            row.map(idx => {
-              const color = colorPalette[idx];
-              if (color) {
-                return '#' + [color.r, color.g, color.b].map(v => Number(v).toString(16).padStart(2, '0')).join('').toUpperCase();
-              }
-              return '#FFFFFF';
-            })
-          );
-          this._render();
-        }
-        
-        wx.showToast({ title: '已加载草稿', icon: 'success' });
-      })
-      .catch(() => {
-        wx.hideLoading();
-        wx.showToast({ title: '加载失败', icon: 'none' });
-      });
+  onReady() {
+    this._initCanvas();
   },
 
-  _initGrid(size) {
-    this._grid = Array.from({ length: size }, () => Array(size).fill('#FFFFFF'));
-  },
-
-  _initCanvas() {
-    this._ctx = wx.createCanvasContext('draw-canvas', this);
-    this._exportCtx = wx.createCanvasContext('export-canvas', this);
-    this._refreshCanvasRect();
-    this._render();
-  },
-
-  _applyGridSize(gridSize) {
+  // 初始化数据
+  _initData() {
     const info = wx.getSystemInfoSync();
-    const canvasSize = Math.min(info.windowWidth - 32, Math.floor(info.windowHeight * 0.5));
-    const cellSize = Math.max(4, Math.floor(canvasSize / gridSize));
-    const actualSize = cellSize * gridSize;
-    this._cellSize = cellSize;
-    this.setData({ canvasSize: actualSize, gridSize }, () => {
-      this._initGrid(gridSize);
-      if (!this._ctx) this._initCanvas();
-      else this._render();
+    const size = Math.min(info.windowWidth - 80, info.windowHeight * 0.4);
+    const canvasSize = Math.floor(size / this.data.gridSize) * this.data.gridSize;
+    this._cellSize = canvasSize / this.data.gridSize;
+    this._gridData = Array.from({ length: this.data.gridSize }, 
+      () => Array(this.data.gridSize).fill('#FFFFFF'));
+    this.setData({ 
+      canvasWidth: canvasSize, 
+      canvasHeight: canvasSize 
     });
   },
 
-  _loadPaletteColors(brand, colorCount) {
-    this.setData({ paletteLoading: true });
-    request.get('/bead/colors?brand=' + encodeURIComponent(brand) + '&colorCount=' + (colorCount || 0))
-      .then((list) => {
-        const items = (Array.isArray(list) ? list : []).map((c, idx) => {
-          const hex = '#' + [c.r, c.g, c.b].map(v => Number(v).toString(16).padStart(2, '0')).join('').toUpperCase();
-          return { hex, code: c.id || ('C' + (idx + 1)), name: c.name || '' };
-        });
-        const paletteItems = items.length ? items : [{ hex: '#000000', code: 'K01', name: '黑色' }, { hex: '#FFFFFF', code: 'W01', name: '白色' }];
-        const colors = paletteItems.map(i => i.hex);
-        const currentColor = colors.includes(this.data.currentColor) ? this.data.currentColor : colors[0];
-        const picked = paletteItems.find(i => i.hex === currentColor) || paletteItems[0];
-        this.setData({
-          paletteItems,
-          colors,
-          currentColor,
-          currentColorCode: picked.code,
-          currentColorName: picked.name || picked.code,
-          paletteLoading: false
-        });
-      })
-      .catch(() => {
-        this.setData({ paletteLoading: false });
-      });
-  },
-
-  _loadDefaultBrand() {
-    request.get('/bead/brands')
-      .then((data) => {
-        const dict = data && typeof data === 'object' ? data : {};
-        const list = Object.keys(dict);
-        const finalList = list && list.length ? list : ['MARD'];
-        const first = finalList[0];
-        const kits = dict[first] || [];
-        const colorCountOptions = [{ value: 0, label: '全部色号' }, ...kits.map(k => ({ value: k, label: k + '色' }))];
-        this._brandName = first;
-        this._brandsData = dict;
-        this.setData({
-          brandList: finalList,
-          brandIndex: 0,
-          colorCountOptions,
-          colorCountIndex: 0,
-          colorCountValue: 0,
-        });
-        this._loadPaletteColors(first, 0);
-      })
-      .catch(() => {
-        this._brandName = 'MARD';
-        this._brandsData = { MARD: [24, 48, 72, 96] };
-        this.setData({
-          brandList: ['MARD'],
-          brandIndex: 0,
-          colorCountOptions: [
-            { value: 0, label: '全部色号' },
-            { value: 24, label: '24色' },
-            { value: 48, label: '48色' },
-            { value: 72, label: '72色' },
-            { value: 96, label: '96色' }
-          ],
-          colorCountIndex: 0,
-          colorCountValue: 0,
-        });
-        this._loadPaletteColors('MARD', 0);
-      });
-  },
-
-  _refreshCanvasRect() {
+  // 初始化Canvas - 参考perlerBeadsApplet
+  _initCanvas() {
     const query = wx.createSelectorQuery().in(this);
-    query.select('.draw-canvas').boundingClientRect((rect) => {
-      this._canvasRect = rect || null;
-    }).exec();
+    query.select('#drawCanvas')
+      .fields({ node: true, size: true })
+      .exec((res) => {
+        if (res && res[0] && res[0].node) {
+          const canvas = res[0].node;
+          const ctx = canvas.getContext('2d');
+          const dpr = wx.getSystemInfoSync().pixelRatio || 1;
+          
+          // 设置Canvas实际像素大小
+          canvas.width = this.data.canvasWidth * dpr;
+          canvas.height = this.data.canvasHeight * dpr;
+          ctx.scale(dpr, dpr);
+          
+          this._canvas = canvas;
+          this._ctx = ctx;
+          
+          // 初始化离屏Canvas
+          this._initOffscreenCanvas();
+          
+          // 绘制初始网格
+          this._drawFullGrid();
+        }
+      });
   },
 
-  _render() {
-    if (this._renderTimer) return;
-    this._renderTimer = setTimeout(() => {
-      this._renderTimer = null;
-      this._doRender();
-    }, 16);
+  // 离屏Canvas - 参考perlerBeadsApplet
+  _initOffscreenCanvas() {
+    try {
+      this._offscreenCanvas = wx.createOffscreenCanvas({
+        type: '2d',
+        width: this.data.canvasWidth,
+        height: this.data.canvasHeight
+      });
+      this._offscreenCtx = this._offscreenCanvas.getContext('2d');
+    } catch (e) {
+      console.log('OffscreenCanvas not supported');
+    }
   },
 
-  _doRender() {
+  // 绘制完整网格 - 参考perlerBeadsApplet
+  _drawFullGrid() {
     const ctx = this._ctx;
     if (!ctx) return;
-
-    const cs = this._cellSize;
-    const size = this.data.gridSize;
-    const totalSize = size * cs;
-
-    ctx.clearRect(0, 0, totalSize, totalSize);
-
-    // 批量绘制格子
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        ctx.setFillStyle(this._grid[y][x]);
-        ctx.fillRect(x * cs, y * cs, cs, cs);
+    
+    const { canvasWidth, canvasHeight, gridSize, showGrid } = this.data;
+    const cellSize = this._cellSize;
+    
+    // 清空画布
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    
+    // 绘制像素数据
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        const color = this._gridData[y][x];
+        if (color !== '#FFFFFF') {
+          ctx.fillStyle = color;
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
       }
     }
-
-    // 网格单独绘制（条件绘制）
-    if (this.data.showGrid) {
-      ctx.setStrokeStyle('rgba(210,210,210,0.5)');
-      ctx.setLineWidth(0.5);
-      for (let y = 0; y <= size; y++) {
+    
+    // 绘制网格线
+    if (showGrid && cellSize >= 6) {
+      ctx.strokeStyle = 'rgba(180, 180, 200, 0.6)';
+      ctx.lineWidth = 1;
+      
+      for (let i = 0; i <= gridSize; i++) {
+        const pos = i * cellSize;
+        // 竖线
         ctx.beginPath();
-        ctx.moveTo(0, y * cs);
-        ctx.lineTo(totalSize, y * cs);
+        ctx.moveTo(pos, 0);
+        ctx.lineTo(pos, canvasHeight);
         ctx.stroke();
-      }
-      for (let x = 0; x <= size; x++) {
+        // 横线
         ctx.beginPath();
-        ctx.moveTo(x * cs, 0);
-        ctx.lineTo(x * cs, totalSize);
+        ctx.moveTo(0, pos);
+        ctx.lineTo(canvasWidth, pos);
         ctx.stroke();
       }
     }
-
+    
     ctx.draw();
   },
 
-  _saveUndo() {
-    this._undoStack.push(JSON.stringify(this._grid));
-    if (this._undoStack.length > 40) this._undoStack.shift();
+  // 保存撤销状态
+  _saveState() {
+    const state = JSON.stringify(this._gridData);
+    this._undoStack.push(state);
+    if (this._undoStack.length > 50) this._undoStack.shift();
     this._redoStack = [];
     this.setData({ canUndo: true, canRedo: false });
   },
 
-  _getCell(pageX, pageY) {
-    const rect = this._canvasRect;
-    if (!rect) return null;
-
-    const px = pageX - rect.left;
-    const py = pageY - rect.top;
-
-    const cx = (px - rect.width / 2 - this.data.offsetX) / this.data.scale + rect.width / 2;
-    const cy = (py - rect.height / 2 - this.data.offsetY) / this.data.scale + rect.height / 2;
-
-    const x = Math.floor(cx / this._cellSize);
-    const y = Math.floor(cy / this._cellSize);
-    const size = this.data.gridSize;
-    if (x < 0 || y < 0 || x >= size || y >= size) return null;
-    return { x, y };
+  // 触摸开始
+  handleTouchStart(e) {
+    const touch = e.touches[0];
+    const pos = this._getPixelPosition(touch.clientX, touch.clientY);
+    if (!pos) return;
+    
+    this._isDrawing = true;
+    this._lastPos = pos;
+    this._saveState();
+    this._paintPixel(pos.row, pos.col);
   },
 
-  _paintCell(x, y) {
-    const { activeTool, currentColor, symmetry, gridSize } = this.data;
-    let changed = false;
-    if (activeTool === 'picker') {
-      const c = this._grid[y][x];
-      this.setData({ currentColor: c, activeTool: 'brush' });
-      return false;
+  // 触摸移动
+  handleTouchMove(e) {
+    if (!this._isDrawing) return;
+    
+    const touch = e.touches[0];
+    const pos = this._getPixelPosition(touch.clientX, touch.clientY);
+    if (!pos) return;
+    
+    // 使用Bresenham画线
+    if (this._lastPos) {
+      this._paintLine(this._lastPos.row, this._lastPos.col, pos.row, pos.col);
+    } else {
+      this._paintPixel(pos.row, pos.col);
     }
+    this._lastPos = pos;
+  },
 
-    if (activeTool === 'fill') {
-      return this._floodFill(x, y, currentColor);
+  // 触摸结束
+  handleTouchEnd() {
+    this._isDrawing = false;
+    this._lastPos = null;
+  },
+
+  // 获取像素位置 - 参考perlerBeadsApplet
+  _getPixelPosition(touchX, touchY) {
+    const query = wx.createSelectorQuery().in(this);
+    let rect = null;
+    
+    query.select('#drawCanvas').boundingClientRect((res) => {
+      rect = res;
+    }).exec();
+    
+    // 同步获取（在小程序中需要这样处理）
+    const syncQuery = wx.createSelectorQuery().in(this);
+    syncQuery.select('#drawCanvas').boundingClientRect().exec((res) => {
+      if (res && res[0]) {
+        this._canvasRect = res[0];
+      }
+    });
+    
+    // 使用缓存的rect
+    const canvasRect = this._canvasRect;
+    if (!canvasRect) return null;
+    
+    const { canvasWidth, canvasHeight, gridSize } = this.data;
+    const minSize = Math.min(canvasWidth, canvasHeight);
+    const centerX = (canvasWidth - minSize) / 2;
+    const centerY = (canvasHeight - minSize) / 2;
+    
+    const left = centerX;
+    const top = centerY;
+    
+    const col = Math.floor((touchX - left) / this._cellSize);
+    const row = Math.floor((touchY - top) / this._cellSize);
+    
+    if (col >= 0 && col < gridSize && row >= 0 && row < gridSize) {
+      return { row, col };
     }
+    return null;
+  },
 
-    const color = activeTool === 'eraser' ? '#FFFFFF' : currentColor;
-    const half = Math.floor(this.data.brushSize / 2);
-
+  // 绘制单个像素
+  _paintPixel(row, col) {
+    const { tool, currentColor, symmetry, gridSize } = this.data;
+    
+    if (tool === 'picker') {
+      const pickedColor = this._gridData[row][col];
+      if (pickedColor !== '#FFFFFF') {
+        this.setData({ currentColor: pickedColor, tool: 'pen' });
+      }
+      return;
+    }
+    
+    if (tool === 'fill') {
+      this._floodFill(row, col, currentColor);
+      this._drawFullGrid();
+      return;
+    }
+    
+    const color = tool === 'eraser' ? '#FFFFFF' : currentColor;
+    this._gridData[row][col] = color;
+    
+    // 对称绘制
+    if (symmetry) {
+      const symCol = gridSize - 1 - col;
+      if (symCol >= 0 && symCol < gridSize) {
+        this._gridData[row][symCol] = color;
+      }
+    }
+    
+    // 笔刷大小
+    const { brushSize } = this.data;
+    const half = Math.floor(brushSize / 2);
     for (let dy = -half; dy <= half; dy++) {
       for (let dx = -half; dx <= half; dx++) {
-        const px = x + dx;
-        const py = y + dy;
-        if (px < 0 || py < 0 || px >= gridSize || py >= gridSize) continue;
-        if (this._grid[py][px] !== color) {
-          this._grid[py][px] = color;
-          changed = true;
-        }
-
-        if (symmetry) {
-          const sx = gridSize - 1 - px;
-          if (this._grid[py][sx] !== color) {
-            this._grid[py][sx] = color;
-            changed = true;
+        const r = row + dy;
+        const c = col + dx;
+        if (r >= 0 && r < gridSize && c >= 0 && c < gridSize) {
+          this._gridData[r][c] = color;
+          if (symmetry) {
+            const symC = gridSize - 1 - c;
+            if (symC >= 0 && symC < gridSize) {
+              this._gridData[r][symC] = color;
+            }
           }
         }
       }
     }
-    return changed;
+    
+    this._drawFullGrid();
   },
 
-  _floodFill(x, y, newColor) {
-    const size = this.data.gridSize;
-    const target = this._grid[y][x];
-    if (target === newColor) return false;
-
-    const q = [[x, y]];
-    const visited = new Set();
-    let changed = false;
-
-    while (q.length) {
-      const [cx, cy] = q.shift();
-      const key = cx + ',' + cy;
-      if (visited.has(key)) continue;
-      visited.add(key);
-
-      if (cx < 0 || cy < 0 || cx >= size || cy >= size) continue;
-      if (this._grid[cy][cx] !== target) continue;
-
-      this._grid[cy][cx] = newColor;
-      changed = true;
-      q.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
-    }
-    return changed;
-  },
-
-  _distance(t1, t2) {
-    const dx = t1.clientX - t2.clientX;
-    const dy = t1.clientY - t2.clientY;
-    return Math.sqrt(dx * dx + dy * dy);
-  },
-
-  onTouchStart(e) {
-    const touches = e.touches || [];
-    if (!touches.length) return;
-    this._refreshCanvasRect();
-
-    if (touches.length >= 2) {
-      this._isPanning = true;
-      this._isDrawing = false;
-      this._pinchStartDistance = this._distance(touches[0], touches[1]);
-      this._pinchStartScale = this.data.scale;
-      this._startPanX = (touches[0].clientX + touches[1].clientX) / 2;
-      this._startPanY = (touches[0].clientY + touches[1].clientY) / 2;
-      this._startOffsetX = this.data.offsetX;
-      this._startOffsetY = this.data.offsetY;
-      return;
-    }
-
-    const t = touches[0];
-    if (this.data.activeTool === 'grab') {
-      this._isPanning = true;
-      this._startPanX = t.clientX;
-      this._startPanY = t.clientY;
-      this._startOffsetX = this.data.offsetX;
-      this._startOffsetY = this.data.offsetY;
-      return;
-    }
-
-    this._isDrawing = true;
-    this._lastPaintKey = '';
-    this._saveUndo();
-    const cell = this._getCell(t.clientX, t.clientY);
-    if (!cell) return;
-    const changed = this._paintCell(cell.x, cell.y);
-    this._lastPaintKey = cell.x + ',' + cell.y;
-    if (changed) this._render();
-  },
-
-  onTouchMove(e) {
-    const touches = e.touches || [];
-    if (!touches.length) return;
-
-    if (this._isPanning) {
-      if (touches.length >= 2) {
-        const curDist = this._distance(touches[0], touches[1]);
-        const ratio = this._pinchStartDistance ? (curDist / this._pinchStartDistance) : 1;
-        const nextScale = Math.min(4, Math.max(0.5, this._pinchStartScale * ratio));
-
-        const cx = (touches[0].clientX + touches[1].clientX) / 2;
-        const cy = (touches[0].clientY + touches[1].clientY) / 2;
-        this.setData({
-          scale: nextScale,
-          offsetX: this._startOffsetX + (cx - this._startPanX),
-          offsetY: this._startOffsetY + (cy - this._startPanY),
-        });
-      } else {
-        const t = touches[0];
-        this.setData({
-          offsetX: this._startOffsetX + (t.clientX - this._startPanX),
-          offsetY: this._startOffsetY + (t.clientY - this._startPanY),
-        });
+  // Bresenham画线算法
+  _paintLine(r0, c0, r1, c1) {
+    const dr = Math.abs(r1 - r0);
+    const dc = Math.abs(c1 - c0);
+    const sr = r0 < r1 ? 1 : -1;
+    const sc = c0 < c1 ? 1 : -1;
+    let err = dc - dr;
+    
+    while (true) {
+      this._paintPixel(r0, c0);
+      if (r0 === r1 && c0 === c1) break;
+      const e2 = 2 * err;
+      if (e2 > -dr) {
+        err -= dr;
+        c0 += sc;
       }
-      return;
+      if (e2 < dc) {
+        err += dc;
+        r0 += sr;
+      }
     }
-
-    if (!this._isDrawing) return;
-    if (this.data.activeTool === 'fill' || this.data.activeTool === 'picker') return;
-
-    const t = touches[0];
-    const cell = this._getCell(t.clientX, t.clientY);
-    if (!cell) return;
-    const key = cell.x + ',' + cell.y;
-    if (key === this._lastPaintKey) return;
-    const changed = this._paintCell(cell.x, cell.y);
-    this._lastPaintKey = key;
-    if (changed) this._render();
   },
 
-  onTouchEnd() {
-    this._isDrawing = false;
-    this._isPanning = false;
-    this._pinchStartDistance = 0;
-    this._lastPaintKey = '';
+  // 洪水填充
+  _floodFill(startRow, startCol, newColor) {
+    const targetColor = this._gridData[startRow][startCol];
+    if (targetColor === newColor) return;
+    
+    const { gridSize } = this.data;
+    const stack = [[startRow, startCol]];
+    const visited = new Set();
+    
+    while (stack.length > 0) {
+      const [r, c] = stack.pop();
+      const key = `${r},${c}`;
+      
+      if (visited.has(key)) continue;
+      if (r < 0 || r >= gridSize || c < 0 || c >= gridSize) continue;
+      if (this._gridData[r][c] !== targetColor) continue;
+      
+      visited.add(key);
+      this._gridData[r][c] = newColor;
+      
+      stack.push([r + 1, c], [r - 1, c], [r, c + 1], [r, c - 1]);
+    }
   },
 
-  onToolTap(e) {
-    this.setData({ activeTool: e.currentTarget.dataset.tool });
+  // 撤销
+  onUndo() {
+    if (this._undoStack.length === 0) return;
+    this._redoStack.push(JSON.stringify(this._gridData));
+    this._gridData = JSON.parse(this._undoStack.pop());
+    this.setData({ canUndo: this._undoStack.length > 0, canRedo: true });
+    this._drawFullGrid();
   },
 
-  onColorTap(e) {
+  // 重做
+  onRedo() {
+    if (this._redoStack.length === 0) return;
+    this._undoStack.push(JSON.stringify(this._gridData));
+    this._gridData = JSON.parse(this._redoStack.pop());
+    this.setData({ canUndo: true, canRedo: this._redoStack.length > 0 });
+    this._drawFullGrid();
+  },
+
+  // 选择工具
+  onSelectTool(e) {
+    const tool = e.currentTarget.dataset.tool;
+    if (tool === 'undo') { this.onUndo(); return; }
+    if (tool === 'redo') { this.onRedo(); return; }
+    this.setData({ tool });
+  },
+
+  // 选择笔刷大小
+  onBrushSize(e) {
+    const size = parseInt(e.currentTarget.dataset.size, 10);
+    this.setData({ brushSize: size });
+  },
+
+  // 切换网格
+  onToggleGrid() {
+    this.setData({ showGrid: !this.data.showGrid });
+    this._drawFullGrid();
+  },
+
+  // 切换对称
+  onToggleSymmetry() {
+    this.setData({ symmetry: !this.data.symmetry });
+  },
+
+  // 选择颜色
+  onSelectColor(e) {
     const color = e.currentTarget.dataset.color;
-    const picked = (this.data.paletteItems || []).find(i => i.hex === color);
-    this.setData({
-      currentColor: color,
-      currentColorCode: picked ? picked.code : '',
-      currentColorName: picked ? (picked.name || picked.code) : ''
-    });
-    if (this.data.activeTool === 'eraser') {
-      this.setData({ activeTool: 'brush' });
+    this.setData({ currentColor: color, currentCode: this._getColorCode(color) });
+  },
+
+  // 获取颜色代码
+  _getColorCode(hex) {
+    const index = this.data.colors.indexOf(hex);
+    if (index >= 0) {
+      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      const letter = letters[Math.floor(index / 10)] || 'A';
+      const num = (index % 10) + 1;
+      return `${letter}${num.toString().padStart(2, '0')}`;
     }
+    return 'C01';
   },
 
-  onBrandChange(e) {
-    const idx = parseInt(e.detail.value, 10) || 0;
-    const name = this.data.brandList[idx] || 'MARD';
-    const kits = (this._brandsData && this._brandsData[name]) ? this._brandsData[name] : [];
-    const colorCountOptions = [{ value: 0, label: '全部色号' }, ...kits.map(k => ({ value: k, label: k + '色' }))];
-    this._brandName = name;
-    this.setData({
-      brandIndex: idx,
-      colorCountOptions,
-      colorCountIndex: 0,
-      colorCountValue: 0,
-    });
-    this._loadPaletteColors(name, 0);
+  // 打开颜色详情
+  onOpenColorDetail() {
+    const count = this._countColorUsage(this.data.currentColor);
+    this.setData({ showColorModal: true, colorCount: count });
   },
 
-  onColorCountChange(e) {
-    const idx = parseInt(e.detail.value, 10) || 0;
-    const opt = this.data.colorCountOptions[idx] || { value: 0 };
-    const colorCountValue = parseInt(opt.value, 10) || 0;
-    this.setData({ colorCountIndex: idx, colorCountValue });
-    const brand = this.data.brandList[this.data.brandIndex] || this._brandName || 'MARD';
-    this._loadPaletteColors(brand, colorCountValue);
+  // 关闭颜色详情
+  onCloseColorModal() {
+    this.setData({ showColorModal: false });
   },
 
-  _hexToRgb(hex) {
-    const h = (hex || '').replace('#', '');
-    if (h.length !== 6) return { r: 0, g: 0, b: 0 };
-    return {
-      r: parseInt(h.slice(0, 2), 16),
-      g: parseInt(h.slice(2, 4), 16),
-      b: parseInt(h.slice(4, 6), 16),
-    };
-  },
-
-  _countColorUsage(hex) {
-    const target = (hex || '').toUpperCase();
+  // 统计颜色使用
+  _countColorUsage(color) {
     let count = 0;
-    const size = this.data.gridSize;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        if ((this._grid[y][x] || '').toUpperCase() === target) count++;
+    for (let y = 0; y < this.data.gridSize; y++) {
+      for (let x = 0; x < this.data.gridSize; x++) {
+        if (this._gridData[y][x].toUpperCase() === color.toUpperCase()) count++;
       }
     }
     return count;
   },
 
-  onOpenCurrentColorDetail() {
-    const count = this._countColorUsage(this.data.currentColor);
-    this.setData({ showColorDetail: true, colorUsageCount: count });
-  },
-
-  onCloseColorDetail() {
-    this.setData({ showColorDetail: false });
-  },
-
-  onSaveToPatternBox() {
-    ensureProfileComplete().then((ok) => {
-      if (!ok) return;
-
-      const stats = this._buildColorStats();
-      if (!stats.length) {
-        wx.showToast({ title: '画板还没有内容', icon: 'none' });
-        return;
-      }
-
-      wx.showLoading({ title: '保存中...' });
-      const brand = this.data.brandList[this.data.brandIndex] || this._brandName || 'MARD';
-
-      this._buildBeadCodeMap(stats).then((codeMap) => {
-        // 构建 gridData
-        const gridData = [];
-        for (let y = 0; y < this.data.gridSize; y++) {
-          const row = [];
-          for (let x = 0; x < this.data.gridSize; x++) {
-            const colorIndex = this._grid[y] && this._grid[y][x] !== undefined ? this._grid[y][x] : 0;
-            row.push(colorIndex);
-          }
-          gridData.push(row);
-        }
-
-        // 构建 colorPalette
-        const colorPalette = stats.map(c => ({
-          id: c.id,
-          name: c.name,
-          r: c.r,
-          g: c.g,
-          b: c.b
-        }));
-
-        // 保存到草稿箱
-        return request.post('/draft/save', {
-          sourceType: 'DRAW',
-          brand: brand,
-          colorCount: stats.length,
-          name: '',
-          gridSize: this.data.gridSize,
-          gridData: JSON.stringify(gridData),
-          colorPalette: JSON.stringify(colorPalette)
-        });
-      }).then((data) => {
-        wx.hideLoading();
-        this.setData({ showColorDetail: false });
-        wx.showToast({ title: '已保存到草稿箱', icon: 'success' });
-      }).catch(() => {
-        wx.hideLoading();
-        wx.showToast({ title: '保存失败', icon: 'none' });
-      });
-    });
-  },
-
-  _uploadFile(filePath, sessionId) {
-    return new Promise((resolve, reject) => {
-      if (!filePath || filePath.startsWith('http')) {
-        resolve(filePath || '');
-        return;
-      }
-      wx.uploadFile({
-        url: API_BASE_URL + '/image/upload',
-        filePath,
-        name: 'file',
-        header: { 'X-Session-Id': sessionId },
-        success: (res) => {
-          try {
-            const body = JSON.parse(res.data || '{}');
-            if (res.statusCode === 200 && body.code === 0) {
-              resolve(body.data.imageUrl || body.data.originalUrl || '');
-              return;
-            }
-          } catch (e) {}
-          reject(new Error('upload fail'));
-        },
-        fail: reject,
-      });
-    });
-  },
-
-  onSizeMinus() {
-    this.setData({ brushSize: Math.max(1, this.data.brushSize - 1) });
-  },
-
-  onGridSizeChange(e) {
-    const idx = parseInt(e.detail.value, 10) || 0;
-    const nextSize = this.data.gridSizeOptions[idx] || 64;
-    this.setData({ gridSizeIndex: idx, offsetX: 0, offsetY: 0, scale: 1 });
-    this._undoStack = [];
-    this._redoStack = [];
-    this.setData({ canUndo: false, canRedo: false });
-    this._applyGridSize(nextSize);
-  },
-
-  onSizePlus() {
-    this.setData({ brushSize: Math.min(7, this.data.brushSize + 1) });
-  },
-
-  onSymmetry() {
-    this.setData({ symmetry: !this.data.symmetry });
-  },
-
-  onUndo() {
-    if (!this._undoStack.length) return;
-    this._redoStack.push(JSON.stringify(this._grid));
-    this._grid = JSON.parse(this._undoStack.pop());
-    this.setData({ canUndo: this._undoStack.length > 0, canRedo: true });
-    this._render();
-  },
-
-  onRedo() {
-    if (!this._redoStack.length) return;
-    this._undoStack.push(JSON.stringify(this._grid));
-    this._grid = JSON.parse(this._redoStack.pop());
-    this.setData({ canUndo: true, canRedo: this._redoStack.length > 0 });
-    this._render();
-  },
-
+  // 清空
   onClear() {
     wx.showModal({
-      title: '确认清空',
-      content: '将清除所有绘制内容',
+      title: '清空画板',
+      content: '确定要清空整个画布吗？',
       success: (res) => {
-        if (!res.confirm) return;
-        this._saveUndo();
-        this._initGrid(this.data.gridSize);
-        this._render();
+        if (res.confirm) {
+          this._saveState();
+          this._gridData = Array.from({ length: this.data.gridSize }, 
+            () => Array(this.data.gridSize).fill('#FFFFFF'));
+          this._drawFullGrid();
+        }
       }
     });
   },
 
-  onFlip() {
-    this._saveUndo();
-    for (let y = 0; y < this.data.gridSize; y++) {
-      this._grid[y].reverse();
-    }
-    this._render();
+  // 保存
+  onSave() {
+    ensureProfileComplete().then((ok) => {
+      if (!ok) return;
+      this._saveDraft();
+    });
   },
 
-  onGrid() {
-    this.setData({ showGrid: !this.data.showGrid });
-    this._render();
+  // 保存草稿
+  _saveDraft() {
+    this.setData({ loading: true, loadingText: '保存中...' });
+    
+    const colorStats = this._buildColorStats();
+    const colorPalette = colorStats.map((s, idx) => ({
+      index: idx,
+      id: s.id,
+      name: s.name,
+      r: s.r,
+      g: s.g,
+      b: s.b,
+      count: s.count
+    }));
+    
+    const gridData = this._gridData.map(row => 
+      row.map(hex => {
+        const idx = colorStats.findIndex(s => 
+          '#' + [s.r, s.g, s.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase() === hex.toUpperCase()
+        );
+        return idx >= 0 ? idx : 0;
+      })
+    );
+    
+    request.post('/draft/save', {
+      sourceType: 'DRAW',
+      brand: 'MARD',
+      colorCount: colorStats.length,
+      gridSize: this.data.gridSize,
+      gridData: JSON.stringify(gridData),
+      colorPalette: JSON.stringify(colorPalette)
+    })
+    .then(() => {
+      this.setData({ loading: false });
+      wx.showToast({ title: '已保存', icon: 'success' });
+    })
+    .catch(() => {
+      this.setData({ loading: false });
+      wx.showToast({ title: '保存失败', icon: 'none' });
+    });
   },
 
-  onCenter() {
-    this.setData({ offsetX: 0, offsetY: 0, scale: 1 });
-    wx.showToast({ title: '已复位', icon: 'none' });
-  },
-
-  onResetZoom() {
-    this.setData({ offsetX: 0, offsetY: 0, scale: 1 });
-  },
-
-  onGrab() {
-    const next = this.data.activeTool === 'grab' ? 'brush' : 'grab';
-    this.setData({ activeTool: next });
-  },
-
+  // 构建颜色统计
   _buildColorStats() {
     const map = new Map();
-    const size = this.data.gridSize;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const c = this._grid[y][x];
-        if (c === '#FFFFFF') continue;
-        const key = c.toUpperCase();
-        map.set(key, (map.get(key) || 0) + 1);
+    for (let y = 0; y < this.data.gridSize; y++) {
+      for (let x = 0; x < this.data.gridSize; x++) {
+        const hex = this._gridData[y][x];
+        if (hex === '#FFFFFF') continue;
+        map.set(hex, (map.get(hex) || 0) + 1);
       }
     }
-
+    
     const stats = [];
     map.forEach((count, hex) => {
       const r = parseInt(hex.slice(1, 3), 16);
       const g = parseInt(hex.slice(3, 5), 16);
       const b = parseInt(hex.slice(5, 7), 16);
-      stats.push({
-        id: hex.replace('#', ''),
-        name: hex,
-        count,
-        r, g, b,
-      });
+      stats.push({ id: hex.replace('#', ''), name: hex, count, r, g, b });
     });
-
-    stats.sort((a, b) => b.count - a.count);
-    return stats;
+    
+    return stats.sort((a, b) => b.count - a.count);
   },
 
-  _exportImage(mode, codeMap, callback) {
-    const ctx = this._exportCtx;
-    if (!ctx) return;
-
-    const size = this.data.gridSize;
-    const pixel = 16;
-    const outSize = size * pixel;
-
-    ctx.setFillStyle('#FFFFFF');
-    ctx.fillRect(0, 0, outSize, outSize);
-
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const color = this._grid[y][x];
-        ctx.setFillStyle(color);
-        ctx.fillRect(x * pixel, y * pixel, pixel, pixel);
-
-        if (mode === 'pattern') {
-          ctx.setStrokeStyle('rgba(170,170,170,0.65)');
-          ctx.setLineWidth(1);
-          ctx.strokeRect(x * pixel, y * pixel, pixel, pixel);
-
-          if (color !== '#FFFFFF') {
-            const key = color.toUpperCase();
-            const label = (codeMap && codeMap[key]) ? codeMap[key] : color.replace('#', '').slice(0, 2).toUpperCase();
-            ctx.setFillStyle('#222222');
-            ctx.setFontSize(Math.max(8, Math.floor(pixel * 0.55)));
-            ctx.setTextAlign('center');
-            ctx.setTextBaseline('middle');
-            ctx.fillText(label, x * pixel + pixel / 2, y * pixel + pixel / 2);
-          }
-        }
-      }
-    }
-
-    ctx.draw(false, () => {
-      wx.canvasToTempFilePath({
-        canvasId: 'export-canvas',
-        x: 0,
-        y: 0,
-        width: outSize,
-        height: outSize,
-        destWidth: outSize,
-        destHeight: outSize,
-        success: (res) => callback && callback(res.tempFilePath),
-        fail: () => wx.showToast({ title: '导出失败', icon: 'none' })
-      }, this);
-    });
-  },
-
-  _buildBeadCodeMap(stats) {
-    const brand = this.data.brandList[this.data.brandIndex] || this._brandName || 'MARD';
-    const colorCount = this.data.colorCountValue || 0;
-    if (!stats || !stats.length) return Promise.resolve({});
-
-    const grid = [stats.map((s) => [s.r, s.g, s.b])];
-    return request.post('/bead/match-colors', {
-      brand,
-      algo: 'standard',
-      colorCount,
-      grid,
-    }).then((matched) => {
-      const map = {};
-      const row = matched && matched[0] ? matched[0] : [];
-      stats.forEach((s, i) => {
-        const m = row[i] || {};
-        map[('#' + s.id).toUpperCase()] = m.id || s.id;
-      });
-      return map;
-    }).catch(() => {
-      return {};
-    });
-  },
-
-  onPreview() {
+  // 导出图纸
+  onExport() {
     const stats = this._buildColorStats();
-    if (!stats.length) {
+    if (stats.length === 0) {
       wx.showToast({ title: '画板还没有内容', icon: 'none' });
       return;
     }
-
-    this._buildBeadCodeMap(stats).then((codeMap) => {
-      this._exportImage('result', codeMap, (resultUrl) => {
-        this._exportImage('pattern', codeMap, (patternUrl) => {
-          const brandName = this.data.brandList[this.data.brandIndex] || this._brandName || 'MARD';
-          const qs = [
-            'taskId=-1',
-            'originalUrl=' + encodeURIComponent(resultUrl),
-            'resultUrl=' + encodeURIComponent(resultUrl),
-            'patternUrl=' + encodeURIComponent(patternUrl),
-            'colorStats=' + encodeURIComponent(JSON.stringify(stats)),
-            'gridSize=' + this.data.gridSize,
-            'brand=' + encodeURIComponent(brandName)
-          ].join('&');
-
-          wx.navigateTo({ url: '/pages/result/result?' + qs });
-        });
-      });
-    });
-  },
-
-  onFinish() {
-    wx.showModal({
-      title: '完成作品',
-      content: '确认完成并预览图纸？',
+    
+    this.setData({ loading: true, loadingText: '生成中...' });
+    
+    const exportSize = this.data.gridSize * 16;
+    
+    wx.canvasToTempFilePath({
+      canvasId: 'drawCanvas',
+      x: 0,
+      y: 0,
+      width: this.data.canvasWidth,
+      height: this.data.canvasHeight,
+      destWidth: exportSize,
+      destHeight: exportSize,
+      fileType: 'png',
       success: (res) => {
-        if (res.confirm) this.onPreview();
-      }
-    });
-  },
-
-  onDraft() {
-    ensureProfileComplete().then((ok) => {
-      if (!ok) return;
-      
-      const stats = this._buildColorStats();
-      const brand = this.data.brandList[this.data.brandIndex] || this._brandName || 'MARD';
-      const colorCount = this.data.colorCountValue || 0;
-      const gridSize = this.data.gridSize;
-      
-      // 构建 colorPalette
-      const colorPalette = stats.map((s, idx) => ({
-        index: idx,
-        id: s.id,
-        name: s.name,
-        r: s.r,
-        g: s.g,
-        b: s.b,
-        count: s.count
-      }));
-      
-      // 构建 gridData（颜色值转索引）
-      const colorIndexMap = {};
-      stats.forEach((s, idx) => {
-        const hex = '#' + [s.r, s.g, s.b].map(v => Number(v).toString(16).padStart(2, '0')).join('').toUpperCase();
-        colorIndexMap[hex] = idx;
-      });
-      
-      const gridData = this._grid.map(row => 
-        row.map(hex => {
-          const upperHex = hex.toUpperCase();
-          return colorIndexMap[upperHex] !== undefined ? colorIndexMap[upperHex] : 0;
-        })
-      );
-      
-      wx.showLoading({ title: '保存中...' });
-      request.post('/draft/save', {
-        sourceType: 'DRAW',
-        brand: brand,
-        colorCount: colorCount,
-        gridSize: gridSize,
-        gridData: JSON.stringify(gridData),
-        colorPalette: JSON.stringify(colorPalette),
-      })
-        .then(() => {
-          wx.hideLoading();
-          wx.showToast({ title: '草稿已保存', icon: 'success' });
-        })
-        .catch(() => {
-          wx.hideLoading();
-          wx.showToast({ title: '保存失败', icon: 'none' });
+        this.setData({ loading: false });
+        wx.previewImage({
+          urls: [res.tempFilePath],
+          current: res.tempFilePath
         });
-    });
+      },
+      fail: () => {
+        this.setData({ loading: false });
+        wx.showToast({ title: '导出失败', icon: 'none' });
+      }
+    }, this);
   },
 
+  // 返回
   onBack() {
     wx.navigateBack({ delta: 1 });
-  },
-
-  onOpenToolMenu() {
-    wx.showActionSheet({
-      itemList: ['存图纸箱', '预览', '清空画板', '复位视图'],
-      success: (res) => {
-        const i = res.tapIndex;
-        if (i === 0) this.onSaveToPatternBox();
-        if (i === 1) this.onPreview();
-        if (i === 2) this.onClear();
-        if (i === 3) this.onCenter();
-      }
-    });
-  },
-
-  onSearch() {
-    wx.showToast({ title: '搜索功能开发中', icon: 'none' });
   }
 });

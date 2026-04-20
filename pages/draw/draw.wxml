@@ -1,134 +1,121 @@
-<view class="container">
-  <view class="top-bar">
-    <view class="top-back" bindtap="onBack">←</view>
-    <view class="top-center-tabs">
-      <view class="top-tab" bindtap="onOpenToolMenu">工具 ▼</view>
-      <view class="top-tab" bindtap="onGrid">☀</view>
-      <view class="top-tab top-tab--active">拼豆</view>
-      <view class="top-tab" bindtap="onSearch">素材</view>
+<view class="page">
+  <!-- 顶部导航 -->
+  <view class="nav">
+    <view class="nav-left">
+      <view class="nav-icon" bindtap="onBack">
+        <text>←</text>
+      </view>
     </view>
-    <view class="top-search" bindtap="onSearch">⌕</view>
+    <view class="nav-center">
+      <text class="nav-title">空白画板</text>
+    </view>
+    <view class="nav-right">
+      <view class="nav-icon save" bindtap="onSave">
+        <text>✓</text>
+      </view>
+    </view>
   </view>
 
+  <!-- 画布区域 -->
+  <view class="canvas-section">
+    <view class="canvas-area">
+      <canvas canvas-id="drawCanvas" class="canvas" style="width:{{canvasWidth}}px;height:{{canvasHeight}}px;" bindtouchstart="handleTouchStart" bindtouchmove="handleTouchMove" bindtouchend="handleTouchEnd" />
+    </view>
+    <!-- 网格大小指示 -->
+    <view class="grid-info">
+      <text>{{gridSize}}×{{gridSize}}</text>
+    </view>
+  </view>
+
+  <!-- 工具栏 -->
   <view class="toolbar">
-    <picker class="brand-picker" mode="selector" range="{{brandList}}" value="{{brandIndex}}" bindchange="onBrandChange">
-      <view class="brand-picker-inner">品牌：{{brandList[brandIndex] || 'MARD'}} ▾</view>
-    </picker>
-    <picker class="brand-picker" mode="selector" range="{{colorCountOptions}}" range-key="label" value="{{colorCountIndex}}" bindchange="onColorCountChange">
-      <view class="brand-picker-inner">色数：{{colorCountOptions[colorCountIndex].label || '全部色号'}} ▾</view>
-    </picker>
-    <view class="color-count-badge">当前：{{colorCountOptions[colorCountIndex].label || '全部色号'}}</view>
-    <view wx:if="{{paletteLoading}}" class="color-count-badge color-count-badge--loading">正在加载色板...</view>
-    <view class="toolbar-btn {{canUndo?'':'toolbar-btn--disabled'}}" bindtap="onUndo">↶</view>
-    <view class="toolbar-btn {{canRedo?'':'toolbar-btn--disabled'}}" bindtap="onRedo">↷</view>
-    <view class="toolbar-divider"></view>
-    <view class="toolbar-text-btn" bindtap="onFinish">完成</view>
-    <view class="toolbar-text-btn" bindtap="onSaveToPatternBox">存图纸箱</view>
-    <view class="toolbar-text-btn" bindtap="onDraft">草稿</view>
-    <view class="toolbar-text-btn" bindtap="onPreview">预览</view>
-    <view class="toolbar-text-btn" bindtap="onGrid">图纸</view>
-    <view class="toolbar-spacer"></view>
-    <view class="toolbar-text-btn toolbar-text-btn--danger" bindtap="onClear">清空</view>
-  </view>
-
-  <view class="canvas-area">
-    <canvas
-      canvas-id="draw-canvas"
-      class="draw-canvas"
-      style="width: {{canvasSize}}px; height: {{canvasSize}}px; transform: translate(-50%, -50%) translate({{offsetX}}px, {{offsetY}}px) scale({{scale}});"
-      bindtouchstart="onTouchStart"
-      bindtouchmove="onTouchMove"
-      bindtouchend="onTouchEnd"
-    />
-
-    <canvas canvas-id="export-canvas" class="export-canvas" />
-
-    <view class="float-tools">
-      <view class="float-btn" bindtap="onCenter">
-        <text class="float-icon">⊕</text>
-        <text class="float-label">复位</text>
+    <!-- 工具组 -->
+    <view class="tool-group">
+      <view class="tool {{tool==='pen'?'active':''}}" bindtap="onSelectTool" data-tool="pen">
+        <text class="icon">✎</text>
       </view>
-      <view class="float-btn" bindtap="onFlip">
-        <text class="float-icon">⇵</text>
-        <text class="float-label">翻转</text>
+      <view class="tool {{tool==='eraser'?'active':''}}" bindtap="onSelectTool" data-tool="eraser">
+        <text class="icon">⌫</text>
       </view>
-      <view class="float-btn {{activeTool==='grab'?'float-btn--active':''}}" bindtap="onGrab">
-        <text class="float-icon">✋</text>
-        <text class="float-label">抓手</text>
+      <view class="tool {{tool==='fill'?'active':''}}" bindtap="onSelectTool" data-tool="fill">
+        <text class="icon">◧</text>
       </view>
+      <view class="tool {{tool==='picker'?'active':''}}" bindtap="onSelectTool" data-tool="picker">
+        <text class="icon">⊕</text>
+      </view>
+    </view>
+
+    <view class="divider-v"></view>
+
+    <!-- 操作组 -->
+    <view class="tool-group">
+      <view class="tool small" bindtap="onUndo">
+        <text class="icon">↩</text>
+      </view>
+      <view class="tool small" bindtap="onRedo">
+        <text class="icon">↪</text>
+      </view>
+    </view>
+
+    <view class="divider-v"></view>
+
+    <!-- 笔刷大小 -->
+    <view class="brush-group">
+      <view class="brush {{brushSize===1?'active':''}}" bindtap="onBrushSize" data-size="1"></view>
+      <view class="brush {{brushSize===2?'active':''}}" bindtap="onBrushSize" data-size="2"></view>
+      <view class="brush {{brushSize===3?'active':''}}" bindtap="onBrushSize" data-size="3"></view>
+    </view>
+
+    <view class="divider-v"></view>
+
+    <!-- 开关 -->
+    <view class="toggle-group">
+      <view class="toggle {{showGrid?'active':''}}" bindtap="onToggleGrid">格</view>
+      <view class="toggle {{symmetry?'active':''}}" bindtap="onToggleSymmetry">对称</view>
     </view>
   </view>
 
-  <view class="bottom-panel">
-    <view class="tool-row">
-      <view class="tool-btn {{activeTool==='brush'?'tool-btn--active':''}}" bindtap="onToolTap" data-tool="brush">
-        <text class="tool-btn-icon">✏</text>
-        <text class="tool-btn-label">画笔</text>
-      </view>
-      <view class="tool-btn {{activeTool==='eraser'?'tool-btn--active':''}}" bindtap="onToolTap" data-tool="eraser">
-        <text class="tool-btn-icon">⌫</text>
-        <text class="tool-btn-label">橡皮</text>
-      </view>
-      <view class="tool-btn {{activeTool==='fill'?'tool-btn--active':''}}" bindtap="onToolTap" data-tool="fill">
-        <text class="tool-btn-icon">🪣</text>
-        <text class="tool-btn-label">填充</text>
-      </view>
-      <view class="tool-btn {{activeTool==='picker'?'tool-btn--active':''}}" bindtap="onToolTap" data-tool="picker">
-        <text class="tool-btn-icon">🎯</text>
-        <text class="tool-btn-label">取色</text>
-      </view>
+  <!-- 颜色栏 -->
+  <view class="colorbar">
+    <view class="current" bindtap="onOpenColorDetail">
+      <view class="color-swatch" style="background:{{currentColor}};"></view>
+      <text class="color-code">{{currentCode}}</text>
     </view>
-
-    <view class="size-row">
-      <view class="size-ctrl">
-        <view class="size-btn" bindtap="onSizeMinus">−</view>
-        <text class="size-val">{{brushSize}}</text>
-        <view class="size-btn" bindtap="onSizePlus">+</view>
-      </view>
-      <view class="size-extras">
-        <view class="extra-item" bindtap="onSymmetry">
-          <text class="extra-label {{symmetry?'extra-label--on':''}}">对称</text>
-        </view>
-        <picker class="extra-item" mode="selector" range="{{gridSizeOptions}}" value="{{gridSizeIndex}}" bindchange="onGridSizeChange">
-          <text class="extra-label">{{gridSize}}×{{gridSize}}</text>
-        </picker>
-      </view>
-    </view>
-
-    <scroll-view scroll-x class="palette-scroll">
-      <view class="palette-row">
-        <view class="current-color-wrap" bindtap="onOpenCurrentColorDetail">
-          <view class="current-color" style="background:{{currentColor}}"></view>
-          <text class="current-label">{{currentColorCode}}</text>
-          <text class="current-name">{{currentColorName}}</text>
-        </view>
-        <view
-          wx:for="{{paletteItems}}"
-          wx:key="code"
-          class="palette-item-wrap"
-          bindtap="onColorTap"
-          data-color="{{item.hex}}"
-        >
-          <view
-            class="palette-item {{currentColor===item.hex?'palette-item--active':''}}"
-            style="background:{{item.hex}}"
-          ></view>
-          <text class="palette-code">{{item.code}}</text>
-        </view>
+    <scroll-view class="palette" scroll-x>
+      <view class="colors">
+        <view wx:for="{{colors}}" wx:key="*this" class="color {{currentColor===item?'active':''}}" style="background:{{item}};" bindtap="onSelectColor" data-color="{{item}}"></view>
       </view>
     </scroll-view>
   </view>
 
-  <view wx:if="{{showColorDetail}}" class="modal-mask" bindtap="onCloseColorDetail"></view>
-  <view wx:if="{{showColorDetail}}" class="color-modal">
-    <view class="modal-title">当前色详情</view>
-    <view class="modal-row"><text>色码：</text><text>{{currentColorCode}}</text></view>
-    <view class="modal-row"><text>名称：</text><text>{{currentColorName}}</text></view>
-    <view class="modal-row"><text>HEX：</text><text>{{currentColor}}</text></view>
-    <view class="modal-row"><text>用量：</text><text>{{colorUsageCount}} 颗</text></view>
-    <view class="modal-actions">
-      <view class="modal-btn" bindtap="onCloseColorDetail">关闭</view>
-      <view class="modal-btn modal-btn--save" bindtap="onSaveToPatternBox">保存到图纸箱</view>
+  <!-- 底部按钮 -->
+  <view class="bottom-bar">
+    <view class="btn secondary" bindtap="onClear">
+      <text>清空</text>
+    </view>
+    <view class="btn primary" bindtap="onExport">
+      <text>导出图纸</text>
+    </view>
+  </view>
+
+  <!-- 颜色详情弹窗 -->
+  <view wx:if="{{showColorModal}}" class="modal-mask" bindtap="onCloseColorModal"></view>
+  <view wx:if="{{showColorModal}}" class="modal">
+    <view class="modal-header">
+      <text>当前颜色</text>
+      <view class="modal-close" bindtap="onCloseColorModal">×</view>
+    </view>
+    <view class="modal-body">
+      <view class="modal-color" style="background:{{currentColor}};"></view>
+      <view class="modal-info">
+        <view class="info-line"><text class="label">色号</text><text class="value">{{currentCode}}</text></view>
+        <view class="info-line"><text class="label">HEX</text><text class="value">{{currentColor}}</text></view>
+        <view class="info-line"><text class="label">用量</text><text class="value">{{colorCount}}颗</text></view>
+      </view>
+    </view>
+    <view class="modal-footer">
+      <view class="modal-btn" bindtap="onCloseColorModal">关闭</view>
+      <view class="modal-btn primary" bindtap="onSaveColor">保存</view>
     </view>
   </view>
 </view>

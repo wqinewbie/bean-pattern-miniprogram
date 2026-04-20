@@ -1,4 +1,5 @@
 <view class="focus-page">
+  <!-- 顶部导航 -->
   <page-nav-bar title="沉浸拼豆" nav-top="{{navTop}}" bind:back="onBack">
     <view slot="right" class="nav-actions">
       <view class="nav-action" bindtap="onShowList">列表</view>
@@ -57,20 +58,45 @@
     <view class="summary-btn" bindtap="onNextColor">下一色 →</view>
   </view>
 
-  <view class="board-wrap">
-    <canvas canvas-id="focus-canvas" class="focus-canvas" style="width: {{boardPx}}px; height: {{boardPx}}px;" />
+  <!-- 画板区域 -->
+  <view 
+    class="canvas-area"
+    bindtouchstart="onBoardTouchStart"
+    bindtouchmove="onBoardTouchMove"
+    bindtouchend="onBoardTouchEnd"
+  >
+    <view 
+      class="board-viewport"
+      style="width: {{boardPx}}px; height: {{boardPx}}px;"
+    >
+      <view 
+        class="board-canvas-wrap"
+        style="width: {{canvasSize}}px; height: {{canvasSize}}px; left: {{canvasLeft}}px; top: {{canvasTop}}px;"
+      >
+        <canvas 
+          canvas-id="focus-canvas" 
+          style="width: {{canvasSize}}px; height: {{canvasSize}}px;"
+        />
+      </view>
+      <!-- 加载遮罩 -->
+      <view class="board-cover" wx:if="{{isRendering}}">
+        <view class="render-spinner"></view>
+      </view>
+    </view>
+    <!-- 隐藏画布：用于提取颜色 -->
     <canvas canvas-id="focus-base-canvas" class="hidden-canvas" style="width: {{boardPx}}px; height: {{boardPx}}px;" />
   </view>
 
-  <card-shell variant="warm" animated="{{true}}" custom-class="bottom-panel {{panelExpanded ? 'panel-open' : 'panel-close'}} panel-slide-in">
-    <view class="panel-handle" bindtap="onTogglePanel">
-      <view wx:if="{{panelExpanded}}" class="handle-icon">⌄</view>
-      <view wx:else class="handle-icon">⌃</view>
-    </view>
+  <!-- 底部面板：使用 cover-view 覆盖在 canvas 之上 -->
+  <cover-view class="bottom-panel">
+    <cover-view class="panel-handle" bindtap="onTogglePanel">
+      <cover-view wx:if="{{panelExpanded}}" class="handle-icon">⌄</cover-view>
+      <cover-view wx:else class="handle-icon">⌃</cover-view>
+    </cover-view>
 
-    <view wx:if="{{panelExpanded}}" class="panel-body">
-      <view class="control-row">
-        <text class="control-label">对比度</text>
+    <cover-view wx:if="{{panelExpanded}}" class="panel-body">
+      <cover-view class="control-row">
+        <cover-view class="control-label">对比度</cover-view>
         <slider
           class="contrast-slider"
           min="20"
@@ -83,40 +109,73 @@
           block-size="18"
           bindchange="onContrastChange"
         />
-        <text class="control-value">{{contrast}}%</text>
-      </view>
+        <cover-view class="control-value">{{contrast}}%</cover-view>
+      </cover-view>
 
-      <view class="mode-capsule">
-        <view class="mode-indicator mode-indicator--{{mode}}"></view>
-        <view class="mode-item {{mode==='colorId'?'mode-item--active':''}}" data-mode="colorId" bindtap="onModeChange">色号</view>
-        <view class="mode-item {{mode==='horizontal'?'mode-item--active':''}}" data-mode="horizontal" bindtap="onModeChange">横向计数</view>
-        <view class="mode-item {{mode==='vertical'?'mode-item--active':''}}" data-mode="vertical" bindtap="onModeChange">竖向计数</view>
-      </view>
+      <cover-view class="control-row zoom-row">
+        <cover-view class="control-label">缩放</cover-view>
+        <cover-view class="zoom-btns">
+          <cover-view class="zoom-btn-mini" bindtap="onZoomOut">−</cover-view>
+          <cover-view class="zoom-text">{{Math.floor(scale * 100)}}%</cover-view>
+          <cover-view class="zoom-btn-mini" bindtap="onZoomIn">+</cover-view>
+          <cover-view class="zoom-btn-mini reset" bindtap="onZoomReset">⟲</cover-view>
+        </cover-view>
+      </cover-view>
 
-      <view class="divider"></view>
+      <cover-view class="mode-capsule">
+        <cover-view class="mode-indicator mode-indicator--{{mode}}"></cover-view>
+        <cover-view class="mode-item {{mode==='colorId'?'mode-item--active':''}}" data-mode="colorId" bindtap="onModeChange">色号</cover-view>
+        <cover-view class="mode-item {{mode==='horizontal'?'mode-item--active':''}}" data-mode="horizontal" bindtap="onModeChange">横向计数</cover-view>
+        <cover-view class="mode-item {{mode==='vertical'?'mode-item--active':''}}" data-mode="vertical" bindtap="onModeChange">竖向计数</cover-view>
+      </cover-view>
+
+      <!-- 引导模式选择 -->
+      <cover-view class="guidance-row">
+        <cover-view class="guidance-label">引导:</cover-view>
+        <cover-view class="guidance-btns">
+          <cover-view 
+            class="guidance-btn {{guidanceMode==='nearest'?'guidance-btn--active':''}}" 
+            data-mode="nearest" 
+            bindtap="onGuidanceModeChange"
+          >最近</cover-view>
+          <cover-view 
+            class="guidance-btn {{guidanceMode==='largest'?'guidance-btn--active':''}}" 
+            data-mode="largest" 
+            bindtap="onGuidanceModeChange"
+          >最大</cover-view>
+          <cover-view 
+            class="guidance-btn {{guidanceMode==='edge'?'guidance-btn--active':''}}" 
+            data-mode="edge" 
+            bindtap="onGuidanceModeChange"
+          >边缘</cover-view>
+        </cover-view>
+      </cover-view>
+
+      <cover-view class="divider"></cover-view>
 
       <scroll-view class="palette-scroll" scroll-x>
-        <view class="palette-row">
-          <view
+        <cover-view class="palette-row">
+          <cover-view
             wx:for="{{palette}}"
             wx:key="id"
             class="palette-item"
           >
-            <view
+            <cover-view
               class="bead {{currentColorId===item.id?'bead--active':''}} {{completedMap[item.id]?'bead--done':''}}"
               style="background:rgb({{item.r}},{{item.g}},{{item.b}})"
               bindtap="onPickColor"
               bindlongpress="onToggleDone"
               data-id="{{item.id}}"
             >
-              <text class="bead-id">{{item.id}}</text>
-            </view>
-            <text class="bead-count">{{item.count}}颗</text>
-          </view>
-        </view>
+              <cover-view class="bead-id">{{item.id}}</cover-view>
+              <cover-view wx:if="{{completedMap[item.id]}}" class="bead-check">✓</cover-view>
+            </cover-view>
+            <cover-view class="bead-count">{{item.count}}颗</cover-view>
+          </cover-view>
+        </cover-view>
       </scroll-view>
 
-      <text class="hint">点击高亮 · 长按标记完成</text>
-    </view>
-  </card-shell>
+      <cover-view class="hint">点击高亮 · 长按标记完成</cover-view>
+    </cover-view>
+  </cover-view>
 </view>

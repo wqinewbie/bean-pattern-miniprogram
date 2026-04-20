@@ -374,6 +374,18 @@
   text-align: center;
 }
 
+/* ─── 风格提示 ─── */
+.mode-hint {
+  padding: 12rpx 0 24rpx;
+  margin-top: -12rpx;
+}
+
+.mode-hint-text {
+  font-size: 22rpx;
+  color: #A1887F;
+  line-height: 1.4;
+}
+
 /* ─── 尺寸按钮（4列）─── */
 .size-grid {
   display: grid;

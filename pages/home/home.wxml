@@ -1,45 +1,81 @@
-<view class="container">
-
-  <!-- Banner -->
-  <view class="main-banner" style="margin-top: {{bannerTop}}px;" bindtap="onBannerTap">
-    <image wx:if="{{currentBanner.imageUrl}}" class="banner-bg-img" src="{{currentBanner.imageUrl}}" mode="aspectFill"/>
-    <view class="banner-content">
-      <text class="banner-tag">{{currentBanner.tagText||'魔法上新'}}</text>
-      <text class="banner-title">{{currentBanner.title||'初夏限定拼豆'}}</text>
-      <text class="banner-sub">{{currentBanner.subTitle||'一键生成专属图纸'}}</text>
+<view class="home-page">
+  <!-- 安全区域占位 -->
+  <view style="height: {{statusBarHeight}}px; width: 100%;"></view>
+  
+  <!-- 顶部欢迎卡片 -->
+  <view class="welcome-card">
+    <view class="welcome-deco-1"></view>
+    <view class="welcome-deco-2"></view>
+    <view class="welcome-text">
+      <text class="welcome-title">{{isLoggedIn ? (isVip ? '尊贵的魔法师 👑' : '可爱的魔法学徒 🪄') : '欢迎来到魔法屋 🪄'}}</text>
+      <text class="welcome-sub">今天想创造什么奇迹呢？</text>
     </view>
   </view>
 
-  <!-- 功能卡片 2×2 -->
+  <!-- Banner 轮播 -->
+  <view class="banner-zone" wx:if="{{bannerList.length > 0}}">
+    <scroll-view
+      class="banner-scroll"
+      scroll-x
+      enhanced
+      show-scrollbar="{{false}}"
+    >
+      <view
+        wx:for="{{bannerList}}"
+        wx:key="id"
+        class="banner-card"
+        style="background: {{item.bgColor || '#FF9800'}};"
+        bindtap="onBannerTap"
+        data-banner="{{item}}"
+      >
+        <image wx:if="{{item.imageUrl}}" class="banner-bg-img" src="{{item.imageUrl}}" mode="aspectFill"/>
+        <view class="banner-overlay"></view>
+        <view class="banner-card-content">
+          <text class="banner-tag">{{item.tagText || '魔法上新'}}</text>
+          <text class="banner-main-title">{{item.title || '初夏限定拼豆'}}</text>
+          <text class="banner-sub-title">{{item.subTitle || '一键生成专属图纸'}}</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 功能卡片区域 -->
   <view class="action-zone">
-    <view class="card-grid-2x2">
+    <view class="action-grid">
+      <!-- 图片转图纸 -->
       <view class="action-card" bindtap="onBeadPatternLocal">
-        <view class="card-icon card-tilt-left pink">
-          <image class="icon-img" src="/assets/icons/card-convert.svg" mode="aspectFit"/>
+        <view class="action-icon icon-pink">
+          <image class="icon-img" src="/assets/icons/lucide-image-plus.svg" mode="aspectFit"/>
         </view>
-        <text class="card-title">图片转图纸</text>
-        <text class="card-desc">智能识别色彩</text>
+        <text class="action-title">图片转图纸</text>
+        <text class="action-desc">智能识别色彩</text>
       </view>
+
+      <!-- AI一键生成 -->
       <view class="action-card" bindtap="onBeadPatternAI">
-        <view class="card-icon card-tilt-right purple">
-          <image class="icon-img" src="/assets/icons/card-ai.svg" mode="aspectFit"/>
+        <view class="action-icon icon-purple">
+          <image class="icon-img" src="/assets/icons/lucide-sparkles.svg" mode="aspectFit"/>
         </view>
-        <text class="card-title">AI定制图纸</text>
-        <text class="card-desc">高级定制图纸</text>
+        <text class="action-title">AI一键生成</text>
+        <text class="action-desc">高级定制图纸</text>
       </view>
+
+      <!-- 空白画板 -->
       <view class="action-card" bindtap="onDrawBoard">
-        <view class="card-icon card-tilt-right blue">
-          <image class="icon-img" src="/assets/icons/card-draw.svg" mode="aspectFit"/>
+        <view class="action-icon icon-blue">
+          <image class="icon-img" src="/assets/icons/lucide-pen-tool.svg" mode="aspectFit"/>
         </view>
-        <text class="card-title">空白画板</text>
-        <text class="card-desc">自由创作拼豆</text>
+        <text class="action-title">空白画板</text>
+        <text class="action-desc">自由创作拼豆</text>
       </view>
+
+      <!-- 拼豆魔法 -->
       <view class="action-card" bindtap="onGoMyPatterns">
-        <view class="card-icon card-tilt-left orange">
-          <image class="icon-img" src="/assets/icons/card-patterns.svg" mode="aspectFit"/>
+        <view class="action-icon icon-orange">
+          <image class="icon-img" src="/assets/icons/lucide-wand.svg" mode="aspectFit"/>
         </view>
-        <text class="card-title">沉浸式拼豆</text>
-        <text class="card-desc">让拼豆变得更高效</text>
+        <text class="action-title">拼豆魔法</text>
+        <text class="action-desc">让拼豆变得更高效</text>
       </view>
     </view>
   </view>
@@ -52,19 +88,24 @@
         <text class="tutorial-title">魔法小课堂</text>
       </view>
     </view>
-    <view class="tutorial-card" wx:for="{{tutorials}}" wx:key="id" bindtap="onTutorialTap" data-tutorial="{{item}}">
-      <view class="tutorial-thumb">
-        <image wx:if="{{item.thumbnailUrl}}" src="{{item.thumbnailUrl}}" class="tutorial-thumb-img" mode="aspectFill" />
-        <text wx:else class="tutorial-play">▶</text>
-      </view>
-      <view class="tutorial-info">
-        <text class="tutorial-name">{{item.title}}</text>
-        <text class="tutorial-desc">{{item.description}}</text>
+
+    <view class="tutorial-list">
+      <view class="tutorial-card" wx:for="{{tutorials}}" wx:key="id" bindtap="onTutorialTap" data-tutorial="{{item}}">
+        <view class="tutorial-thumb">
+          <image wx:if="{{item.thumbnailUrl}}" src="{{item.thumbnailUrl}}" class="tutorial-thumb-img" mode="aspectFill" />
+          <view wx:else class="tutorial-play-icon">▶</view>
+          <view class="tutorial-thumb-overlay"></view>
+        </view>
+        <view class="tutorial-info">
+          <text class="tutorial-name">{{item.title}}</text>
+          <text class="tutorial-desc">{{item.description}}</text>
+        </view>
       </view>
     </view>
   </view>
 
-  <view style="height:120rpx"></view>
+  <!-- 底部占位 -->
+  <view class="bottom-space"></view>
 
   <!-- 全局弹窗 -->
   <global-popup id="globalPopup" config="{{currentPopup}}" bind:confirm="onPopupConfirm" bind:close="onPopupClose"/>
@@ -82,15 +123,13 @@
     </view>
   </view>
 
-  <!-- 登录弹窗蒙层 -->
-  <view wx:if="{{showLoginModal}}" class="modal-mask" bindtap="onCloseLoginModal"></view>
-
   <!-- 登录弹窗 -->
+  <view wx:if="{{showLoginModal}}" class="modal-mask" bindtap="onCloseLoginModal"></view>
   <view wx:if="{{showLoginModal}}" class="login-modal login-modal--show">
     <view class="modal-close" bindtap="onCloseLoginModal">✕</view>
     <view class="modal-magic-icon">{{isFirstLogin ? '🌟' : '🪄'}}</view>
     <text class="modal-title">{{isFirstLogin ? '微信登录' : '欢迎回来'}}</text>
-    <text class="modal-sub">{{isFirstLogin ? '微信快速登录后即可使用，头像昵称可在“我的”页面补充' : '登录后可在“我的”页面补充头像昵称'}}</text>
+    <text class="modal-sub">{{isFirstLogin ? '微信快速登录后即可使用，头像昵称可在"我的"页面补充' : '登录后可在"我的"页面补充头像昵称'}}</text>
 
     <view class="modal-wechat-btn modal-wechat-btn--ghost" bindtap="onQuickWxLogin">
       <text wx:if="{{!loginSubmitting}}">🟢 立即微信登录</text>
@@ -100,5 +139,4 @@
     <view class="modal-skip-btn" bindtap="onCloseLoginModal">暂不登录</view>
     <text class="modal-policy">登录即代表同意 <text class="policy-link">《用户协议》</text> 和 <text class="policy-link">《隐私政策》</text></text>
   </view>
-
 </view>

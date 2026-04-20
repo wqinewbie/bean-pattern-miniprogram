@@ -1,6 +1,8 @@
 <view class="container">
 
-  <!-- 隐藏的 Canvas 用于渲染（渲染完成后传递给结果页） -->
+  <!-- 隐藏的 Canvas 用于采样 -->
+  <canvas canvas-id="bead-sample-canvas" style="width:512px;height:512px;position:fixed;left:-9999px;top:-9999px;"></canvas>
+  <!-- 隐藏的 Canvas 用于渲染 -->
   <canvas canvas-id="patternCanvas" style="width:300px;height:300px;position:fixed;left:-9999px;top:-9999px;"></canvas>
   <canvas canvas-id="resultCanvas" style="width:300px;height:300px;position:fixed;left:-9999px;top:-9999px;"></canvas>
 

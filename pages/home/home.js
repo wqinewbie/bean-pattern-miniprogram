@@ -8,7 +8,7 @@ Page({
     const tabBar = this.getTabBar && this.getTabBar();
     if (tabBar && typeof tabBar.setSelected === 'function') {
       tabBar.setSelected(0);
-  }
+    }
   },
 
   data: {
@@ -19,7 +19,10 @@ Page({
     loginSubmitting: false,
     nickName: '',
     avatarUrl: '',
-    statusBarHeight: 20,
+    isLoggedIn: false,
+    isVip: false,
+    magicCount: 0,
+    statusBarHeight: 44,
     bannerTop: 120,
     bannerList: [],
     currentBanner: {
@@ -60,7 +63,21 @@ Page({
 
   onShow() {
     this.syncTabBar();
-    if (!hasSession()) {
+    // 更新登录状态
+    const loggedIn = hasSession();
+    const nickName = wx.getStorageSync('nickName') || '';
+    const avatarUrl = wx.getStorageSync('avatarUrl') || '';
+    const vipExpire = wx.getStorageSync('vipExpire') || '';
+    const isVip = vipExpire && new Date(vipExpire) > new Date();
+    const magicCount = wx.getStorageSync('magicCount') || 0;
+    this.setData({
+      isLoggedIn: loggedIn,
+      nickName,
+      avatarUrl,
+      isVip,
+      magicCount
+    });
+    if (!loggedIn) {
       this.openLoginModal();
     } else {
       this.closeLoginModal();
@@ -136,8 +153,8 @@ Page({
     }
   },
 
-  onBannerTap() {
-    const b = this.data.currentBanner || {};
+  onBannerTap(e) {
+    const b = e.currentTarget.dataset.banner || {};
     const type = (b.linkType || 'NONE').toUpperCase();
     const value = b.linkValue || '';
     if (!value || type === 'NONE') return;
@@ -212,11 +229,20 @@ Page({
         if (profile.avatarUrl) wx.setStorageSync('avatarUrl', profile.avatarUrl);
         cacheProfile(profile);
 
+        const vipExpire = profile.vipExpire || '';
+        if (vipExpire) wx.setStorageSync('vipExpire', vipExpire);
+        const isVip = vipExpire && new Date(vipExpire) > new Date();
+        const magicCount = profile.magicCount || 0;
+        wx.setStorageSync('magicCount', magicCount);
+
         this.setData({
           nickName: profile.nickName || this.data.nickName,
           avatarUrl: profile.avatarUrl || this.data.avatarUrl,
           showLoginModal: false,
           isFirstLogin: false,
+          isLoggedIn: true,
+          isVip,
+          magicCount,
         });
 
         wx.showToast({ title: '登录成功', icon: 'success' });
