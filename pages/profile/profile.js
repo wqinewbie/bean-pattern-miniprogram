@@ -409,8 +409,21 @@ Page({
       return;
     }
     request.get('/box/list')
-      .then(res => {
-        this.setData({ subPagePatterns: res.data || [], subPageLoading: false });
+      .then(data => {
+        // 与 my-patterns.js 保持一致的数据处理
+        const patterns = (Array.isArray(data) ? data : []).map(item => ({
+          id: item.id,
+          name: item.name || ('图纸#' + item.id),
+          gridSize: item.gridSize,
+          colorCount: item.colorCount,
+          brand: item.brand,
+          gridData: item.gridData,
+          colorPalette: item.colorPalette,
+          sourceUrl: item.sourceUrl,
+          boxId: item.id,
+          createdAt: this.formatTime(item.createdAt),
+        }));
+        this.setData({ subPagePatterns: patterns, subPageLoading: false });
       })
       .catch(() => {
         this.setData({ subPagePatterns: [], subPageLoading: false });
@@ -424,12 +437,35 @@ Page({
       return;
     }
     request.get('/history/list')
-      .then(res => {
-        this.setData({ subPageHistory: res.data || [], subPageLoading: false });
+      .then(data => {
+        // 与 history.js 保持一致的数据处理
+        const history = (Array.isArray(data) ? data : []).map((item) => ({
+          id: item.id,
+          name: item.name || ('记录#' + item.id),
+          gridSize: item.gridSize,
+          colorCount: item.colorCount,
+          brand: item.brand,
+          gridData: item.gridData,
+          colorPalette: item.colorPalette,
+          sourceUrl: item.sourceUrl,
+          boxId: item.boxId,
+          historyId: item.id,
+          createdAt: this.formatTime(item.createdAt),
+        }));
+        this.setData({ subPageHistory: history, subPageLoading: false });
       })
       .catch(() => {
         this.setData({ subPageHistory: [], subPageLoading: false });
       });
+  },
+
+  formatTime(timeStr) {
+    if (!timeStr) return '';
+    const d = new Date(timeStr);
+    if (isNaN(d.getTime())) return timeStr;
+    const pad = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
+           ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   },
 
   onSubClearHistory() {
@@ -457,15 +493,24 @@ Page({
   onSubItemTap(e) {
     const item = e.currentTarget.dataset.item;
     if (!item) return;
-    wx.navigateTo({
-      url: `/pages/result/result?id=${item.id}&from=${this.data.subPage}`
-    });
+    // 与独立页面保持一致，跳转到预加载页面
+    if (this.data.subPage === 'history') {
+      // 时光机 -> result-loading
+      wx.navigateTo({
+        url: '/pages/result-loading/result-loading?historyId=' + item.id + '&sourceType=HISTORY'
+      });
+    } else {
+      // 图纸箱 -> result-loading
+      wx.navigateTo({
+        url: '/pages/result-loading/result-loading?boxId=' + item.id + '&sourceType=BOX'
+      });
+    }
   },
 
   onSubDelete(e) {
     const id = e.currentTarget.dataset.id;
     if (!id) return;
-    request.delete(`/box/delete/${id}`)
+    request.delete('/box/delete/' + id)
       .then(() => {
         this.loadPatterns();
         wx.showToast({ title: '已删除', icon: 'success' });
@@ -478,7 +523,7 @@ Page({
   onSubRestore(e) {
     const id = e.currentTarget.dataset.id;
     if (!id) return;
-    request.post(`/box/restore/${id}`)
+    request.post('/box/restore/' + id)
       .then(() => {
         this.loadRecycle();
         wx.showToast({ title: '已恢复', icon: 'success' });

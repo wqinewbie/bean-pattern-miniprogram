@@ -113,12 +113,12 @@
         <view wx:if="{{subPagePatterns.length===0}}" class="sub-empty">还没有施展过魔法哦</view>
         <view wx:for="{{subPagePatterns}}" wx:key="id" class="sub-item" bindtap="onSubItemTap" data-item="{{item}}">
           <view class="sub-thumb">
-            <image wx:if="{{item.patternUrl}}" class="sub-thumb-img" src="{{item.patternUrl}}" mode="aspectFill"/>
-            <view wx:else class="sub-thumb-ph">🖼</view>
+            <image wx:if="{{item.sourceUrl}}" class="sub-thumb-img" src="{{item.sourceUrl}}" mode="aspectFill"/>
+            <view wx:else class="sub-thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
           </view>
           <view class="sub-info">
-            <text class="sub-name">{{item.patternName || ('魔法图纸#'+item.id)}}</text>
-            <text class="sub-meta">拼豆图纸 · {{item.createdAt}}</text>
+            <text class="sub-name">{{item.name || ('图纸#'+item.id)}}</text>
+            <text class="sub-meta">{{item.brand || 'MARD'}} · {{item.colorCount || 0}}色 · {{item.createdAt}}</text>
           </view>
           <view class="sub-del" catchtap="onSubDelete" data-id="{{item.id}}">🗑</view>
         </view>
@@ -129,12 +129,12 @@
         <view wx:if="{{subPageHistory.length===0}}" class="sub-empty">时光机里没有草稿哦</view>
         <view wx:for="{{subPageHistory}}" wx:key="id" class="sub-item" bindtap="onSubItemTap" data-item="{{item}}">
           <view class="sub-thumb">
-            <image wx:if="{{item.resultUrl}}" class="sub-thumb-img" src="{{item.resultUrl}}" mode="aspectFill"/>
-            <view wx:else class="sub-thumb-ph">🖼</view>
+            <image wx:if="{{item.sourceUrl}}" class="sub-thumb-img" src="{{item.sourceUrl}}" mode="aspectFill"/>
+            <view wx:else class="sub-thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
           </view>
           <view class="sub-info">
-            <text class="sub-name">恢复编辑 {{item.gridSize || 0}}格</text>
-            <text class="sub-meta">{{item.createdAt}}</text>
+            <text class="sub-name">{{item.name || ('记录#'+item.id)}}</text>
+            <text class="sub-meta">{{item.brand || 'MARD'}} · {{item.colorCount || 0}}色 · {{item.createdAt}}</text>
           </view>
           <view class="sub-go">继续</view>
         </view>
