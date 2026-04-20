@@ -484,11 +484,11 @@ Page({
                 if (cell) {
                   const lum = 0.299 * cell.r + 0.587 * cell.g + 0.114 * cell.b;
                   const textColor = lum > 140 ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.9)';
-                  // 提取数字作为色号显示
-                  const text = cell.id.replace(/\D/g, '') || cell.id;
+                  // 直接显示完整色码，如 P1, A11, C14
+                  const text = cell.id || '';
                   
-                  // 字体大小：格子宽度的一半，最多不超过 16
-                  const fontSize = Math.min(Math.max(3, Math.floor(cellSize * 0.5)), 16);
+                  // 字体大小：格子宽度的一半，最多不超过 12
+                  const fontSize = Math.min(Math.max(3, Math.floor(cellSize * 0.45)), 12);
                   patternCtx.setFontSize(fontSize);
                   patternCtx.setFillStyle(textColor);
                   patternCtx.fillText(text, x * cellSize + cellSize / 2, y * cellSize + cellSize / 2);
