@@ -424,6 +424,13 @@ Page({
       renderedResultUrl: effectiveRenderedResultUrl,
     });
 
+    console.log('=== result.js setData 完成 ===');
+    console.log('activeTab:', activeTab);
+    console.log('hasPatternData:', hasPatternData);
+    console.log('hasRgbData:', hasRgbData);
+    console.log('renderedPatternUrl:', effectiveRenderedPatternUrl);
+    console.log('renderedResultUrl:', effectiveRenderedResultUrl);
+
     // 如果有预渲染图片，不需要再渲染，直接使用
     if (effectiveRenderedPatternUrl || effectiveRenderedResultUrl) {
       console.log('=== 使用预渲染图片 ===');
@@ -1016,18 +1023,28 @@ Page({
     const { patternNameInput, historyId, sourceType } = this.data;
     const name = (patternNameInput || '').trim() || ('图纸#' + Date.now());
 
+    // 计算总格子数
+    const gridSize = this.data.gridSize;
+    const focusTotalCells = gridSize * gridSize;
+    // 计算已完成的格子数（沉浸模式进度）
+    const completedCells = this._getCompletedCells ? this._getCompletedCells() : 0;
+
     // 保存到图纸箱（可能关联到已有的历史记录）
     request.post('/box/save', {
       name: name,
       sourceType: sourceType || 'LOCAL',
       brand: this.data.brandName,
       colorCount: this.data.colorCount,
-      gridSize: this.data.gridSize,
+      gridSize: gridSize,
       gridData: JSON.stringify(this.data.gridData),
       colorPalette: JSON.stringify(this.data.colorPalette),
       rgbData: JSON.stringify(this.data.rgbData || []),
       historyId: historyId || null,
       sourceUrl: this.data.originalUrl || '',
+      // 沉浸模式进度
+      focusTotalCells: focusTotalCells,
+      focusCompletedCells: completedCells,
+      focusProgress: focusTotalCells > 0 ? Math.round(completedCells / focusTotalCells * 100) : 0,
     })
       .then((box) => {
         this.setData({
