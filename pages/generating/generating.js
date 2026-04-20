@@ -441,9 +441,9 @@ Page({
   // ========== 渲染预览图 ==========
   _renderPreview(mappedPixelData, gridSize) {
     return new Promise((resolve) => {
-      const canvasWidth = 300;
+      // 提高分辨率让色号文字更清晰
+      const canvasWidth = 600;
       // 使用实际的网格尺寸（非正方形图片会返回非正方形网格）
-      // 注意：mappedPixelData 可能是 { mappedPixelData: [...], colorStats: [...] } 或直接是数组
       const actualPixelData = mappedPixelData.mappedPixelData || mappedPixelData;
       const actualRows = actualPixelData.length;
       const actualCols = actualPixelData.length > 0 ? actualPixelData[0].length : 0;
@@ -473,8 +473,8 @@ Page({
             }
           }
           
-          // 绘制色号文字（只有格子够大时才绘制）
-          if (cellSize >= 10) {
+          // 绘制色号文字（降低条件，只要有空间就绘制）
+          if (cellSize >= 5) {
             patternCtx.setTextAlign('center');
             patternCtx.setTextBaseline('middle');
             
@@ -484,9 +484,12 @@ Page({
                 if (cell) {
                   const lum = 0.299 * cell.r + 0.587 * cell.g + 0.114 * cell.b;
                   const textColor = lum > 140 ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.9)';
+                  // 提取数字作为色号显示
                   const text = cell.id.replace(/\D/g, '') || cell.id;
                   
-                  patternCtx.setFontSize(Math.max(3, Math.floor(cellSize * 0.5)));
+                  // 字体大小：格子宽度的一半，最多不超过 16
+                  const fontSize = Math.min(Math.max(3, Math.floor(cellSize * 0.5)), 16);
+                  patternCtx.setFontSize(fontSize);
                   patternCtx.setFillStyle(textColor);
                   patternCtx.fillText(text, x * cellSize + cellSize / 2, y * cellSize + cellSize / 2);
                 }
@@ -498,7 +501,7 @@ Page({
           const patternBackup = setTimeout(() => {
             console.log('pattern 备用超时触发');
             if (!patternDone) { patternDone = true; resolvePattern(''); }
-          }, 3000);
+          }, 5000);
           
           patternCtx.draw(false, () => {
             if (patternDone) return;
