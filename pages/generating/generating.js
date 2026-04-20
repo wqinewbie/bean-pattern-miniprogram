@@ -417,16 +417,27 @@ Page({
   _renderPreview(mappedPixelData, gridSize) {
     return new Promise((resolve) => {
       const canvasWidth = 300;
-      const cellSize = canvasWidth / gridSize;
+      // 使用实际的网格尺寸（非正方形图片会返回非正方形网格）
+      const actualRows = mappedPixelData.length;
+      const actualCols = mappedPixelData.length > 0 ? mappedPixelData[0].length : 0;
+      const cellSize = canvasWidth / Math.max(actualRows, actualCols);
+      
+      console.log('=== 渲染预览图 ===');
+      console.log('gridSize:', gridSize);
+      console.log('actualRows:', actualRows, 'actualCols:', actualCols);
+      console.log('cellSize:', cellSize);
       
       // 1. 渲染色号图
       const renderPattern = () => {
         return new Promise((resolvePattern) => {
           const patternCtx = wx.createCanvasContext('patternCanvas');
           
-          // 绘制格子
-          for (let y = 0; y < gridSize; y++) {
-            for (let x = 0; x < gridSize; x++) {
+          // 计算实际画布尺寸（保持宽高比）
+          const canvasHeight = Math.round(canvasWidth * actualRows / actualCols);
+          
+          // 绘制每个格子
+          for (let y = 0; y < actualRows; y++) {
+            for (let x = 0; x < actualCols; x++) {
               const cell = mappedPixelData[y] && mappedPixelData[y][x];
               if (cell) {
                 patternCtx.setFillStyle('rgb(' + cell.r + ',' + cell.g + ',' + cell.b + ')');
@@ -435,13 +446,13 @@ Page({
             }
           }
           
-          // 绘制色号文字
-          if (cellSize >= 7) {
+          // 绘制色号文字（只有格子够大时才绘制）
+          if (cellSize >= 10) {
             patternCtx.setTextAlign('center');
             patternCtx.setTextBaseline('middle');
             
-            for (let y = 0; y < gridSize; y++) {
-              for (let x = 0; x < gridSize; x++) {
+            for (let y = 0; y < actualRows; y++) {
+              for (let x = 0; x < actualCols; x++) {
                 const cell = mappedPixelData[y] && mappedPixelData[y][x];
                 if (cell) {
                   const lum = 0.299 * cell.r + 0.587 * cell.g + 0.114 * cell.b;
@@ -458,6 +469,7 @@ Page({
           
           let patternDone = false;
           const patternBackup = setTimeout(() => {
+            console.log('pattern 备用超时触发');
             if (!patternDone) { patternDone = true; resolvePattern(''); }
           }, 3000);
           
@@ -468,22 +480,31 @@ Page({
             wx.canvasToTempFilePath({
               canvasId: 'patternCanvas',
               x: 0, y: 0,
-              width: canvasWidth, height: canvasWidth,
-              destWidth: canvasWidth, destHeight: canvasWidth,
-              success: (res) => resolvePattern(res.tempFilePath),
-              fail: () => resolvePattern('')
+              width: canvasWidth, height: canvasHeight,
+              destWidth: canvasWidth, destHeight: canvasHeight,
+              success: (res) => {
+                console.log('pattern 渲染成功:', res.tempFilePath);
+                resolvePattern(res.tempFilePath);
+              },
+              fail: (err) => {
+                console.error('pattern 渲染失败:', err);
+                resolvePattern('');
+              }
             });
           });
         });
       };
       
-      // 2. 渲染效果图
+      // 2. 渲染效果图（纯色块，无文字）
       const renderResult = () => {
         return new Promise((resolveResult) => {
           const resultCtx = wx.createCanvasContext('resultCanvas');
           
-          for (let y = 0; y < gridSize; y++) {
-            for (let x = 0; x < gridSize; x++) {
+          // 计算实际画布尺寸（保持宽高比）
+          const canvasHeight = Math.round(canvasWidth * actualRows / actualCols);
+          
+          for (let y = 0; y < actualRows; y++) {
+            for (let x = 0; x < actualCols; x++) {
               const cell = mappedPixelData[y] && mappedPixelData[y][x];
               if (cell) {
                 resultCtx.setFillStyle('rgb(' + cell.r + ',' + cell.g + ',' + cell.b + ')');
@@ -494,6 +515,7 @@ Page({
           
           let resultDone = false;
           const resultBackup = setTimeout(() => {
+            console.log('result 备用超时触发');
             if (!resultDone) { resultDone = true; resolveResult(''); }
           }, 3000);
           
@@ -504,10 +526,16 @@ Page({
             wx.canvasToTempFilePath({
               canvasId: 'resultCanvas',
               x: 0, y: 0,
-              width: canvasWidth, height: canvasWidth,
-              destWidth: canvasWidth, destHeight: canvasWidth,
-              success: (res) => resolveResult(res.tempFilePath),
-              fail: () => resolveResult('')
+              width: canvasWidth, height: canvasHeight,
+              destWidth: canvasWidth, destHeight: canvasHeight,
+              success: (res) => {
+                console.log('result 渲染成功:', res.tempFilePath);
+                resolveResult(res.tempFilePath);
+              },
+              fail: (err) => {
+                console.error('result 渲染失败:', err);
+                resolveResult('');
+              }
             });
           });
         });

@@ -436,6 +436,21 @@ Page({
       return; // 跳过渲染逻辑
     }
 
+    // 如果有 gridData/colorPalette 但没有预渲染图片，需要触发 Canvas 渲染
+    if (hasPatternData || hasRgbData) {
+      console.log('=== 需要触发 Canvas 渲染 ===');
+      this.setData({ canvasReady: false });
+      // 延迟触发渲染，等待页面渲染完成
+      setTimeout(() => {
+        if (hasPatternData) {
+          this.renderPatternCanvas();
+        }
+        if (hasRgbData) {
+          this.renderResultCanvas();
+        }
+      }, 100);
+    }
+
     // 检查是否已在图纸箱
     if (boxId) {
       this.setData({ isSaved: true });
