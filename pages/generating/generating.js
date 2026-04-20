@@ -310,7 +310,12 @@ Page({
         grid: rgbGrid,
         algo: mode === 'dominant' ? 'dominant' : 'standard'
       })
-        .then(resolve)
+        .then((res) => {
+          // 从响应中提取 data 字段
+          console.log('=== 颜色匹配响应 ===');
+          console.log('response:', JSON.stringify(res).substring(0, 500));
+          resolve(res.data || res);
+        })
         .catch(reject);
     });
   },
