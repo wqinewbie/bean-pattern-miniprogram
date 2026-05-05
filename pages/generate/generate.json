@@ -1,7 +1,4 @@
 {
   "navigationStyle": "custom",
-  "navigationBarTitleText": "拼豆图纸生成器",
-  "usingComponents": {
-    "page-nav-bar": "/components/page-nav-bar/index"
-  }
+  "navigationBarTitleText": "魔法参数设置"
 }

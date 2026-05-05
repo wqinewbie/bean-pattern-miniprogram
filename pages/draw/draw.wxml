@@ -1,121 +1,598 @@
 <view class="page">
-  <!-- 顶部导航 -->
-  <view class="nav">
-    <view class="nav-left">
-      <view class="nav-icon" bindtap="onBack">
-        <text>←</text>
+  <!-- 顶部导航栏 - Figma 固定高度 -->
+  <view class="top-bar" style="padding-top: {{statusBarHeight}}px;">
+    <view class="top-bar-inner" style="height: {{navBarHeight}}px;">
+      <view class="top-bar-left">
+        <view class="back-btn" bindtap="onBack">
+          <text class="back-icon">←</text>
+        </view>
+        <view class="action-btn" bindtap="onExport">
+          <text class="action-text">预览</text>
+        </view>
+        <view class="action-btn" bindtap="onSaveToBox">
+          <text class="action-text">保存到图纸箱</text>
+        </view>
+        <view class="action-btn primary" bindtap="onSave">
+          <text class="action-text">保存草稿</text>
+        </view>
       </view>
-    </view>
-    <view class="nav-center">
-      <text class="nav-title">空白画板</text>
-    </view>
-    <view class="nav-right">
-      <view class="nav-icon save" bindtap="onSave">
-        <text>✓</text>
+      <view class="top-bar-right">
+        <view wx:if="{{backgroundImage}}" class="layer-badge {{activeLayer==='canvas'?'canvas-layer':'background-layer'}}">
+          {{activeLayer==='canvas'?'画布':'背景'}}
+        </view>
       </view>
     </view>
   </view>
 
-  <!-- 画布区域 -->
-  <view class="canvas-section">
-    <view class="canvas-area">
-      <canvas canvas-id="drawCanvas" class="canvas" style="width:{{canvasWidth}}px;height:{{canvasHeight}}px;" bindtouchstart="handleTouchStart" bindtouchmove="handleTouchMove" bindtouchend="handleTouchEnd" />
-    </view>
-    <!-- 网格大小指示 -->
-    <view class="grid-info">
-      <text>{{gridSize}}×{{gridSize}}</text>
-    </view>
-  </view>
+  <!-- 主内容区 - flex 布局 -->
+  <view class="main-area">
+    <!-- 左侧工具栏 - flex 不用 fixed -->
+    <view class="left-toolbar-container">
+      <!-- 设置面板（展开时显示） -->
+      <view wx:if="{{showSettings}}" class="settings-panel" catchtap="stopPropagation">
+        <view class="settings-header">
+          <view class="settings-title">
+            <text class="settings-icon">⚙️</text>
+            <text class="settings-text">画布设置</text>
+          </view>
+          <view class="settings-close" bindtap="onCloseSettings">
+            <text class="close-icon">←</text>
+          </view>
+        </view>
+        <view class="settings-body">
+          <!-- 画布尺寸下拉选择 -->
+          <view class="setting-section">
+            <view class="setting-label-text">画布尺寸</view>
+            <view class="setting-dropdown {{sizeDropdownOpen?'open':''}}" bindtap="onToggleSizeDropdown">
+              <text class="dropdown-value">{{isPresetSize ? gridSize + '×' + gridSize : customSize + '×' + customSize}}</text>
+              <text class="dropdown-arrow">{{sizeDropdownOpen?'▲':'▼'}}</text>
+            </view>
+            <view wx:if="{{sizeDropdownOpen}}" class="dropdown-panel">
+              <view class="dropdown-list">
+                <view 
+                  wx:for="{{presetSizes}}" 
+                  wx:key="*this"
+                  class="dropdown-item {{isPresetSize && gridSize===item?'active':''}}"
+                  bindtap="onSelectPresetSize"
+                  data-size="{{item}}"
+                >
+                  <text class="item-text">{{item}}×{{item}}</text>
+                  <text wx:if="{{isPresetSize && gridSize===item}}" class="item-check">✓</text>
+                </view>
+              </view>
+            </view>
+          </view>
 
-  <!-- 工具栏 -->
-  <view class="toolbar">
-    <!-- 工具组 -->
-    <view class="tool-group">
-      <view class="tool {{tool==='pen'?'active':''}}" bindtap="onSelectTool" data-tool="pen">
-        <text class="icon">✎</text>
+          <!-- 自定义尺寸 -->
+          <view class="setting-section">
+            <view class="setting-label-text">自定义尺寸</view>
+            <view class="custom-size-input-wrapper">
+              <input 
+                class="setting-custom-input {{!isPresetSize && customSize!==''?'active':''}}"
+                type="number"
+                value="{{customSize}}"
+                placeholder="16~200"
+                bindinput="onCustomSizeInput"
+                bindconfirm="onCustomSizeConfirm"
+              />
+              <view class="custom-size-confirm-btn" bindtap="onCustomSizeConfirm">
+                <text class="confirm-btn-text">确认</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 拼豆品牌 -->
+          <view class="setting-section">
+            <view class="setting-label-text">拼豆品牌</view>
+            <view class="setting-dropdown {{brandDropdownOpen?'open':''}}" bindtap="onToggleBrandDropdown">
+              <text class="dropdown-value">{{brand}}</text>
+              <text class="dropdown-arrow">{{brandDropdownOpen?'▲':'▼'}}</text>
+            </view>
+            <view wx:if="{{brandDropdownOpen}}" class="dropdown-panel">
+              <view class="dropdown-list">
+                <view 
+                  wx:for="{{brandList}}" 
+                  wx:key="*this"
+                  class="dropdown-item {{brand===item?'active':''}}"
+                  bindtap="onSelectBrand"
+                  data-brand="{{item}}"
+                >
+                  <text class="item-text">{{item}}</text>
+                  <text wx:if="{{brand===item}}" class="item-check">✓</text>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <!-- 拼豆色卡 -->
+          <view class="setting-section">
+            <view class="setting-label-text">拼豆色卡</view>
+            <view class="setting-dropdown {{paletteDropdownOpen?'open':''}}" bindtap="onTogglePaletteDropdown">
+              <text class="dropdown-value">{{selectedKitName || (colors.length + '色')}}</text>
+              <text class="dropdown-arrow">{{paletteDropdownOpen?'▲':'▼'}}</text>
+            </view>
+            <view wx:if="{{paletteDropdownOpen}}" class="dropdown-panel">
+              <view class="dropdown-list">
+                <view 
+                  wx:for="{{kitList}}" 
+                  wx:key="id"
+                  class="dropdown-item {{selectedKitId===item.id?'active':''}}"
+                  bindtap="onSelectKit"
+                  data-kit-id="{{item.id}}"
+                  data-kit-name="{{item.name}}"
+                >
+                  <text class="item-text">{{item.name}}</text>
+                  <text wx:if="{{selectedKitId===item.id}}" class="item-check">✓</text>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <!-- 背景图 -->
+          <view class="setting-section">
+            <view class="setting-label-text">背景图</view>
+            <view wx:if="{{backgroundImage}}" class="bg-actions">
+              <view class="bg-btn" bindtap="onChooseBackground">
+                <text class="bg-btn-icon">📤</text>
+                <text class="bg-btn-text">替换</text>
+              </view>
+              <view class="bg-btn danger" bindtap="onClearBackground">
+                <text class="bg-btn-icon">✕</text>
+              </view>
+            </view>
+            <view wx:else class="bg-upload" bindtap="onChooseBackground">
+              <text class="upload-icon">📤</text>
+              <text class="upload-text">上传背景图</text>
+            </view>
+          </view>
+        </view>
       </view>
-      <view class="tool {{tool==='eraser'?'active':''}}" bindtap="onSelectTool" data-tool="eraser">
-        <text class="icon">⌫</text>
+
+      <!-- 工具图标栏（固定显示） -->
+      <scroll-view class="tools-rail" scroll-y="true" enable-flex="true">
+        <!-- 设置 -->
+        <view class="tool-icon {{showSettings?'active':''}}" bindtap="onToggleSettings">
+          <text class="icon">⚙️</text>
+          <text class="label">设置</text>
+        </view>
+        <view class="tool-divider"></view>
+        
+        <!-- 画布 -->
+        <view class="tool-icon {{activeLayer==='canvas'?'active':''}}" bindtap="onSetActiveLayer" data-layer="canvas">
+          <text class="icon">▦</text>
+          <text class="label">画布</text>
+        </view>
+        
+        <!-- 背景 -->
+        <view class="tool-icon {{activeLayer==='background'?'active':''}} {{!backgroundImage?'disabled':''}}" bindtap="onSetActiveLayer" data-layer="background">
+          <text class="icon">🖼</text>
+          <text class="label">背景</text>
+        </view>
+        
+        <!-- 锁定 -->
+        <view class="tool-icon {{locked?'active':''}} {{!backgroundImage?'disabled':''}}" bindtap="onToggleLock">
+          <text class="icon">{{locked?'🔒':'🔓'}}</text>
+          <text class="label">锁定</text>
+        </view>
+        <view class="tool-divider"></view>
+        
+        <!-- 拖拽 -->
+        <view class="tool-icon {{tool==='drag'?'active':''}}" bindtap="onSelectTool" data-tool="drag">
+          <text class="icon">✋</text>
+          <text class="label">拖拽</text>
+        </view>
+        
+        <!-- 画笔 -->
+        <view class="tool-icon {{tool==='pen'?'active':''}} {{activeLayer==='background'?'disabled':''}}" bindtap="onSelectTool" data-tool="pen">
+          <text class="icon">✎</text>
+          <text class="label">画笔</text>
+        </view>
+        
+        <!-- 橡皮 -->
+        <view class="tool-icon {{tool==='eraser'?'active':''}} {{activeLayer==='background'?'disabled':''}}" bindtap="onSelectTool" data-tool="eraser">
+          <text class="icon">⌫</text>
+          <text class="label">橡皮</text>
+        </view>
+        
+        <!-- 填充 -->
+        <view class="tool-icon {{tool==='fill'?'active':''}} {{activeLayer==='background'?'disabled':''}}" bindtap="onSelectTool" data-tool="fill">
+          <text class="icon">◧</text>
+          <text class="label">填充</text>
+        </view>
+        
+        <!-- 吸色 -->
+        <view class="tool-icon {{tool==='picker'?'active':''}} {{activeLayer==='background'?'disabled':''}}" bindtap="onSelectTool" data-tool="picker">
+          <text class="icon">⊕</text>
+          <text class="label">吸色</text>
+        </view>
+        <view class="tool-divider"></view>
+        
+        <!-- 清空 -->
+        <view class="tool-icon {{activeLayer==='background'?'disabled':''}}" bindtap="onClear">
+          <text class="icon">🗑</text>
+          <text class="label">清空</text>
+        </view>
+        
+        <!-- 撤回 -->
+        <view class="tool-icon {{!canUndo || activeLayer==='background'?'disabled':''}}" bindtap="onUndo">
+          <text class="icon">↩</text>
+          <text class="label">撤回</text>
+        </view>
+        
+        <!-- 重做 -->
+        <view class="tool-icon {{!canRedo || activeLayer==='background'?'disabled':''}}" bindtap="onRedo">
+          <text class="icon">↪</text>
+          <text class="label">重做</text>
+        </view>
+        <view class="tool-divider"></view>
+        
+        <!-- 对称 -->
+        <!-- 问题5修复：只有在画笔工具且画布图层时才显示 active 状态 -->
+        <view class="tool-icon {{symmetry && tool==='pen' && activeLayer==='canvas'?'active':''}} {{tool!=='pen' || activeLayer==='background'?'disabled':''}}" bindtap="onToggleSymmetry">
+          <text class="icon">⫴</text>
+          <text class="label">对称</text>
+        </view>
+        
+        <!-- 镜像 -->
+        <view class="tool-icon {{mirror?'active':''}} {{activeLayer==='canvas' && !hasPixels?'disabled':''}}" bindtap="onToggleMirror">
+          <text class="icon">⇄</text>
+          <text class="label">镜像</text>
+        </view>
+      </scroll-view>
+    </view>
+
+    <!-- 画布区域 -->
+    <view class="canvas-area"
+      bindtap="onCanvasAreaTap"
+      bindtouchstart="handleTouchStart" 
+      bindtouchmove="handleTouchMove" 
+      bindtouchend="handleTouchEnd"
+    >
+      <view
+        class="locked-stage"
+        style="transform: translate({{locked ? stageOffsetX : 0}}px, {{locked ? stageOffsetY : 0}}px) scale({{locked ? stageScale : 1}});"
+      >
+        <!-- 背景图层（独立/锁定时作为 stage 子层） -->
+        <view 
+          wx:if="{{backgroundImage}}"
+          class="background-layer-wrapper"
+          style="transform: translate({{backgroundOffsetX}}px, {{backgroundOffsetY}}px) scale({{backgroundScale}});"
+        >
+          <image 
+            class="background-image"
+            src="{{backgroundImage}}"
+            mode="aspectFit"
+            style="width: {{canvasWidth}}px; height: {{canvasHeight}}px; opacity: {{showBackground ? 1 : 0}}; transform: scaleX({{backgroundMirror ? -1 : 1}});"
+          />
+        </view>
+
+        <!-- 画布+坐标轴组（绑定在一起） -->
+        <view 
+          class="canvas-group {{activeLayer==='canvas'?'active-canvas':''}} {{activeLayer==='background'?'active-background':''}}"
+          style="transform: translate({{canvasOffsetX}}px, {{canvasOffsetY}}px) scale({{canvasScale}});"
+        >
+        <!-- 坐标轴容器 -->
+        <view class="axis-container" style="width: {{canvasWidth}}px; height: {{canvasHeight}}px;">
+          <!-- 顶部坐标轴 -->
+          <view class="axis-top">
+            <text wx:for="{{topAxisLabels}}" wx:key="label" class="axis-label" style="left: {{item.positionPx}}px;">{{item.label}}</text>
+          </view>
+          
+          <!-- 左侧坐标轴 -->
+          <view class="axis-left">
+            <text wx:for="{{leftAxisLabels}}" wx:key="label" class="axis-label" style="top: {{item.positionPx}}px;">{{item.label}}</text>
+          </view>
+          
+          <!-- 右侧坐标轴 -->
+          <view class="axis-right">
+            <text wx:for="{{rightAxisLabels}}" wx:key="label" class="axis-label" style="top: {{item.positionPx}}px;">{{item.label}}</text>
+          </view>
+          
+          <!-- 底部坐标轴 -->
+          <view class="axis-bottom">
+            <text wx:for="{{bottomAxisLabels}}" wx:key="label" class="axis-label" style="left: {{item.positionPx}}px;">{{item.label}}</text>
+          </view>
+        </view>
+
+        <!-- Canvas 画布 -->
+        <view class="canvas-wrapper" style="width: {{canvasWidth}}px; height: {{canvasHeight}}px;">
+          <bead-canvas2d 
+            id="drawCanvas2d"
+            canvas-id="drawCanvas" 
+            width="{{canvasWidth}}"
+            height="{{canvasHeight}}"
+            auto-init="{{true}}"
+            style="background: {{backgroundImage ? 'transparent' : '#FFFFFF'}};"
+            bind:ready="onCanvasReady"
+            bind:error="onCanvasError"
+          />
+
+          <!-- 方案B：独立网格 Canvas 覆盖层 -->
+          <grid-overlay
+            id="gridOverlay"
+            wx:if="{{showGrid}}"
+            width="{{canvasWidth}}"
+            height="{{canvasHeight}}"
+            gridSize="{{gridSize}}"
+            scale="{{1}}"
+            show="{{showGrid}}"
+          />
+          
+          <!-- 独立色号 Canvas 覆盖层 -->
+          <code-overlay
+            id="codeOverlay"
+            width="{{canvasWidth}}"
+            height="{{canvasHeight}}"
+            gridSize="{{gridSize}}"
+            scale="{{canvasScale}}"
+            gridData="{{overlayGridData}}"
+            colorCodeMap="{{overlayColorCodeMap}}"
+            show="{{true}}"
+          />
+          
+          <!-- 触摸层（仅用于视觉定位，不处理事件） -->
+          <view 
+            class="canvas-touch-layer" 
+            style="width: {{canvasWidth}}px; height: {{canvasHeight}}px;"
+          />
+        </view>
       </view>
-      <view class="tool {{tool==='fill'?'active':''}}" bindtap="onSelectTool" data-tool="fill">
-        <text class="icon">◧</text>
-      </view>
-      <view class="tool {{tool==='picker'?'active':''}}" bindtap="onSelectTool" data-tool="picker">
-        <text class="icon">⊕</text>
-      </view>
-    </view>
-
-    <view class="divider-v"></view>
-
-    <!-- 操作组 -->
-    <view class="tool-group">
-      <view class="tool small" bindtap="onUndo">
-        <text class="icon">↩</text>
-      </view>
-      <view class="tool small" bindtap="onRedo">
-        <text class="icon">↪</text>
-      </view>
-    </view>
-
-    <view class="divider-v"></view>
-
-    <!-- 笔刷大小 -->
-    <view class="brush-group">
-      <view class="brush {{brushSize===1?'active':''}}" bindtap="onBrushSize" data-size="1"></view>
-      <view class="brush {{brushSize===2?'active':''}}" bindtap="onBrushSize" data-size="2"></view>
-      <view class="brush {{brushSize===3?'active':''}}" bindtap="onBrushSize" data-size="3"></view>
-    </view>
-
-    <view class="divider-v"></view>
-
-    <!-- 开关 -->
-    <view class="toggle-group">
-      <view class="toggle {{showGrid?'active':''}}" bindtap="onToggleGrid">格</view>
-      <view class="toggle {{symmetry?'active':''}}" bindtap="onToggleSymmetry">对称</view>
-    </view>
-  </view>
-
-  <!-- 颜色栏 -->
-  <view class="colorbar">
-    <view class="current" bindtap="onOpenColorDetail">
-      <view class="color-swatch" style="background:{{currentColor}};"></view>
-      <text class="color-code">{{currentCode}}</text>
-    </view>
-    <scroll-view class="palette" scroll-x>
-      <view class="colors">
-        <view wx:for="{{colors}}" wx:key="*this" class="color {{currentColor===item?'active':''}}" style="background:{{item}};" bindtap="onSelectColor" data-color="{{item}}"></view>
-      </view>
-    </scroll-view>
-  </view>
-
-  <!-- 底部按钮 -->
-  <view class="bottom-bar">
-    <view class="btn secondary" bindtap="onClear">
-      <text>清空</text>
-    </view>
-    <view class="btn primary" bindtap="onExport">
-      <text>导出图纸</text>
-    </view>
-  </view>
-
-  <!-- 颜色详情弹窗 -->
-  <view wx:if="{{showColorModal}}" class="modal-mask" bindtap="onCloseColorModal"></view>
-  <view wx:if="{{showColorModal}}" class="modal">
-    <view class="modal-header">
-      <text>当前颜色</text>
-      <view class="modal-close" bindtap="onCloseColorModal">×</view>
-    </view>
-    <view class="modal-body">
-      <view class="modal-color" style="background:{{currentColor}};"></view>
-      <view class="modal-info">
-        <view class="info-line"><text class="label">色号</text><text class="value">{{currentCode}}</text></view>
-        <view class="info-line"><text class="label">HEX</text><text class="value">{{currentColor}}</text></view>
-        <view class="info-line"><text class="label">用量</text><text class="value">{{colorCount}}颗</text></view>
-      </view>
-    </view>
-    <view class="modal-footer">
-      <view class="modal-btn" bindtap="onCloseColorModal">关闭</view>
-      <view class="modal-btn primary" bindtap="onSaveColor">保存</view>
     </view>
   </view>
 </view>
+
+  <!-- 底部颜色栏 - 滑动展开 -->
+  <view class="color-card {{colorbarExpanded ? 'expanded' : ''}}" style="height: {{colorbarHeight}}rpx; --colorbar-height: {{colorbarHeight}}rpx;">
+    <!-- 拖拽手柄 -->
+    <view 
+      class="color-handle"
+      bindtouchstart="onColorbarTouchStart"
+      bindtouchmove="onColorbarTouchMove"
+      bindtouchend="onColorbarTouchEnd"
+    >
+      <view class="handle-bar"></view>
+    </view>
+
+    <!-- 已使用色号区域 - 固定一行，左右滑动 -->
+    <!-- 问题3修复：扩大上划区域，包含标题行 -->
+    <view class="used-colors-section"
+      bindtouchstart="onColorbarTouchStart"
+      bindtouchmove="onColorbarTouchMove"
+      bindtouchend="onColorbarTouchEnd"
+    >
+      <view class="section-header">
+        <text class="section-title">已使用色号</text>
+        <text class="section-count">{{usedColors.length}}色</text>
+      </view>
+      <scroll-view class="used-colors-scroll" scroll-x>
+        <view class="used-colors-list">
+          <view 
+            wx:for="{{usedColors}}" 
+            wx:key="hex"
+            class="used-color-item {{currentColor===item.hex?'active':''}} {{dragTargetColor===item.hex?'drag-target':''}}"
+            bindtap="onSelectColor"
+            data-color="{{item.hex}}"
+          >
+            <view class="color-bead" style="background:{{item.hex}};">
+              <view class="bead-info">
+                <text class="bead-code">{{item.code}}</text>
+                <text class="bead-count">×{{item.count}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <!-- 分隔线 -->
+    <view class="section-divider"></view>
+
+    <!-- 品牌色号区域 -->
+    <view class="colors-section">
+      <view class="section-header">
+        <text class="section-title">{{brand}}</text>
+        <text class="section-count">{{colors.length}}色</text>
+      </view>
+      
+      <!-- 收起模式：当前色号固定 + 其他色号左右滑动 -->
+      <view wx:if="{{!colorbarExpanded}}" class="colors-compact-wrapper">
+        <!-- 当前颜色固定在左侧 -->
+        <view class="current-color-fixed">
+          <view class="current-color-bead" style="background:{{currentColor}};">
+            <text class="bead-code-large">{{currentCode}}</text>
+          </view>
+          <text class="current-color-label">当前</text>
+        </view>
+        
+        <!-- 其他颜色左右滚动 -->
+        <scroll-view class="colors-scroll-horizontal" scroll-x="{{!disableColorScroll}}" enable-flex>
+          <view class="colors-grid-compact"
+            bindtouchmove="onColorDragMove"
+            bindtouchend="onColorDragEnd"
+          >
+            <view 
+              wx:for="{{colorsWithCode}}" 
+              wx:key="hex"
+              class="color-item-compact {{currentColor===item.hex?'active':''}}"
+              bindtap="onSelectColor"
+              bindlongpress="onLongPressColor"
+              data-color="{{item.hex}}"
+            >
+              <view class="color-bead-compact" style="background:{{item.hex}};">
+                <text class="bead-code-compact">{{item.code}}</text>
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+      </view>
+      
+      <!-- 展开模式：所有颜色上下滑动 -->
+      <scroll-view 
+        wx:else
+        class="colors-scroll-expanded" 
+        scroll-y
+      >
+        <view class="colors-grid-expanded">
+          <view 
+            wx:for="{{colorsWithCode}}" 
+            wx:key="hex"
+            class="color-item-expanded {{currentColor===item.hex?'active':''}}"
+            bindtap="onSelectColor"
+            bindlongpress="onLongPressColor"
+            data-color="{{item.hex}}"
+          >
+            <view class="color-bead-expanded" style="background:{{item.hex}};">
+              <text class="bead-code-expanded">{{item.code}}</text>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+    
+    <!-- 底部安全区 -->
+    <view class="safe-area-bottom"></view>
+  </view>
+
+  <!-- 遮罩层：展开面板时显示 -->
+  <view 
+    wx:if="{{showSettings || colorbarExpanded}}"
+    class="panel-mask"
+    catchtouchmove="stopPropagation"
+    catchtap="onCanvasAreaTap"
+  ></view>
+
+  <!-- 拖动中的色块 -->
+  <view wx:if="{{isDraggingColor}}" class="dragging-color-block" 
+        style="left: {{dragX}}px; top: {{dragY}}px; background: {{draggingColor}};">
+    <text class="drag-code">{{draggingColorCode}}</text>
+  </view>
+
+  <!-- 吸色放大镜 -->
+  <view wx:if="{{showMagnifier}}" class="magnifier" style="left: {{magnifierX}}px; top: {{magnifierY}}px;">
+    <view class="magnifier-circle">
+      <!-- 真实放大镜 Canvas -->
+      <canvas type="2d" id="magnifierCanvas" class="magnifier-canvas"></canvas>
+    </view>
+    <view class="magnifier-label">{{magnifierColor}}</view>
+  </view>
+
+  <!-- 颜色详情弹窗 -->
+  <view wx:if="{{showColorModal}}" class="modal-overlay" bindtap="onCloseColorModal">
+    <view class="modal-container" catchtap="stopPropagation">
+      <view class="modal-icon-wrapper">
+        <text class="modal-icon">✨</text>
+        <view class="modal-icon-badge">
+          <text class="badge-icon">🎨</text>
+        </view>
+      </view>
+      <view class="modal-title">当前颜色</view>
+      <view class="modal-subtitle">查看颜色详细信息</view>
+      <view class="modal-color-preview" style="background:{{currentColor}};"></view>
+      <view class="modal-info-card">
+        <view class="info-row">
+          <text class="info-label">色号</text>
+          <text class="info-value">{{currentCode}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">HEX</text>
+          <text class="info-value">{{currentColor}}</text>
+        </view>
+        <view class="info-row">
+          <text class="info-label">用量</text>
+          <text class="info-value">{{colorCount}}颗</text>
+        </view>
+      </view>
+      <view class="modal-actions">
+        <view class="modal-btn secondary" bindtap="onCloseColorModal">关闭</view>
+        <view class="modal-btn primary" bindtap="onSave">保存</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 加载蒙层 -->
+  <view wx:if="{{loading}}" class="loading-overlay">
+    <view class="loading-container">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">{{loadingText}}</text>
+    </view>
+  </view>
+
+  <!-- 色号替换弹窗 -->
+  <view wx:if="{{showColorReplaceModal}}" class="color-replace-modal">
+    <view class="modal-mask" bindtap="onCloseColorReplaceModal"></view>
+    <view class="modal-content">
+      <view class="modal-header">
+        <text class="modal-title">选择要替换的色号</text>
+        <text class="modal-close" bindtap="onCloseColorReplaceModal">✕</text>
+      </view>
+      <view class="modal-body">
+        <view class="replace-target">
+          <text class="label">替换为：</text>
+          <view class="color-bead" style="background:{{replaceTargetColor}};"></view>
+          <text class="color-code">{{replaceTargetColor}}</text>
+        </view>
+        <view class="replace-divider"></view>
+        <view class="replace-source-title">
+          <text>选择画布中的色号：</text>
+        </view>
+        <scroll-view class="used-colors-grid" scroll-y>
+          <view 
+            wx:for="{{usedColors}}" 
+            wx:key="hex"
+            class="replace-color-item"
+            bindtap="onReplaceColor"
+            data-color="{{item.hex}}"
+          >
+            <view class="color-bead" style="background:{{item.hex}};"></view>
+            <text class="color-code">{{item.code}}</text>
+            <text class="color-count">×{{item.count}}</text>
+          </view>
+        </scroll-view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 拖拽替换色号确认弹窗 -->
+  <view wx:if="{{showReplaceModal}}" class="replace-confirm-modal">
+    <view class="modal-mask" bindtap="onCancelReplaceColor"></view>
+    <view class="modal-content-center">
+      <view class="modal-header">
+        <text class="modal-title">确认替换色号</text>
+      </view>
+      <view class="modal-body-center">
+        <view class="replace-info">
+          <text class="info-label">将画布中的</text>
+          <view class="color-display">
+            <view class="color-swatch" style="background:{{replaceSourceColor}};"></view>
+            <view class="color-text">
+              <text class="color-code-text">{{replaceSourceCode}}</text>
+              <text class="color-hex-text">{{replaceSourceColor}}</text>
+            </view>
+          </view>
+        </view>
+        <view class="replace-arrow">↓</view>
+        <view class="replace-info">
+          <text class="info-label">替换为</text>
+          <view class="color-display">
+            <view class="color-swatch" style="background:{{replaceTargetColor}};"></view>
+            <view class="color-text">
+              <text class="color-code-text">{{replaceTargetCode}}</text>
+              <text class="color-hex-text">{{replaceTargetColor}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="modal-footer">
+        <view class="modal-btn cancel" bindtap="onCancelReplaceColor">
+          <text>取消</text>
+        </view>
+        <view class="modal-btn confirm" bindtap="onConfirmReplaceColor">
+          <text>确认替换</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>
+
+<!-- 临时 Canvas 2D 用于读取背景图像素（隐藏） -->
+<canvas type="2d" id="tempCanvas2d" style="position: fixed; left: -9999px; top: -9999px; width: 1px; height: 1px;"></canvas>

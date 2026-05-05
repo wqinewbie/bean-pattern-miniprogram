@@ -1,7 +1,8 @@
 function getSafeAreaLayout() {
-  const sys = wx.getSystemInfoSync ? wx.getSystemInfoSync() : {};
+  const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+  const appBaseInfo = wx.getAppBaseInfo ? wx.getAppBaseInfo() : {};
   const menuButton = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
-  const statusBarHeight = sys.statusBarHeight || 20;
+  const statusBarHeight = windowInfo.statusBarHeight || appBaseInfo.statusBarHeight || 20;
   const menuHeight = menuButton && menuButton.height ? menuButton.height : 32;
   const menuBottom = menuButton && menuButton.bottom ? menuButton.bottom : (statusBarHeight + menuHeight + 8);
 

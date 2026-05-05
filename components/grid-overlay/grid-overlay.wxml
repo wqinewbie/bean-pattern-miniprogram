@@ -1,0 +1,7 @@
+<view class="grid-overlay-container">
+  <canvas 
+    type="2d" 
+    id="gridCanvas"
+    class="grid-canvas"
+  ></canvas>
+</view>

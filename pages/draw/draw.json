@@ -1,5 +1,9 @@
 {
-  "usingComponents": {},
-  "navigationBarTitleText": "拼豆画板",
+  "usingComponents": {
+    "bead-canvas2d": "/components/bead-canvas2d/index",
+    "grid-overlay": "/components/grid-overlay/grid-overlay",
+    "code-overlay": "/components/code-overlay/code-overlay"
+  },
+  "navigationBarTitleText": "空白画板",
   "navigationStyle": "custom"
 }

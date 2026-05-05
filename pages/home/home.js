@@ -1,5 +1,6 @@
 const request = require('../../utils/request');
 const { requireLogin, cacheProfile, hasSession } = require('../../utils/profile-guard');
+const popupManager = require('../../utils/popup-manager');
 
 const CATEGORIES = ['推荐', '卡通', '动物', '字母', '简约', '节日'];
 
@@ -25,6 +26,7 @@ Page({
     statusBarHeight: 44,
     bannerTop: 120,
     bannerList: [],
+    activeBanner: 0,
     currentBanner: {
       title: '初夏限定拼豆',
       subTitle: '一键生成专属图纸',
@@ -43,19 +45,17 @@ Page({
   },
 
   onLoad() {
-    wx.getSystemInfo({
-      success: (res) => {
-        const statusBarHeight = res.statusBarHeight || 20;
-        let bannerTop = 120;
-        const menuButton = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
-        if (menuButton && menuButton.bottom) {
-          bannerTop = menuButton.bottom + 24;
-        } else {
-          bannerTop = statusBarHeight + 84;
-        }
-        this.setData({ statusBarHeight, bannerTop });
-      }
-    });
+    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+    const appBaseInfo = wx.getAppBaseInfo ? wx.getAppBaseInfo() : {};
+    const statusBarHeight = windowInfo.statusBarHeight || appBaseInfo.statusBarHeight || 20;
+    let bannerTop = 120;
+    const menuButton = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
+    if (menuButton && menuButton.bottom) {
+      bannerTop = menuButton.bottom + 24;
+    } else {
+      bannerTop = statusBarHeight + 84;
+    }
+    this.setData({ statusBarHeight, bannerTop });
     this.loadBanners();
     this.loadTemplates();
     this.loadTutorials();
@@ -81,6 +81,8 @@ Page({
       this.openLoginModal();
     } else {
       this.closeLoginModal();
+      popupManager.setPopupComponent(this.selectComponent('#globalPopup'));
+      popupManager.checkAndShowPopup();
     }
   },
 
@@ -118,11 +120,24 @@ Page({
 
     request.get('/banner/list')
       .then((data) => {
-        const list = Array.isArray(data) ? data : [];
+        const raw = Array.isArray(data) ? data : [];
+        if (raw.length > 0) {
+          console.log('[home][banner/list] first item =', raw[0]);
+        }
+        const list = raw.map((item) => {
+          const rawBg = (item && (item.bgColor || item.bg_color || item.backgroundColor || ''));
+          const bgColor = (typeof rawBg === 'string') ? rawBg.trim() : '';
+          return {
+            ...item,
+            bgColor,
+            bannerBgColor: bgColor || '#FF9800'
+          };
+        });
         if (!list.length) return;
         const first = list[0] || {};
         this.setData({
           bannerList: list,
+          activeBanner: 0,
           currentBanner: {
             title: pickText(first.title, '初夏限定拼豆'),
             subTitle: pickText(first.subTitle, '一键生成专属图纸'),
@@ -151,6 +166,11 @@ Page({
         url: `/pages/tutorial-play/tutorial-play?url=${encodeURIComponent(tutorial.videoUrl)}&title=${encodeURIComponent(tutorial.title || '')}&desc=${encodeURIComponent(tutorial.description || '')}`
       });
     }
+  },
+
+  onBannerChange(e) {
+    const current = (e.detail && typeof e.detail.current === 'number') ? e.detail.current : 0;
+    this.setData({ activeBanner: current });
   },
 
   onBannerTap(e) {
@@ -288,7 +308,15 @@ Page({
 
   onGoMyPatterns() {
     if (!this.checkLogin()) return;
-    wx.navigateTo({ url: '/pages/my-patterns/my-patterns' });
+    wx.navigateTo({ url: '/pages/immersive-select/immersive-select' });
+  },
+
+  onPopupConfirm() {
+    // 由组件内部处理跳转与关闭
+  },
+
+  onPopupClose() {
+    popupManager.closePopup();
   },
 
   onPullDownRefresh() {

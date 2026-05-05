@@ -1,59 +1,100 @@
-<view class="container">
+<view class="patterns-page">
+  <view class="safe-area" style="height: {{statusBarHeight}}px;"></view>
 
-  <!-- 顶部导航 -->
-  <page-nav-bar title="草稿箱" subtitle="未完成的创意" nav-top="{{navTop}}" bind:back="onBack"/>
+  <view class="patterns-header" style="height: {{navHeight}}px;">
+    <view class="header-back" bindtap="onBack">
+      <image class="header-icon" src="/assets/icons/lucide-arrow-left-brown.svg" mode="aspectFit"/>
+    </view>
+    <view class="header-title-wrap">
+      <text class="header-title">草稿箱</text>
+      <view class="header-badge">
+        <image class="header-badge-icon" src="/assets/icons/lucide-file-text-orange.svg" mode="aspectFit"/>
+        <text>{{drafts.length}}</text>
+      </view>
+    </view>
+    <view class="header-right-spacer" style="width: {{capsuleWidth}}px;"></view>
+  </view>
 
-  <scroll-view scroll-y class="scroll-body">
-
-    <!-- 说明卡片 -->
-    <view class="tip-card">
-      <text class="tip-icon">💡</text>
-      <view class="tip-text">
-        <text class="tip-title">草稿箱说明</text>
-        <text class="tip-desc">这里保存着您未完成的创作，可以继续编辑或保存到图纸箱</text>
+  <scroll-view scroll-y class="patterns-scroll">
+    <view class="patterns-toolbar">
+      <view class="search-box {{searchFocused ? 'search-box--focus' : ''}}">
+        <image class="search-icon" src="/assets/icons/lucide-search-orange.svg" mode="aspectFit"/>
+        <input class="search-input" type="text" placeholder="搜索草稿..." placeholder-class="search-placeholder" value="{{keyword}}" bindfocus="onSearchFocus" bindblur="onSearchBlur" bindinput="onSearchInput"/>
+      </view>
+      <view class="view-toggle-btn" bindtap="onToggleViewMode">
+        <text>{{viewMode === 'thumb' ? '列表' : '缩略图'}}</text>
       </view>
     </view>
 
-    <!-- 草稿列表 -->
-    <view class="list-area">
-      <view wx:if="{{loading}}" class="loading-state">
-        <view class="loading-spinner"></view>
-        <text class="loading-text">加载中...</text>
+    <view wx:if="{{loading}}" class="loading-state">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">正在加载草稿箱...</text>
+    </view>
+
+    <view wx:elif="{{filteredDrafts.length===0}}" class="empty-state">
+      <view class="empty-icon-wrap">
+        <image class="empty-icon" src="/assets/icons/lucide-file-text-orange.svg" mode="aspectFit"/>
       </view>
+      <text class="empty-text">{{keyword ? '没有找到相关草稿' : '草稿箱空空如也'}}</text>
+    </view>
 
-      <view wx:elif="{{drafts.length === 0}}" class="empty-state">
-        <text class="empty-icon">📝</text>
-        <text class="empty-title">草稿箱空空如也</text>
-        <text class="empty-desc">在画板开始创作后自动保存到这里</text>
-        <view class="empty-btn" bindtap="onGoDraw">去画板</view>
-      </view>
-
-      <view wx:else class="draft-list">
-        <view wx:for="{{drafts}}" wx:key="id" class="draft-item">
-          <!-- 缩略图 -->
-          <view class="draft-thumb" bindtap="onDraftTap" data-item="{{item}}">
-            <canvas wx:if="{{item.hasCanvas}}" canvas-id="draftCanvas{{item.id}}" class="draft-canvas" type="2d"/>
-            <view wx:else class="draft-thumb-ph">🖼</view>
-          </view>
-          
-          <!-- 草稿信息 -->
-          <view class="draft-info" bindtap="onDraftTap" data-item="{{item}}">
-            <text class="draft-name">{{item.name || '未命名草稿'}}</text>
-            <text class="draft-meta">{{item.gridSize}}×{{item.gridSize}} · {{item.sourceType === 'DRAW' ? '画板' : '编辑'}}</text>
-            <text class="draft-time">{{item.updatedAt}}</text>
-          </view>
-
-          <!-- 操作按钮 -->
-          <view class="draft-actions">
-            <view class="draft-action" bindtap="onContinueEdit" data-item="{{item}}">✏️</view>
-            <view class="draft-action" bindtap="onSaveToBox" data-item="{{item}}">📦</view>
-            <view class="draft-action draft-action--del" bindtap="onDeleteDraft" data-id="{{item.id}}">🗑</view>
+    <!-- 缩略图模式 -->
+    <view wx:elif="{{viewMode === 'thumb'}}" class="patterns-grid">
+      <view wx:for="{{filteredDrafts}}" wx:key="id" class="pattern-card">
+        <view class="pattern-thumb" bindtap="onItemTap" data-item="{{item}}">
+          <image wx:if="{{item.sourceUrl}}" class="thumb-img" src="{{item.sourceUrl}}" mode="aspectFill" />
+          <canvas wx:elif="{{item.hasCanvas}}" id="draftCanvas{{item.id}}" canvas-id="draftCanvas{{item.id}}" class="thumb-canvas" type="2d"/>
+          <view wx:else class="thumb-ph">{{item.gridSize || 16}}x{{item.gridSize || 16}}</view>
+        </view>
+        <view class="pattern-body">
+          <view class="pattern-name-row">
+            <text class="pattern-name">{{item.name || '未命名草稿'}}</text>
+            <view class="pattern-name-actions">
+              <view class="icon-btn icon-btn--rename" catchtap="onRename" data-item="{{item}}">
+                <text class="icon-btn-emoji">✏️</text>
+              </view>
+              <view class="icon-btn icon-btn--delete" catchtap="onDeleteDraft" data-id="{{item.id}}">
+                <image class="icon-btn-img" src="/assets/icons/lucide-trash-red.svg" mode="aspectFit"/>
+              </view>
+            </view>
           </view>
         </view>
       </view>
     </view>
 
-    <view style="height:200rpx"></view>
+    <!-- 列表模式 -->
+    <view wx:else class="patterns-list">
+      <view wx:for="{{filteredDrafts}}" wx:key="id" class="list-item-wrapper">
+        <!-- 操作按钮背景层 -->
+        <view class="list-actions-bg">
+          <view class="list-action-bg list-action-bg--rename" catchtap="onRename" data-item="{{item}}">
+            <text>重命名</text>
+          </view>
+          <view class="list-action-bg list-action-bg--delete" catchtap="onDeleteDraft" data-id="{{item.id}}">
+            <text>删除</text>
+          </view>
+        </view>
+        <!-- 滑动层 -->
+        <view class="list-item {{touchItemId === item.id && isSwiping ? 'swiping' : ''}}"
+              style="transform: translateX({{swipedOffsets[item.id] || 0}}px);"
+              bindtouchstart="onTouchStart"
+              bindtouchmove="onTouchMove"
+              bindtouchend="onTouchEnd"
+              data-id="{{item.id}}">
+          <view class="list-item-main" bindtap="onItemTap" data-item="{{item}}">
+            <image wx:if="{{item.sourceUrl}}" class="list-thumb" src="{{item.sourceUrl}}" mode="aspectFill" />
+            <canvas wx:elif="{{item.hasCanvas}}" id="draftListCanvas{{item.id}}" canvas-id="draftListCanvas{{item.id}}" class="list-thumb" type="2d"/>
+            <view wx:else class="list-thumb list-thumb--ph">{{item.gridSize || 16}}</view>
+            <view class="list-info">
+              <text class="list-name">{{item.name || '未命名草稿'}}</text>
+              <text class="list-meta-text">{{item.gridSize}}×{{item.gridSize}} · {{item.sourceType === 'DRAW' ? '画板' : '编辑'}} · {{item.updatedAt}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view style="height: 48rpx;"></view>
   </scroll-view>
 
   <!-- 保存到图纸箱弹窗 -->
@@ -62,11 +103,10 @@
     <view class="modal-handle"></view>
     <text class="modal-title">保存到图纸箱</text>
     <input class="modal-input" type="text" maxlength="20" value="{{patternName}}" bindinput="onNameInput" placeholder="给图纸起个名字" placeholder-class="modal-placeholder"/>
-    <view class="modal-hint">不填则自动命名为 "草稿#时间戳"</view>
+    <view class="modal-hint">不填则自动命名为 "魔法草稿#日期时间"</view>
     <view class="modal-actions">
       <view class="modal-btn modal-btn--cancel" bindtap="onCloseSaveModal">取消</view>
       <view class="modal-btn modal-btn--confirm" bindtap="onConfirmSaveToBox">保存</view>
     </view>
   </view>
-
 </view>

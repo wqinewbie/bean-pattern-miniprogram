@@ -1,0 +1,8 @@
+<view class="code-overlay-container" style="width: {{width}}px; height: {{height}}px; visibility: {{_visible}};">
+  <canvas 
+    type="2d" 
+    id="codeCanvas"
+    class="code-canvas"
+    style="width: {{width}}px; height: {{height}}px;"
+  ></canvas>
+</view>

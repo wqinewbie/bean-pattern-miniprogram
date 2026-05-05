@@ -1,81 +1,79 @@
 <view class="container">
 
-  <!-- 隐藏的 Canvas 用于渲染（600px 与 generating.js 一致） -->
-  <canvas canvas-id="resultCanvas" style="width:600px;height:600px;position:fixed;left:-9999px;top:-9999px;"></canvas>
-  <canvas canvas-id="patternCanvas" style="width:600px;height:600px;position:fixed;left:-9999px;top:-9999px;"></canvas>
-
   <!-- 顶部导航 -->
   <page-nav-bar title="图纸预览" subtitle="{{brandName}} · {{currentSize}}×{{currentSize}}" nav-top="{{navTop}}" bind:back="onBack"/>
-
-  <!-- 页面加载遮罩 -->
-  <view wx:if="{{pageLoading}}" class="page-loading-mask">
-    <view class="page-loading-content">
-      <view class="page-spinner"></view>
-      <text class="page-loading-text">正在加载...</text>
-    </view>
-  </view>
 
   <scroll-view scroll-y class="scroll-body">
 
     <!-- 图纸大图预览区 -->
     <view class="preview-card">
       <view class="preview-wrap">
-        <!-- 图片预览模式（原图） -->
-        <image wx:if="{{activeTab === 'original' && currentPreviewUrl}}" class="preview-img" src="{{currentPreviewUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
-        
-        <!-- 效果图：优先显示预渲染图片，否则显示 Canvas -->
-        <image wx:if="{{activeTab === 'result' && renderedResultUrl !== ''}}" class="preview-img" src="{{renderedResultUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
-        <canvas wx:elif="{{activeTab === 'result' && rgbData.length > 0 && renderedResultUrl === ''}}" canvas-id="resultCanvas" class="result-canvas" style="width:100%;height:100%" />
-        
-        <!-- 色号图：优先显示预渲染图片，否则显示 Canvas -->
-        <image wx:if="{{activeTab === 'pattern' && renderedPatternUrl !== ''}}" class="preview-img" src="{{renderedPatternUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
-        <canvas wx:elif="{{activeTab === 'pattern' && hasPatternData && renderedPatternUrl === ''}}" canvas-id="patternCanvas" class="pattern-canvas" style="width:100%;height:100%" />
-        
-        <!-- 效果图占位（无数据时） -->
-        <view wx:if="{{activeTab === 'result' && rgbData.length === 0 && renderedResultUrl === '' && !currentPreviewUrl}}" class="image-placeholder">
-          <text class="ph-icon">🖼️</text>
-          <text class="ph-text">暂无效果图数据</text>
+        <view wx:if="{{!isHydrated}}" class="preview-placeholder">
+          <view class="preview-placeholder-dot"></view>
+          <text class="preview-placeholder-text">正在准备结果...</text>
         </view>
-        <!-- 色号图占位（无数据时） -->
-        <view wx:if="{{activeTab === 'pattern' && !hasPatternData && renderedPatternUrl === ''}}" class="image-placeholder">
-          <text class="ph-icon">🖼️</text>
-          <text class="ph-text">暂无色号图数据</text>
+
+        <block wx:if="{{!showGeneratingOverlay}}">
+          <block wx:if="{{activeTab === 'original'}}">
+            <image wx:if="{{currentPreviewUrl}}" class="preview-img {{mirrorOn ? 'preview-img--mirror' : ''}}" src="{{currentPreviewUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+            <view wx:if="{{isHydrated && !currentPreviewUrl}}" class="image-placeholder">
+              <text class="ph-icon">🖼️</text>
+              <text class="ph-text">暂无图片</text>
+            </view>
+          </block>
+
+          <!-- 效果图 TAB -->
+          <block wx:elif="{{activeTab === 'result'}}">
+            <image wx:if="{{renderedResultUrl !== ''}}" class="preview-img" src="{{renderedResultUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+            <bead-canvas2d wx:elif="{{rgbData.length > 0}}" id="resultCanvas2dComp" canvasId="resultCanvas2d" width="1024" height="1024" class="result-canvas {{resultRendered ? '' : 'canvas-rendering'}}" bind:ready="onCanvas2dReady" bind:error="onCanvas2dError" />
+            <view wx:else class="image-placeholder">
+              <text class="ph-icon">🖼️</text>
+              <text class="ph-text">暂无效果图数据</text>
+            </view>
+          </block>
+
+          <!-- 色号图 TAB -->
+          <block wx:else>
+            <image wx:if="{{renderedPatternUrl !== '' && !isEditMode}}" class="preview-img preview-img--pattern" src="{{renderedPatternUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+            <bead-canvas2d wx:elif="{{isEditMode && hasPatternData}}" id="patternCanvas2dComp" canvasId="patternCanvas2d" width="1024" height="1400" class="pattern-canvas {{isEditMode ? 'edit-mode' : ''}} {{patternRendered ? '' : 'canvas-rendering'}}" bind:ready="onCanvas2dReady" bind:error="onCanvas2dError" bindtap="onCanvasEditTap" />
+            <view wx:else class="image-placeholder">
+              <text class="ph-icon">🖼️</text>
+              <text class="ph-text">{{hasPatternData ? '正在生成色号图...' : '暂无色号图数据'}}</text>
+            </view>
+          </block>
+        </block>
+
+        <view wx:if="{{showGeneratingOverlay}}" class="preview-placeholder preview-placeholder--overlay">
+          <view class="preview-placeholder-dot"></view>
+          <text class="preview-placeholder-text">{{generatingLoadingText || '正在处理...'}}</text>
         </view>
-        <!-- 原图占位 -->
-        <view wx:if="{{activeTab === 'original' && !currentPreviewUrl}}" class="image-placeholder">
-          <text class="ph-icon">🖼️</text>
-          <text class="ph-text">暂无图片</text>
-        </view>
+
         <!-- 生成中遮罩 -->
         <view wx:if="{{saving}}" class="preview-loading">
           <view class="preview-spinner"></view>
           <text class="preview-loading-text">处理中...</text>
         </view>
-        <!-- 渲染中遮罩（只有 canvasReady 为 false 时显示） -->
-        <view wx:if="{{!canvasReady}}" class="preview-loading">
-          <view class="preview-spinner"></view>
-          <text class="preview-loading-text">正在渲染...</text>
-        </view>
       </view>
 
-      <!-- 标签切换 -->
       <view class="tab-bar">
         <view wx:if="{{originalUrl}}" class="tab {{activeTab==='original'?'tab--active':''}}" bindtap="onTabChange" data-tab="original">原图</view>
         <view wx:if="{{resultUrl || rgbData.length > 0}}" class="tab {{activeTab==='result'?'tab--active':''}}" bindtap="onTabChange" data-tab="result">效果图</view>
         <view class="tab {{activeTab==='pattern'?'tab--active':''}}" bindtap="onTabChange" data-tab="pattern">色号图</view>
       </view>
 
-      <!-- 保存当前图片 -->
-      <view class="save-img-btn" bindtap="onSaveImage">保存当前图片</view>
+      <!-- 两个中部操作按钮（对齐 Figma Preview） -->
+      <view class="action-stack" wx:if="{{hasPatternData}}">
+        <view class="action-btn action-btn--edit" bindtap="handleToggleEditMode">
+                    <text>进入图纸编辑模式</text>
+        </view>
 
-      <!-- 保存到图纸箱 -->
-      <view class="save-box-btn {{isSaved?'save-box-btn--done':''}}" bindtap="onSaveToMyPatterns">
-        {{isSaved ? '已保存到图纸箱' : '保存到图纸箱'}}
+        <view class="action-btn action-btn--immersive {{!isSaved?'action-btn--disabled':''}}" bindtap="onEnterFocusMode">
+                    <text>进入沉浸拼豆模式</text>
+        </view>
       </view>
-
-      <!-- 沉浸拼豆模式 -->
-      <view class="focus-mode-btn {{!isSaved?'focus-mode-btn--disabled':''}}" bindtap="onEnterFocusMode">进入沉浸式拼豆</view>
     </view>
+
+    <!-- 编辑工具栏已按需求移除 -->
 
     <!-- 色号清单 -->
     <view wx:if="{{colorPalette.length>0}}" class="stats-card">
@@ -93,8 +91,8 @@
             <text class="stat-idx">{{index+1}}.</text>
             <view class="stat-dot" style="background:rgb({{item.r}},{{item.g}},{{item.b}})"></view>
             <view class="stat-info">
-              <text class="stat-id">{{item.id}}</text>
-              <text class="stat-name">{{item.name}}</text>
+              <text class="stat-id">{{item.id || item.name}}</text>
+              <text wx:if="{{item.name && item.name !== item.id}}" class="stat-name">{{item.name}}</text>
             </view>
           </view>
           <text class="stat-count">x{{item.count}}</text>
@@ -102,11 +100,46 @@
       </view>
     </view>
 
-    <view style="height:200rpx"></view>
+    <view style="height:260rpx"></view>
   </scroll-view>
+
+  <!-- 底部固定操作（对齐 Figma Preview） -->
+  <view class="bottom-actions" wx:if="{{hasPatternData}}">
+    <view class="bottom-actions-inner">
+      <view class="bottom-btn-slot bottom-btn-slot--album {{isSaved ? 'bottom-btn-slot--album-expanded' : ''}}">
+        <view class="bottom-btn bottom-btn--album {{savingToAlbum ? 'bottom-btn--loading' : ''}}" bindtap="onSaveImage" hover-class="none" hover-stop-propagation="{{false}}">
+          <text wx:if="{{!savingToAlbum}}">保存至相册</text>
+          <view wx:else class="btn-loading">
+            <view class="btn-spinner"></view>
+            <text class="btn-loading-text">处理中...</text>
+          </view>
+        </view>
+      </view>
+      <view class="bottom-btn-slot bottom-btn-slot--box {{isSaved ? 'bottom-btn-slot--box-hidden' : ''}}">
+        <view class="bottom-btn bottom-btn--box" bindtap="onSaveToMyPatterns">
+          <text>保存至图纸箱</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 结果页首屏加载遮罩 -->
+  <view wx:if="{{resultInitialLoading}}" class="result-initial-overlay">
+    <view class="result-initial-card">
+      <view class="result-initial-spinner"></view>
+      <text class="result-initial-title">正在打开图纸...</text>
+      <text class="result-initial-sub">正在加载图纸数据</text>
+    </view>
+  </view>
 
   <!-- 临时高分辨率保存用 Canvas（隐藏） -->
   <canvas canvas-id="tempSaveCanvas" style="position:fixed;left:-9999px;top:-9999px;width:2048px;height:2048px" />
+  <!-- 色号图 2D 导出专用 Canvas（隐藏） -->
+  <bead-canvas2d id="patternExport2dComp" canvasId="patternExport2d" width="2048" height="2048" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
+  <!-- 效果图 2D 导出专用 Canvas（隐藏） -->
+  <bead-canvas2d id="resultExport2dComp" canvasId="resultExport2d" width="2048" height="2048" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
+  <!-- 原图镜像预览专用 Canvas（隐藏） -->
+  <canvas canvas-id="mirrorPreviewCanvas" style="position:fixed;left:-9999px;top:-9999px;width:2048px;height:2048px" />
 
   <!-- 命名弹框 -->
   <view wx:if="{{showNameModal}}" class="name-mask" bindtap="onCloseNameModal"></view>
@@ -117,6 +150,73 @@
     <view class="name-actions">
       <view class="name-btn name-btn--ghost" bindtap="onCloseNameModal">取消</view>
       <view class="name-btn name-btn--main" bindtap="onConfirmSavePattern">保存</view>
+    </view>
+  </view>
+
+  <!-- 颜色选择器弹窗（编辑模式下） -->
+  <view wx:if="{{showColorPicker}}" class="color-picker-mask" bindtap="onCloseColorPicker">
+    <view class="color-picker-box" catchtap="noop">
+      <view class="color-picker-header">
+        <text class="color-picker-title">选择颜色</text>
+        <text class="color-picker-pos">位置: ({{editCellCol}}, {{editCellRow}})</text>
+      </view>
+      <!-- 当前颜色 -->
+      <view class="color-picker-current">
+        <view class="current-color-swatch" style="background:rgb({{editCellColor.r}},{{editCellColor.g}},{{editCellColor.b}})"></view>
+        <text class="current-color-info">{{editCellColor.id || editCellColor.name || ''}}</text>
+      </view>
+      <!-- 颜色列表 -->
+      <scroll-view scroll-y class="color-picker-list">
+        <view class="color-grid">
+          <block wx:for="{{colorPalette}}" wx:key="id">
+            <view class="color-item {{selectedEditColor && selectedEditColor.id === item.id ? 'color-item--selected' : ''}}" 
+                  bindtap="onSelectEditColor" data-color="{{item}}" data-index="{{index}}">
+              <view class="color-swatch" style="background:rgb({{item.r}},{{item.g}},{{item.b}})"></view>
+              <text class="color-id">{{item.id}}</text>
+            </view>
+          </block>
+        </view>
+      </scroll-view>
+      <!-- 操作按钮 -->
+      <view class="color-picker-actions">
+        <view class="picker-btn picker-btn--cancel" bindtap="onCloseColorPicker">取消</view>
+        <view class="picker-btn picker-btn--confirm" bindtap="onConfirmEditColor">确认</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 隐藏的生成流程 Canvas -->
+  <canvas canvas-id="bead-mirror-canvas" style="width:640px;height:640px;position:fixed;left:-9999px;top:-9999px;"></canvas>
+  <canvas canvas-id="bead-sample-canvas" style="width:512px;height:512px;position:fixed;left:-9999px;top:-9999px;"></canvas>
+
+  <!-- 结果页内置生成遮罩 -->
+  <view wx:if="{{showGeneratingOverlay}}" class="generating-overlay">
+    <view wx:if="{{!generatingTimeout}}" class="generating-main">
+      <view class="generating-anim-wrap">
+        <view class="generating-ring generating-ring1"></view>
+        <view class="generating-ring generating-ring2"></view>
+        <view class="generating-center-box">
+          <view class="generating-spinner"></view>
+        </view>
+      </view>
+      <text class="generating-title">{{generatingLoadingText}}</text>
+      <text class="generating-sub">请稍候，马上就好...</text>
+    </view>
+
+    <view wx:else class="generating-main">
+      <view class="generating-anim-wrap">
+        <view class="generating-ring generating-ring1"></view>
+        <view class="generating-ring generating-ring2"></view>
+        <view class="generating-center-box">
+          <view class="generating-spinner"></view>
+        </view>
+      </view>
+      <text class="generating-title">仍在生成中</text>
+      <text class="generating-sub">图片较为复杂，可稍后在「我的图纸」查看</text>
+      <view class="generating-btn-row">
+        <view class="generating-btn-outline" bindtap="onGoMyPatterns">去我的图纸</view>
+        <view class="generating-btn-primary" bindtap="onKeepWaiting">继续等待</view>
+      </view>
     </view>
   </view>
 

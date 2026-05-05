@@ -1,21 +1,31 @@
 /* custom-tab-bar/index.wxss */
 
-.tab-bar {
+.tab-bar-shell {
   position: fixed;
-  bottom: 0;
   left: 0;
   right: 0;
+  bottom: 0;
+  z-index: 90;
+  pointer-events: none;
+}
+
+.tab-bar-shell--hidden {
+  display: none;
+}
+
+.tab-bar {
   height: 120rpx;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.98);
   border-top: 2rpx solid #FFEBB5;
   border-radius: 40rpx 40rpx 0 0;
   display: flex;
   align-items: center;
   justify-content: space-around;
-  padding: 0 8rpx;
+  padding: 0 12rpx;
   padding-bottom: env(safe-area-inset-bottom);
-  box-shadow: 0 -8rpx 40rpx rgba(255, 200, 100, 0.18);
-  z-index: 90;
+  box-shadow: 0 -8rpx 28rpx rgba(255, 200, 100, 0.14);
+  backdrop-filter: blur(12rpx);
+  pointer-events: auto;
 }
 
 .tab-item {
@@ -23,15 +33,15 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4rpx;
-  padding: 8rpx 0;
+  gap: 6rpx;
+  padding: 10rpx 0 8rpx;
   position: relative;
   transform: translateY(0);
 }
 
 .tab-item--active {
   animation: tab-rise 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-  transform: translateY(-18rpx);
+  transform: translateY(-12rpx);
 }
 
 .tab-item--leaving {
@@ -40,9 +50,9 @@
 }
 
 .tab-icon-wrap {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
+  width: 78rpx;
+  height: 78rpx;
+  border-radius: 999rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -51,20 +61,40 @@
 }
 
 .tab-item--active .tab-icon-wrap {
-  transform: scale(1.12);
+  transform: scale(1.04);
 }
 
-.tab-item--leaving .tab-icon-wrap {
+.tab-active-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 999rpx;
+  opacity: 0;
+  transform: scale(0.72);
+  transition: opacity 0.24s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tab-active-bg--show {
+  opacity: 1;
   transform: scale(1);
 }
 
+.tab-active-bg--hide {
+  opacity: 0;
+  transform: scale(0.72);
+}
+
+.tab-active-bg--orange { background: #FFF4DC; }
+.tab-active-bg--red { background: #FFE5E5; }
+.tab-active-bg--purple { background: #F3E5F5; }
+.tab-active-bg--green { background: #E8F5E9; }
+
 .tab-glow {
   position: absolute;
-  width: 88rpx;
-  height: 88rpx;
+  width: 94rpx;
+  height: 94rpx;
   border-radius: 50%;
   opacity: 0;
-  transform: scale(0.7);
+  transform: scale(0.72);
   transition: opacity 0.24s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
 }
@@ -76,28 +106,34 @@
 
 .tab-glow--hide {
   opacity: 0;
-  transform: scale(0.7);
+  transform: scale(0.72);
 }
 
-.tab-glow--orange { background: radial-gradient(circle, rgba(255, 152, 0, 0.38) 0%, transparent 70%); }
-.tab-glow--red { background: radial-gradient(circle, rgba(255, 107, 107, 0.38) 0%, transparent 70%); }
-.tab-glow--purple { background: radial-gradient(circle, rgba(156, 39, 176, 0.38) 0%, transparent 70%); }
-.tab-glow--green { background: radial-gradient(circle, rgba(76, 175, 80, 0.38) 0%, transparent 70%); }
+.tab-glow--orange { background: radial-gradient(circle, rgba(255, 152, 0, 0.18) 0%, transparent 72%); }
+.tab-glow--red { background: radial-gradient(circle, rgba(255, 107, 107, 0.18) 0%, transparent 72%); }
+.tab-glow--purple { background: radial-gradient(circle, rgba(156, 39, 176, 0.18) 0%, transparent 72%); }
+.tab-glow--green { background: radial-gradient(circle, rgba(76, 175, 80, 0.18) 0%, transparent 72%); }
 
 .tab-icon {
   width: 46rpx;
   height: 46rpx;
   position: relative;
-  z-index: 1;
+  z-index: 2;
   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.tab-item--active .tab-icon {
-  transform: scale(1.12);
+.tab-icon--convert {
+  width: 54rpx;
+  height: 54rpx;
 }
 
-.tab-item--leaving .tab-icon {
-  transform: scale(1);
+.tab-icon--ai {
+  width: 54rpx;
+  height: 54rpx;
+}
+
+.tab-item--active .tab-icon {
+  transform: scale(1.06);
 }
 
 .tab-label {
@@ -105,16 +141,15 @@
   font-weight: 700;
   color: #D0B8A1;
   letter-spacing: 1rpx;
-  transition: color 0.22s ease, font-size 0.24s ease, opacity 0.22s ease;
+  transition: color 0.22s ease, transform 0.24s ease, opacity 0.22s ease;
 }
 
 .tab-label--active {
-  font-size: 24rpx;
   font-weight: 800;
+  transform: scale(0.96);
 }
 
 .tab-label--leaving {
-  font-size: 22rpx;
   font-weight: 700;
   color: #D0B8A1;
 }
@@ -129,13 +164,13 @@
     transform: translateY(0);
   }
   to {
-    transform: translateY(-18rpx);
+    transform: translateY(-12rpx);
   }
 }
 
 @keyframes tab-drop {
   from {
-    transform: translateY(-18rpx);
+    transform: translateY(-12rpx);
   }
   to {
     transform: translateY(0);

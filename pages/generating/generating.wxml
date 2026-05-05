@@ -1,5 +1,7 @@
 <view class="container">
 
+  <!-- 隐藏的 Canvas 用于像素级镜像处理 -->
+  <canvas canvas-id="bead-mirror-canvas" style="width:640px;height:640px;position:fixed;left:-9999px;top:-9999px;"></canvas>
   <!-- 隐藏的 Canvas 用于采样 -->
   <canvas canvas-id="bead-sample-canvas" style="width:512px;height:512px;position:fixed;left:-9999px;top:-9999px;"></canvas>
   <!-- 隐藏的 Canvas 用于渲染（600px 高分辨率以显示色号） -->

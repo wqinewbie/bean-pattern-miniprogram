@@ -1,0 +1,199 @@
+.edit-profile-page {
+  min-height: 100vh;
+  background: #FFF9ED;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── 状态栏占位 - 使用渐变最深色 ─── */
+.status-bar-placeholder {
+  width: 100%;
+  background: #FFEBB5;
+}
+
+/* ─── Header 渐变区 ─── */
+.edit-header {
+  background: linear-gradient(to bottom, #FFEBB5, #FFF9ED);
+  padding: 0 20rpx 48rpx;
+}
+
+.edit-nav {
+  display: flex;
+  align-items: center;
+}
+
+.edit-back {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -16rpx;
+}
+
+.edit-back-icon {
+  font-size: 56rpx;
+  color: #5D4037;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.edit-back:active {
+  transform: scale(0.95);
+}
+
+.edit-title-wrapper {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  margin-right: 48rpx;
+}
+
+.edit-title {
+  font-size: 36rpx;
+  font-weight: 800;
+  color: #5D4037;
+}
+
+.edit-nav-spacer {
+  width: 0;
+}
+
+/* ─── Content ─── */
+.edit-scroll {
+  flex: 1;
+  padding: 0 40rpx;
+  box-sizing: border-box;
+}
+
+/* ─── 头像区域 ─── */
+.avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 64rpx;
+}
+
+.avatar-box-edit {
+  position: relative;
+}
+
+.avatar-button {
+  width: 192rpx;
+  height: 192rpx;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  overflow: visible;
+}
+
+.avatar-button::after {
+  border: none;
+}
+
+.avatar-image,
+.avatar-placeholder {
+  width: 192rpx;
+  height: 192rpx;
+  border-radius: 50%;
+  background: #fff;
+  border: 8rpx solid #fff;
+  box-shadow: 0 16rpx 40rpx rgba(93,64,55,0.15);
+}
+
+.avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 96rpx;
+  background: #F5F5F5;
+}
+
+.avatar-edit-badge {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #FF9800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 24rpx rgba(255,152,0,0.4);
+}
+
+.avatar-edit-badge:active {
+  transform: scale(0.95);
+}
+
+.avatar-tip {
+  margin-top: 24rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #A1887F;
+}
+
+/* ─── 信息字段 ─── */
+.fields-container {
+  display: flex;
+  flex-direction: column;
+  gap: 32rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.field-card {
+  background: #fff;
+  border-radius: 32rpx;
+  padding: 32rpx;
+  box-shadow: 0 8rpx 24rpx rgba(140,107,75,0.06);
+  border: 4rpx solid #FFF4DC;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.field-label {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #A1887F;
+  margin-bottom: 16rpx;
+}
+
+.field-input {
+  width: 100%;
+  font-size: 30rpx;
+  font-weight: 800;
+  color: #5D4037;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.field-input::-webkit-input-placeholder {
+  color: #D0B8A1;
+  font-weight: 700;
+}
+
+/* ─── 保存按钮 ─── */
+.save-btn {
+  margin-top: 64rpx;
+  width: 100%;
+  height: 104rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(to right, #FF9800, #FFB74D);
+  color: #fff;
+  font-size: 32rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 16rpx 48rpx rgba(255,152,0,0.3);
+  box-sizing: border-box;
+}
+
+.save-btn:active {
+  transform: scale(0.98);
+}

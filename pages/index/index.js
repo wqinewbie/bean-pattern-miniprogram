@@ -21,7 +21,7 @@ Page({
           return;
         }
         try {
-          const res = await request("/auth/wx-login", "POST", { code: loginRes.code });
+          const res = await request("/auth/login", "POST", { code: loginRes.code });
           if (!res.success) {
             throw new Error(res.message || "登录失败");
           }

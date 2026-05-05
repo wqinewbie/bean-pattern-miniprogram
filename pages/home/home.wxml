@@ -6,37 +6,63 @@
   <view class="welcome-card">
     <view class="welcome-deco-1"></view>
     <view class="welcome-deco-2"></view>
-    <view class="welcome-text">
-      <text class="welcome-title">{{isLoggedIn ? (isVip ? '尊贵的魔法师 👑' : '可爱的魔法学徒 🪄') : '欢迎来到魔法屋 🪄'}}</text>
-      <text class="welcome-sub">今天想创造什么奇迹呢？</text>
+    <view class="welcome-row">
+      <view class="welcome-text">
+        <view class="welcome-title-row">
+          <text class="welcome-title">{{isLoggedIn ? (isVip ? '尊贵的魔法师' : '可爱的魔法学徒') : '欢迎来到魔法屋'}}</text>
+          <image
+            class="welcome-title-icon"
+            src="{{isLoggedIn ? (isVip ? '/assets/icons/welcome-crown.svg' : '/assets/icons/lucide-wand.svg') : '/assets/icons/lucide-wand.svg'}}"
+            mode="aspectFit"
+          />
+        </view>
+        <text class="welcome-sub">今天想创造什么奇迹呢？</text>
+      </view>
+      <view wx:if="{{isLoggedIn}}" class="welcome-magic-pill">
+        <image class="welcome-magic-icon" src="/assets/icons/ai-sparkle-yellow-uhd.png" mode="aspectFit"/>
+        <text class="welcome-magic-count">{{magicCount}}</text>
+      </view>
     </view>
   </view>
 
   <!-- Banner 轮播 -->
   <view class="banner-zone" wx:if="{{bannerList.length > 0}}">
-    <scroll-view
-      class="banner-scroll"
-      scroll-x
-      enhanced
-      show-scrollbar="{{false}}"
-    >
-      <view
-        wx:for="{{bannerList}}"
-        wx:key="id"
-        class="banner-card"
-        style="background: {{item.bgColor || '#FF9800'}};"
-        bindtap="onBannerTap"
-        data-banner="{{item}}"
+    <view class="banner-frame">
+      <swiper
+        class="banner-swiper"
+        circular
+        autoplay
+        interval="3600"
+        duration="500"
+        current="{{activeBanner}}"
+        bindchange="onBannerChange"
+        indicator-dots="{{false}}"
       >
-        <image wx:if="{{item.imageUrl}}" class="banner-bg-img" src="{{item.imageUrl}}" mode="aspectFill"/>
-        <view class="banner-overlay"></view>
-        <view class="banner-card-content">
-          <text class="banner-tag">{{item.tagText || '魔法上新'}}</text>
-          <text class="banner-main-title">{{item.title || '初夏限定拼豆'}}</text>
-          <text class="banner-sub-title">{{item.subTitle || '一键生成专属图纸'}}</text>
-        </view>
+        <swiper-item wx:for="{{bannerList}}" wx:key="id">
+          <view
+            class="banner-slide"
+            style="background: {{item.bannerBgColor || '#FF9800'}};"
+            bindtap="onBannerTap"
+            data-banner="{{item}}"
+          >
+            <image wx:if="{{item.imageUrl}}" class="banner-bg-img" src="{{item.imageUrl}}" mode="aspectFill"/>
+            <view class="banner-overlay"></view>
+            <view class="banner-card-content">
+              <text class="banner-tag">{{item.tagText || '魔法上新'}}</text>
+              <text class="banner-main-title">{{item.title || '初夏限定拼豆'}}</text>
+              <text class="banner-sub-title">{{item.subTitle || '一键生成专属图纸'}}</text>
+            </view>
+          </view>
+        </swiper-item>
+      </swiper>
+      <view class="banner-dots">
+        <view
+          wx:for="{{bannerList}}"
+          wx:key="id"
+          class="banner-dot {{activeBanner === index ? 'banner-dot--active' : ''}}"
+        ></view>
       </view>
-    </scroll-view>
+    </view>
   </view>
 
   <!-- 功能卡片区域 -->
@@ -45,7 +71,7 @@
       <!-- 图片转图纸 -->
       <view class="action-card" bindtap="onBeadPatternLocal">
         <view class="action-icon icon-pink">
-          <image class="icon-img" src="/assets/icons/lucide-image-plus.svg" mode="aspectFit"/>
+          <image class="icon-img icon-img--convert-home" src="/assets/icons/convert-icon-red-uhd.png" mode="aspectFit"/>
         </view>
         <text class="action-title">图片转图纸</text>
         <text class="action-desc">智能识别色彩</text>
@@ -54,7 +80,7 @@
       <!-- AI一键生成 -->
       <view class="action-card" bindtap="onBeadPatternAI">
         <view class="action-icon icon-purple">
-          <image class="icon-img" src="/assets/icons/lucide-sparkles.svg" mode="aspectFit"/>
+          <image class="icon-img icon-img--ai-home" src="/assets/icons/ai-sparkle-purple-uhd.png" mode="aspectFit"/>
         </view>
         <text class="action-title">AI一键生成</text>
         <text class="action-desc">高级定制图纸</text>
@@ -71,10 +97,10 @@
 
       <!-- 拼豆魔法 -->
       <view class="action-card" bindtap="onGoMyPatterns">
-        <view class="action-icon icon-orange">
-          <image class="icon-img" src="/assets/icons/lucide-wand.svg" mode="aspectFit"/>
+        <view class="action-icon icon-yellow">
+          <image class="icon-img icon-img--jimeng" src="/assets/icons/ScreenShot_2026-04-29_112714_302.png" mode="aspectFit"/>
         </view>
-        <text class="action-title">拼豆魔法</text>
+        <text class="action-title">沉浸式拼豆</text>
         <text class="action-desc">让拼豆变得更高效</text>
       </view>
     </view>

@@ -1,0 +1,62 @@
+  loadPaletteColors(brandName) {
+    // 先获取品牌ID
+    request.get('/bead/brand-list').then((brandList) => {
+      if (!brandList || !brandList.length) throw new Error('empty brand list');
+      
+      // 查找匹配的品牌
+      const brand = brandList.find(b => b.name.toLowerCase() === brandName.toLowerCase());
+      if (!brand) throw new Error('brand not found');
+      
+      // 保存品牌ID
+      this._currentBrandId = brand.id;
+      
+      // 根据品牌ID获取套餐列表
+      return request.get(`/bead/brands/${brand.id}/kits`);
+    }).then((kits) => {
+      if (!kits || !kits.length) throw new Error('empty kits');
+      
+      // 保存套餐列表
+      this.setData({ 
+        kitList: kits,
+        selectedKitId: kits[0].id,
+        selectedKitName: kits[0].name
+      });
+      
+      // 加载第一个套餐的色号
+      return this.loadKitColors(kits[0].id);
+    }).catch((err) => {
+      console.error('加载套餐列表失败:', err);
+      // 失败时使用默认颜色
+      this.setData({ colors: DEFAULT_COLORS });
+      this._updateColorRows();
+    });
+  },
+
+  loadKitColors(kitId) {
+    return request.get(`/bead/kits/${kitId}/colors`).then((colorList) => {
+      if (!colorList || !colorList.length) throw new Error('empty colors');
+      
+      // 转换为 hex 格式
+      const colors = colorList.map(c => c.hex);
+      
+      this.setData({ colors });
+      this._updateColorRows();
+    }).catch((err) => {
+      console.error('加载套餐色号失败:', err);
+      throw err;
+    });
+  },
+
+  onSelectKit(e) {
+    const kitId = e.currentTarget.dataset.kitId;
+    const kitName = e.currentTarget.dataset.kitName;
+    
+    this.setData({ 
+      selectedKitId: kitId,
+      selectedKitName: kitName,
+      paletteDropdownOpen: false 
+    });
+    
+    // 重新加载该套餐的色号
+    this.loadKitColors(kitId);
+  },

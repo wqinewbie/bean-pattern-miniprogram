@@ -5,13 +5,14 @@
     "pages/generate/generate",
     "pages/history/history",
     "pages/profile/profile",
+    "pages/edit-profile/edit-profile",
+    "pages/preview/preview",
     "pages/result/result",
-    "pages/result-loading/result-loading",
+    "pages/immersive-select/immersive-select",
     "pages/focus-mode/focus-mode",
     "pages/my-patterns/my-patterns",
     "pages/draw/draw",
     "pages/ai-generate/ai-generate",
-    "pages/generating/generating",
     "pages/vip/vip",
     "pages/convert/convert",
     "pages/draft/draft"
@@ -50,6 +51,7 @@
   "style": "v2",
   "sitemapLocation": "sitemap.json",
   "usingComponents": {
-    "global-popup": "/components/popup/index"
+    "global-popup": "/components/popup/index",
+    "bead-canvas2d": "/components/bead-canvas2d/index"
   }
 }

@@ -31,15 +31,24 @@ Page({
       { value: 78, label: '78×78' },
       { value: 104, label: '104×104' }
     ],
-    // 像素化模式
-    pixelationModeIndex: 0,
-    pixelationModeOptions: [
-      { value: 'dominant', label: '卡通风格' },
-      { value: 'average', label: '真实风格' }
-    ],
-    // 相似度阈值
+    pixelationMode: 'average',
+    // 相似度阈值，对齐 perler-beads-ai-main 默认值
     similarityThreshold: 30,
     showModeSheet: false,
+    showSizeSheet: false,
+    showBrandSheet: false,
+    statusBarHeight: 20,
+    navTop: 20,
+    navBarHeight: 44,
+    navHeaderHeight: 64,
+    previewX: 0,
+    previewY: 0,
+    previewScale: 1,
+    previewBaseW: 0,
+    previewBaseH: 0,
+    previewLeft: 0,
+    previewTop: 0,
+    previewBoxPx: 0,
   },
 
   onBack() {
@@ -47,35 +56,50 @@ Page({
   },
 
   onLoad(options) {
+    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+    const appBaseInfo = wx.getAppBaseInfo ? wx.getAppBaseInfo() : {};
+    const statusBarHeight = windowInfo.statusBarHeight || appBaseInfo.statusBarHeight || 20;
+    const menuButton = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
+    let navTop = statusBarHeight + 8;
+    let navBarHeight = 44;
+    if (menuButton) {
+      navTop = menuButton.top;
+      navBarHeight = menuButton.height;
+    }
+    this.setData({ statusBarHeight, navTop, navBarHeight, navHeaderHeight: navTop + navBarHeight });
     if (options && options.imageUrl) {
       const url = decodeURIComponent(options.imageUrl);
       this.setData({ imageUrl: url });
+      this.initPreviewMetrics(url);
     }
     this.loadBrandsFromServer();
   },
 
   loadBrandsFromServer() {
     request.get('/bead/brands').then((data) => {
-      if (!data || typeof data !== 'object') return;
-      const brandList = Object.keys(data);
-      if (brandList.length === 0) return;
-      const firstBrand = brandList[0];
-      const kits = data[firstBrand] || [];
+      if (!data || typeof data !== 'object') throw new Error('empty brands');
+      const brandNames = Object.keys(data);
+      if (!brandNames.length) throw new Error('empty brands');
+
+      const brandRows = brandNames.map((name) => ({ id: name, name }));
+      const firstBrand = brandRows[0];
+      const kits = data[firstBrand.name] || [];
       const colorCountOptions = [
         { value: 0, label: '全部色号' },
-        ...kits.map(k => ({ value: k, label: k + '色' }))
+        ...(kits || []).map(k => ({ value: k, label: k + '色' }))
       ];
+
       this.setData({
-        brandList,
+        brandList: brandRows,
         brandIndex: 0,
         colorCountOptions,
         colorCountLabel: '全部色号',
         colorCountValue: 0,
-        _brandsData: data
+        _brandKitsMap: data
       });
     }).catch(() => {
       this.setData({
-        brandList: ['MARD'],
+        brandList: [{ id: 'mard', name: 'MARD' }],
         brandIndex: 0,
         colorCountOptions: [
           { value: 0, label: '全部色号' },
@@ -83,31 +107,70 @@ Page({
           { value: 72, label: '72色' }, { value: 96, label: '96色' }
         ],
         colorCountLabel: '全部色号',
-        colorCountValue: 0
+        colorCountValue: 0,
+        _brandKitsMap: { mard: [24, 48, 72, 96] }
       });
     });
   },
 
   onBrandChange(e) {
-    const idx = parseInt(e.detail.value);
-    const brand = this.data.brandList[idx];
-    const brandsData = this.data._brandsData || {};
-    const kits = brandsData[brand] || [];
+    this.applyBrandIndex(parseInt(e.detail.value));
+  },
+
+  onShowBrandSheet() {
+    this.setData({ showBrandSheet: true });
+  },
+
+  onHideBrandSheet() {
+    this.setData({ showBrandSheet: false });
+  },
+
+  onSelectBrand(e) {
+    const index = parseInt(e.currentTarget.dataset.index);
+    this.applyBrandIndex(index, true);
+  },
+
+  applyBrandIndex(idx, closeSheet = false) {
+    const brandRow = this.data.brandList[idx];
+    const brandKey = brandRow && (brandRow.name || brandRow.id) ? String(brandRow.name || brandRow.id) : '';
+    const kitsMap = this.data._brandKitsMap || {};
+    const kits = kitsMap[brandKey] || [];
+
     const colorCountOptions = [
       { value: 0, label: '全部色号' },
-      ...kits.map(k => ({ value: k, label: k + '色' }))
+      ...(kits || []).map(k => ({ value: k, label: k + '色' }))
     ];
     this.setData({
       brandIndex: idx,
       colorCountOptions,
       colorCountLabel: '全部色号',
-      colorCountValue: 0
+      colorCountValue: 0,
+      showBrandSheet: closeSheet ? false : this.data.showBrandSheet
     });
   },
 
   onGridSizeChange(e) {
     const index = e.detail !== undefined ? parseInt(e.detail.value) : parseInt(e.currentTarget.dataset.index);
     this.setData({ gridSizeIndex: index, customMode: false, customConfirmed: false, customSizeVal: '' });
+  },
+
+  onShowSizeSheet() {
+    this.setData({ showSizeSheet: true });
+  },
+
+  onHideSizeSheet() {
+    this.setData({ showSizeSheet: false });
+  },
+
+  onSelectGridSize(e) {
+    const index = parseInt(e.currentTarget.dataset.index);
+    this.setData({
+      gridSizeIndex: index,
+      customMode: false,
+      customConfirmed: false,
+      customSizeVal: '',
+      showSizeSheet: false
+    });
   },
 
   onMirrorToggle() {
@@ -128,18 +191,21 @@ Page({
   },
 
   onEditCustom() {
-    this.setData({ customMode: true });
+    this.setData({ customMode: true, customConfirmed: true });
   },
 
   onCustomSizeInput(e) {
-    this.setData({ customSizeVal: e.detail.value });
+    this.setData({ customSizeVal: e.detail.value, customMode: true, customConfirmed: true });
   },
 
   onCustomSizeBlur() {
     let val = parseInt(this.data.customSizeVal, 10);
-    if (isNaN(val) || val < 10) val = 15;
+    if (isNaN(val) || val < 10) {
+      this.setData({ customMode: false, customConfirmed: false, customSizeVal: '' });
+      return;
+    }
     if (val > 100) val = 100;
-    this.setData({ customSizeVal: String(val) });
+    this.setData({ customSizeVal: String(val), customMode: false, customConfirmed: true });
   },
 
   onChooseImage() {
@@ -148,15 +214,86 @@ Page({
       mediaType: ['image'],
       sourceType: ['album', 'camera'],
       success: (res) => {
+        const imageUrl = res.tempFiles[0].tempFilePath;
         this.setData({
-          imageUrl: res.tempFiles[0].tempFilePath,
+          imageUrl,
           resultReady: false,
           resultUrl: '',
           patternUrl: '',
-          colorStats: []
+          colorStats: [],
+          previewX: 0,
+          previewY: 0,
+          previewScale: 1
+        });
+        this.initPreviewMetrics(imageUrl);
+      }
+    });
+  },
+
+  initPreviewMetrics(imagePath) {
+    if (!imagePath) return;
+    wx.getImageInfo({
+      src: imagePath,
+      success: (info) => {
+        const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+        const previewBoxPx = Math.round((windowInfo.windowWidth || 375) * 640 / 750);
+        const ratio = info.width / info.height;
+        let baseW = previewBoxPx;
+        let baseH = previewBoxPx;
+        if (ratio >= 1) {
+          baseW = previewBoxPx;
+          baseH = previewBoxPx / ratio;
+        } else {
+          baseH = previewBoxPx;
+          baseW = previewBoxPx * ratio;
+        }
+        this.setData({
+          previewBaseW: baseW,
+          previewBaseH: baseH,
+          previewLeft: (previewBoxPx - baseW) / 2,
+          previewTop: (previewBoxPx - baseH) / 2,
+          previewBoxPx,
+          previewX: 0,
+          previewY: 0,
+          previewScale: 1
         });
       }
     });
+  },
+
+  applyPreviewTransform(nextX, nextY, nextScale) {
+    const box = this.data.previewBoxPx || 0;
+    const baseW = this.data.previewBaseW || 0;
+    const baseH = this.data.previewBaseH || 0;
+    if (!box || !baseW || !baseH) return;
+
+    let scale = nextScale;
+    if (scale < 1) scale = 1;
+    if (scale > 5) scale = 5;
+
+    const scaledW = baseW * scale;
+    const scaledH = baseH * scale;
+
+    let x = nextX;
+    let y = nextY;
+
+    if (scaledW <= box) {
+      x = 0;
+    } else {
+      const maxX = (scaledW - box) / 2;
+      if (x > maxX) x = maxX;
+      if (x < -maxX) x = -maxX;
+    }
+
+    if (scaledH <= box) {
+      y = 0;
+    } else {
+      const maxY = (scaledH - box) / 2;
+      if (y > maxY) y = maxY;
+      if (y < -maxY) y = -maxY;
+    }
+
+    this.setData({ previewX: x, previewY: y, previewScale: scale });
   },
 
   onShowColorSheet() {
@@ -176,23 +313,188 @@ Page({
     this.setData({ algoIndex: parseInt(e.detail.value) });
   },
 
-  onPixelationModeChange(e) {
-    const index = e.currentTarget.dataset.index !== undefined 
-      ? parseInt(e.currentTarget.dataset.index) 
-      : parseInt(e.detail.value);
-    this.setData({ pixelationModeIndex: index });
-  },
-
   onSimilarityThresholdChange(e) {
     this.setData({ similarityThreshold: parseInt(e.detail.value) || 0 });
   },
 
-  onShowModeSheet() {
-    this.setData({ showModeSheet: true });
+  onPreviewMove(e) {
+    if (!e || !e.detail) return;
+    const x = typeof e.detail.x === 'number' ? e.detail.x : this.data.previewX;
+    const y = typeof e.detail.y === 'number' ? e.detail.y : this.data.previewY;
+    if (x !== this.data.previewX || y !== this.data.previewY) {
+      this.setData({ previewX: x, previewY: y });
+    }
   },
 
-  onHideModeSheet() {
-    this.setData({ showModeSheet: false });
+  onPreviewTouchStart(e) {
+    const touches = (e && e.touches) || [];
+    if (touches.length === 1) {
+      this._dragging = true;
+      this._dragStartX = touches[0].pageX;
+      this._dragStartY = touches[0].pageY;
+      this._dragOriginX = this.data.previewX || 0;
+      this._dragOriginY = this.data.previewY || 0;
+      this._pinching = false;
+      return;
+    }
+    if (touches.length !== 2) return;
+    const p1 = touches[0];
+    const p2 = touches[1];
+    this._pinchStartDistance = Math.hypot(p2.pageX - p1.pageX, p2.pageY - p1.pageY) || 1;
+    this._pinchStartCenterX = (p1.pageX + p2.pageX) / 2;
+    this._pinchStartCenterY = (p1.pageY + p2.pageY) / 2;
+    this._pinchStartScale = this.data.previewScale || 1;
+    this._pinchStartX = this.data.previewX || 0;
+    this._pinchStartY = this.data.previewY || 0;
+    this._pinching = true;
+    this._dragging = false;
+  },
+
+  onPreviewTouchMove(e) {
+    const touches = (e && e.touches) || [];
+
+    if (this._pinching && touches.length === 2) {
+      const p1 = touches[0];
+      const p2 = touches[1];
+      const curDistance = Math.hypot(p2.pageX - p1.pageX, p2.pageY - p1.pageY) || this._pinchStartDistance;
+      const curCenterX = (p1.pageX + p2.pageX) / 2;
+      const curCenterY = (p1.pageY + p2.pageY) / 2;
+
+      const nextScale = this._pinchStartScale * (curDistance / (this._pinchStartDistance || 1));
+      const dx = curCenterX - this._pinchStartCenterX;
+      const dy = curCenterY - this._pinchStartCenterY;
+      const nextX = this._pinchStartX + dx;
+      const nextY = this._pinchStartY + dy;
+      this.applyPreviewTransform(nextX, nextY, nextScale);
+      return;
+    }
+
+    if (this._dragging && touches.length === 1) {
+      const p = touches[0];
+      const nextX = this._dragOriginX + (p.pageX - this._dragStartX);
+      const nextY = this._dragOriginY + (p.pageY - this._dragStartY);
+      this.applyPreviewTransform(nextX, nextY, this.data.previewScale || 1);
+    }
+  },
+
+  onPreviewTouchEnd(e) {
+    const touches = (e && e.touches) || [];
+    if (touches.length === 1) {
+      this._dragging = true;
+      this._pinching = false;
+      this._dragStartX = touches[0].pageX;
+      this._dragStartY = touches[0].pageY;
+      this._dragOriginX = this.data.previewX || 0;
+      this._dragOriginY = this.data.previewY || 0;
+      return;
+    }
+    this._pinching = false;
+    this._dragging = false;
+  },
+
+  exportVisibleImage() {
+    const {
+      imageUrl,
+      previewX,
+      previewY,
+      previewScale,
+      previewBaseW,
+      previewBaseH,
+      previewLeft,
+      previewTop,
+      previewBoxPx
+    } = this.data;
+    if (!imageUrl) return Promise.resolve('');
+
+    return new Promise((resolve) => {
+      wx.getImageInfo({
+        src: imageUrl,
+        success: (info) => {
+          const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+          const fallbackBoxPx = Math.round((windowInfo.windowWidth || 375) * 640 / 750);
+          const boxPxRaw = Number(previewBoxPx);
+          const boxPx = Number.isFinite(boxPxRaw) && boxPxRaw > 0 ? boxPxRaw : fallbackBoxPx;
+          const baseWRaw = Number(previewBaseW);
+          const baseHRaw = Number(previewBaseH);
+          const baseW = Number.isFinite(baseWRaw) && baseWRaw > 0 ? baseWRaw : boxPx;
+          const baseH = Number.isFinite(baseHRaw) && baseHRaw > 0 ? baseHRaw : boxPx;
+          const leftRaw = Number(previewLeft);
+          const topRaw = Number(previewTop);
+          const left = Number.isFinite(leftRaw) ? leftRaw : (boxPx - baseW) / 2;
+          const top = Number.isFinite(topRaw) ? topRaw : (boxPx - baseH) / 2;
+          const scaleRaw = Number(previewScale);
+          const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 ? scaleRaw : 1;
+          const canvasSize = 640;
+
+          // ========== 可视区 -> 源图坐标映射 ==========
+          // 计算缩放后的图片层左上角位置（考虑 transform-origin: center center）
+          const scaledLeft = left + baseW * (1 - scale) / 2;
+          const scaledTop = top + baseH * (1 - scale) / 2;
+          
+          // 加上平移后的最终位置
+          const finalLeft = scaledLeft + previewX;
+          const finalTop = scaledTop + previewY;
+          
+          // 可视区域左上角在图片层上的坐标（图片层坐标系，缩放后）
+          const visibleLayerX = -finalLeft;
+          const visibleLayerY = -finalTop;
+          
+          // 映射到源图坐标（考虑两层缩放）
+          const unscaledX = visibleLayerX / scale;
+          const unscaledY = visibleLayerY / scale;
+          
+          const srcToLayerScaleW = info.width / baseW;
+          const srcToLayerScaleH = info.height / baseH;
+          
+          // 计算裁剪矩形
+          let sx = Math.floor(unscaledX * srcToLayerScaleW);
+          let sy = Math.floor(unscaledY * srcToLayerScaleH);
+          let sw = Math.floor((boxPx / scale) * srcToLayerScaleW);
+          let sh = Math.floor((boxPx / scale) * srcToLayerScaleH);
+
+          // 边界检查
+          if (sw > info.width) sw = info.width;
+          if (sh > info.height) sh = info.height;
+          if (sx < 0) sx = 0;
+          if (sy < 0) sy = 0;
+          if (sx + sw > info.width) sx = Math.max(0, info.width - sw);
+          if (sy + sh > info.height) sy = Math.max(0, info.height - sh);
+
+          const sourcePath = info.path || imageUrl;
+          console.log('[generate][export] crop', { sx, sy, sw, sh, scale, srcWidth: info.width, srcHeight: info.height });
+
+          const ctx = wx.createCanvasContext('gen-crop-canvas');
+          ctx.setFillStyle('#ffffff');
+          ctx.fillRect(0, 0, canvasSize, canvasSize);
+
+          // 裁剪（源图矩形 -> 640x640）
+          ctx.drawImage(sourcePath, sx, sy, sw, sh, 0, 0, canvasSize, canvasSize);
+
+          ctx.draw(false, () => {
+            setTimeout(() => {
+              wx.canvasToTempFilePath({
+                canvasId: 'gen-crop-canvas',
+                x: 0,
+                y: 0,
+                width: canvasSize,
+                height: canvasSize,
+                destWidth: canvasSize,
+                destHeight: canvasSize,
+                success: (cropRes) => {
+                  const croppedPath = cropRes.tempFilePath || imageUrl;
+                  resolve(croppedPath);
+                },
+                fail: (err) => {
+                  console.error('[generate][export] crop fail', err);
+                  resolve(imageUrl);
+                }
+              });
+            }, 100);
+          });
+        },
+        fail: () => resolve(imageUrl)
+      });
+    });
   },
 
   onTabChange(e) {
@@ -214,28 +516,64 @@ Page({
         brandList, 
         brandIndex, 
         colorCountValue,
-        pixelationModeOptions,
-        pixelationModeIndex,
-        similarityThreshold
+        similarityThreshold,
+        customConfirmed,
+        customSizeVal
       } = this.data;
       
-      const gridSize = gridSizeOptions[gridSizeIndex].value;
-      const brand = brandList[brandIndex] || 'MARD';
+      let gridSize = gridSizeOptions[gridSizeIndex].value;
+      if (customConfirmed) {
+        const customGridSize = parseInt(customSizeVal, 10);
+        if (!isNaN(customGridSize) && customGridSize >= 10) {
+          gridSize = customGridSize;
+        }
+      }
+      let brand = 'MARD';
+      const brandRow = brandList[brandIndex];
+      if (brandRow && typeof brandRow === 'object') {
+        brand = brandRow.name || brandRow.label || brand;
+      } else if (typeof brandRow === 'string' && brandRow) {
+        brand = brandRow;
+      }
       const algo = 'standard'; // 兼容旧接口
       const colorCount = colorCountValue || 0;
-      const pixelationMode = pixelationModeOptions[pixelationModeIndex].value;
-      
-      // 跳转到生成等待页面
-      wx.redirectTo({
-        url: '/pages/generating/generating?mode=image' +
-             '&imageUrl=' + encodeURIComponent(imageUrl) +
-             '&gridSize=' + gridSize +
-             '&brand=' + encodeURIComponent(brand) +
-             '&colorCount=' + colorCount +
-             '&algo=' + encodeURIComponent(algo) +
-             '&pixelationMode=' + encodeURIComponent(pixelationMode) +
-             '&similarityThreshold=' + similarityThreshold
-      });
+      const pixelationMode = 'average';
+      const mirrorOn = !!this.data.mirrorOn;
+
+      this._flowId = 'flow_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+
+      this.exportVisibleImage()
+        .then((visibleImageUrl) => {
+          const finalImageUrl = visibleImageUrl || imageUrl;
+
+          console.log('[generate] onGenerate export result', {
+            visibleImageUrl: visibleImageUrl ? visibleImageUrl.slice(0, 100) : '',
+            imageUrl: imageUrl ? imageUrl.slice(0, 100) : '',
+            finalImageUrl: finalImageUrl ? finalImageUrl.slice(0, 100) : ''
+          });
+
+          if (!finalImageUrl) {
+            wx.showToast({ title: '图片处理失败，请重新选择', icon: 'none' });
+            return;
+          }
+
+          // 跳转到 result 页面，使用内置生成流程（替代 generating 页面）
+          wx.redirectTo({
+            url: '/pages/result/result?generateNow=1&mode=image' +
+                 '&imageUrl=' + encodeURIComponent(finalImageUrl) +
+                 '&gridSize=' + gridSize +
+                 '&brand=' + encodeURIComponent(brand) +
+                 '&colorCount=' + colorCount +
+                 '&pixelationMode=' + encodeURIComponent(pixelationMode) +
+                 '&similarityThreshold=' + similarityThreshold +
+                 '&mirrorOn=' + (mirrorOn ? 1 : 0) +
+                 '&flowId=' + encodeURIComponent(this._flowId || '')
+          });
+        })
+        .catch((err) => {
+          console.error('[generate] onGenerate error', err);
+          wx.showToast({ title: '生成失败', icon: 'none' });
+        });
     });
   },
 

@@ -1,0 +1,139 @@
+<view class="container">
+
+  <page-nav-bar title="图纸预览" subtitle="{{brandName}} · {{currentSize}}×{{currentSize}}" nav-top="{{navTop}}" bind:back="onBack"/>
+
+  <scroll-view scroll-y class="scroll-body">
+
+    <view class="preview-card">
+      <view class="preview-wrap">
+        <view wx:if="{{loading || !isHydrated}}" class="preview-placeholder">
+          <view class="preview-placeholder-dot"></view>
+          <text class="preview-placeholder-text">正在准备结果...</text>
+        </view>
+
+        <!-- 原图 -->
+        <block wx:if="{{activeTab === 'original'}}">
+          <image wx:if="{{currentPreviewUrl}}" class="preview-img" src="{{currentPreviewUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+          <view wx:elif="{{isHydrated}}" class="image-placeholder">
+            <text class="ph-icon">🖼️</text>
+            <text class="ph-text">暂无图片</text>
+          </view>
+        </block>
+
+        <!-- 效果图 -->
+        <block wx:elif="{{activeTab === 'result'}}">
+          <image wx:if="{{renderedResultUrl !== ''}}" class="preview-img" src="{{renderedResultUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+          <bead-canvas2d wx:elif="{{hasResultData}}" id="resultCanvas2dComp" canvasId="resultCanvas2d" width="1024" height="1024" class="result-canvas" bind:ready="onCanvas2dReady" bind:error="onCanvas2dError" />
+          <view wx:elif="{{isHydrated}}" class="image-placeholder">
+            <text class="ph-icon">🖼️</text>
+            <text class="ph-text">暂无效果图数据</text>
+          </view>
+        </block>
+
+        <!-- 色号图 -->
+        <block wx:else>
+          <image wx:if="{{renderedPatternUrl !== ''}}" class="preview-img" src="{{renderedPatternUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+          <bead-canvas2d wx:elif="{{hasPatternData}}" id="patternCanvas2dComp" canvasId="patternCanvas2d" width="1024" height="1024" class="pattern-canvas" bind:ready="onCanvas2dReady" bind:error="onCanvas2dError" />
+          <view wx:elif="{{isHydrated}}" class="image-placeholder">
+            <text class="ph-icon">🖼️</text>
+            <text class="ph-text">暂无色号图数据</text>
+          </view>
+        </block>
+      </view>
+
+      <!-- Tab 切换 -->
+      <view class="tab-bar">
+        <view wx:if="{{originalUrl && sourceType !== 'DRAFT'}}" class="tab {{activeTab==='original'?'tab--active':''}}" bindtap="onTabChange" data-tab="original">原图</view>
+        <view wx:if="{{hasResultData}}" class="tab {{activeTab==='result'?'tab--active':''}}" bindtap="onTabChange" data-tab="result">效果图</view>
+        <view wx:if="{{hasPatternData}}" class="tab {{activeTab==='pattern'?'tab--active':''}}" bindtap="onTabChange" data-tab="pattern">色号图</view>
+      </view>
+
+      <!-- 操作按钮 -->
+      <view class="action-stack" wx:if="{{hasPatternData}}">
+        <view class="action-btn action-btn--edit" bindtap="handleToggleEditMode">
+          <text>进入图纸编辑模式</text>
+        </view>
+        <view class="action-btn action-btn--immersive {{canEnterFocusMode ? '' : 'action-btn--disabled'}}" bindtap="onEnterFocusMode">
+          <text>进入沉浸拼豆模式</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{colorPalette.length>0}}" class="stats-card">
+      <view class="stats-header">
+        <view class="stats-title-row">
+          <view class="stats-bar"></view>
+          <text class="stats-title">所需色号清单</text>
+        </view>
+        <text class="stats-count">共 {{colorPalette.length}} 色 / {{totalBeads}} 颗</text>
+      </view>
+      <view class="stats-grid">
+        <view wx:for="{{colorPalette}}" wx:key="id" class="stat-item">
+          <view class="stat-left">
+            <text class="stat-idx">{{index+1}}.</text>
+            <view class="stat-dot" style="background:rgb({{item.r}},{{item.g}},{{item.b}})"></view>
+            <view class="stat-info">
+              <text class="stat-id">{{item.id || item.name}}</text>
+              <text wx:if="{{item.name && item.name !== item.id}}" class="stat-name">{{item.name}}</text>
+            </view>
+          </view>
+          <text class="stat-count">x{{item.count}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view style="height:160rpx"></view>
+  </scroll-view>
+
+  <!-- 底部操作栏 -->
+  <view class="bottom-actions" wx:if="{{isHydrated}}">
+    <view class="bottom-actions-inner">
+      <view class="bottom-btn-slot bottom-btn-slot--album {{isFromBox || isSaved ? 'bottom-btn-slot--album-expanded' : ''}}">
+        <view class="bottom-btn bottom-btn--album {{savingToAlbum ? 'bottom-btn--loading' : ''}}" bindtap="onSaveImage" hover-class="none">
+          <text wx:if="{{!savingToAlbum}}">保存至相册</text>
+          <view wx:else class="btn-loading">
+            <view class="btn-spinner"></view>
+            <text class="btn-loading-text">处理中...</text>
+          </view>
+        </view>
+      </view>
+      <view class="bottom-btn-slot bottom-btn-slot--box {{isFromBox || isSaved ? 'bottom-btn-slot--box-hidden' : ''}}">
+        <view class="bottom-btn bottom-btn--box" bindtap="onSaveToMyPatterns">
+          <text>保存到图纸箱</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 初始加载遮罩 -->
+  <view wx:if="{{initialLoading}}" class="result-initial-overlay">
+    <view class="result-initial-card">
+      <view class="result-initial-spinner"></view>
+      <text class="result-initial-title">正在打开图纸...</text>
+      <text class="result-initial-sub">效果图渲染中，请稍候</text>
+    </view>
+  </view>
+
+  <!-- 命名弹框 -->
+  <view wx:if="{{showNameModal}}" class="name-mask" bindtap="onCloseNameModal"></view>
+  <view class="name-modal {{showNameModal ? 'name-modal--show' : ''}}" catchtap="noop">
+    <view class="name-title">给图纸起个名字</view>
+    <input class="name-input" type="text" maxlength="20" value="{{patternNameInput}}" bindinput="onNameInput" placeholder="例如：柴犬像素摆件" placeholder-class="name-placeholder"/>
+    <view class="name-hint">不填则自动命名为 魔法图纸#日期时间</view>
+    <view class="name-actions">
+      <view class="name-btn name-btn--ghost" bindtap="onCloseNameModal">取消</view>
+      <view class="name-btn name-btn--main {{savingToBox ? 'name-btn--loading' : ''}}" bindtap="onConfirmSavePattern">
+        <text wx:if="{{!savingToBox}}">保存</text>
+        <view wx:else class="btn-loading">
+          <view class="btn-spinner" style="border-top-color:#3E2723"></view>
+          <text style="color:#3E2723;font-size:28rpx;font-weight:800">保存中...</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 隐藏的导出组件 -->
+  <bead-canvas2d id="resultExport2dComp" canvasId="resultExport2d" width="2048" height="2048" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
+  <bead-canvas2d id="patternExport2dComp" canvasId="patternExport2d" width="2048" height="2048" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
+
+</view>

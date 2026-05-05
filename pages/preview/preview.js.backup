@@ -1,0 +1,289 @@
+﻿const request = require('../../utils/request');
+const { getSafeAreaLayout } = require('../../utils/safe-area');
+const { drawPatternWithAxes } = require('../../utils/pattern-canvas');
+const { ensureProfileComplete } = require('../../utils/profile-guard');
+const { generatePatternName } = require('../../utils/name-helper');
+const { renderResult } = require('../../utils/canvas2d/renderers/resultRenderer');
+const { waitCanvas2dReady } = require('../../utils/canvas2d/controller');
+const { previewSize, resultExportSize, patternExportSize } = require('../../utils/canvas2d/size-strategies');
+
+Page({
+  data: {
+    sourceType: 'BOX',
+    boxId: null,
+    historyId: null,
+    draftId: null,
+    isSaved: false,
+    showNameModal: false,
+    patternNameInput: '',
+    savingToBox: false,
+    navTop: 88,
+    loading: true,
+    isHydrated: false,
+    initialLoading: true,
+    activeTab: 'result',
+    originalUrl: '',
+    currentPreviewUrl: '',
+    name: '',
+    currentSize: 64,
+    brandName: 'MARD',
+    colorCount: 0,
+    mappedPixelData: [],
+    gridData: [],
+    colorPalette: [],
+    totalBeads: 0,
+    hasPatternData: false,
+    hasResultData: false,
+    resultRendered: false,
+    patternRendered: false,
+    renderedPatternUrl: '',
+    renderedResultUrl: '',
+    canvas2dReadyMap: {},
+    savingToAlbum: false,
+    isFromBox: true,
+    canEnterFocusMode: true,
+  },
+
+  onLoad(options) {
+    const layout = getSafeAreaLayout();
+    const boxId = options.boxId ? String(options.boxId) : '';
+    const historyId = options.historyId ? String(options.historyId) : '';
+    const draftId = options.draftId ? String(options.draftId) : '';
+    let sourceType = (options.sourceType || '').toUpperCase();
+    if (!sourceType) {
+      if (boxId) sourceType = 'BOX';
+      else if (historyId) sourceType = 'HISTORY';
+      else if (draftId) sourceType = 'DRAFT';
+      else sourceType = 'BOX';
+    }
+    const isFromBox = sourceType === 'BOX';
+    this.setData({ navTop: layout.navTop, boxId: boxId || null, historyId: historyId || null, draftId: draftId || null, sourceType, isFromBox, canEnterFocusMode: isFromBox });
+    const id = boxId || historyId || draftId;
+    if (!id) {
+      wx.showToast({ title: '图纸不存在', icon: 'none' });
+      this.setData({ loading: false, isHydrated: true, initialLoading: false });
+      return;
+    }
+    this.loadDetail(sourceType, id);
+  },
+
+  loadDetail(sourceType, id) {
+    this.setData({ loading: true, isHydrated: false });
+    const apiMap = { BOX: '/box/detail/', HISTORY: '/history/detail/', DRAFT: '/draft/detail/' };
+    const apiUrl = (apiMap[sourceType] || '/box/detail/') + encodeURIComponent(id);
+    request.get(apiUrl).then((data) => {
+      if (!data) {
+        wx.showToast({ title: '图纸不存在', icon: 'none' });
+        this.setData({ loading: false, isHydrated: true, initialLoading: false });
+        return;
+      }
+      let parsedMappedPixelData = [];
+      try {
+        if (data.mappedPixelData) parsedMappedPixelData = typeof data.mappedPixelData === 'string' ? JSON.parse(data.mappedPixelData) : data.mappedPixelData;
+      } catch (e) { parsedMappedPixelData = []; }
+      let parsedGridData = [], parsedColorPalette = [];
+      if (parsedMappedPixelData.length) {
+        const derived = this._deriveLegacyFromMapped(parsedMappedPixelData);
+        parsedGridData = derived.gridData;
+        parsedColorPalette = derived.colorPalette;
+      }
+      const hasPatternData = parsedGridData.length > 0 && parsedColorPalette.length > 0;
+      const originalUrl = sourceType === 'DRAFT' ? '' : (data.sourceUrl || data.coverUrl || '');
+      const totalBeads = parsedColorPalette.reduce((sum, c) => sum + (c.count || 0), 0);
+      const renderedPatternUrl = data.renderedPatternUrl || '';
+      const returnedBoxId = data.boxId ? String(data.boxId) : (this.data.boxId || null);
+      const isSaved = sourceType === 'BOX' || (!!returnedBoxId && returnedBoxId !== id);
+      const canEnterFocusMode = sourceType === 'BOX' || isSaved;
+      let activeTab = 'pattern';
+      if (sourceType === 'DRAFT') activeTab = hasPatternData ? 'result' : 'pattern';
+      else { if (hasPatternData) activeTab = 'result'; else if (originalUrl) activeTab = 'original'; }
+      this.setData({ name: data.name || '', originalUrl, currentPreviewUrl: originalUrl, currentSize: data.gridSize || 64, brandName: (data.brand || 'MARD').toUpperCase(), colorCount: data.colorCount || parsedColorPalette.length, mappedPixelData: parsedMappedPixelData, gridData: parsedGridData, colorPalette: parsedColorPalette, totalBeads, hasPatternData, hasResultData: hasPatternData, renderedPatternUrl, patternRendered: !!renderedPatternUrl, activeTab, boxId: returnedBoxId, isSaved, canEnterFocusMode, loading: false, isHydrated: true, initialLoading: hasPatternData ? true : false }, () => { if (hasPatternData && !renderedPatternUrl) setTimeout(() => this._generatePatternPreview2d(), 200); });
+    }).catch((err) => {
+      const message = (err && err.message) ? err.message : '加载失败';
+      wx.showToast({ title: message.length > 8 ? '加载失败' : message, icon: 'none' });
+      this.setData({ loading: false, isHydrated: true, initialLoading: false });
+    });
+  },
+
+  onCanvas2dReady(e) {
+    const compId = e.currentTarget.id;
+    const canvasId = e.detail.canvasId;
+    console.log('[preview][canvas2d] ready', { compId, canvasId, activeTab: this.data.activeTab, hasResultData: this.data.hasResultData, resultRendered: this.data.resultRendered });
+    if (compId === 'resultExport2dComp' || compId === 'patternExport2dComp') {
+      this.setData({ [`canvas2dReadyMap.${compId}`]: true });
+      return;
+    }
+    this.setData({ [`canvas2dReadyMap.${compId}`]: true });
+    if (compId === 'resultCanvas2dComp' && this.data.hasResultData && !this.data.resultRendered) this._renderResultCanvas2d();
+    else if (compId === 'patternCanvas2dComp' && this.data.hasPatternData && !this.data.patternRendered) this._renderPatternCanvas2d();
+  },
+
+  onCanvas2dError(e) { console.error('[preview][canvas2d] error', e.detail); },
+
+  onImageError(e) { console.error('[preview] image load error', e.detail, 'src:', this.data.renderedResultUrl); },
+  onImageLoad(e) { console.log('[preview] image load success', e.detail); },
+
+  onBack() { wx.navigateBack({ fail: () => wx.switchTab({ url: '/pages/profile/profile' }) }); },
+
+  onTabChange(e) {
+    const tab = e.currentTarget.dataset.tab;
+    this.setData({ activeTab: tab, currentPreviewUrl: tab === 'original' ? this.data.originalUrl : '' });
+    if (tab === 'result' && this.data.hasResultData && !this.data.resultRendered && !this.data.renderedResultUrl) this._renderResultCanvas2d();
+    else if (tab === 'pattern' && this.data.hasPatternData && !this.data.patternRendered && !this.data.renderedPatternUrl) this._renderPatternCanvas2d();
+  },
+
+  onPreviewImage() {
+    const { activeTab, currentPreviewUrl, renderedPatternUrl, renderedResultUrl, originalUrl } = this.data;
+    if (activeTab === 'original') { const url = currentPreviewUrl || originalUrl; if (!url) return; wx.previewImage({ urls: [url], current: url }); }
+    else if (activeTab === 'result' && renderedResultUrl) wx.previewImage({ urls: [renderedResultUrl], current: renderedResultUrl });
+    else if (activeTab === 'pattern' && renderedPatternUrl) wx.previewImage({ urls: [renderedPatternUrl], current: renderedPatternUrl });
+  },
+
+  _renderResultCanvas2d() {
+    const { gridData, colorPalette } = this.data;
+    console.log('[preview] _renderResultCanvas2d start', { gridDataLength: gridData.length, colorPaletteLength: colorPalette.length });
+    if (!gridData.length || !colorPalette.length) { console.warn('[preview] _renderResultCanvas2d skip: no data'); return; }
+    waitCanvas2dReady(this, 'resultCanvas2dComp', { timeout: 5000 }).then(({ comp, ctx, canvas }) => {
+      const rect = { width: 1024, height: 1024 };
+      const canvasSize = previewSize(rect.width);
+      comp.resizeSync(canvasSize, canvasSize);
+      renderResult(ctx, { gridData, colorPalette, gridSize: gridData.length }, { width: canvasSize, height: canvasSize });
+      this.setData({ resultRendered: true, initialLoading: false });
+      console.log('[preview] _renderResultCanvas2d success');
+      return comp.exportTempFilePath({ x: 0, y: 0, width: canvasSize, height: canvasSize });
+    }).then((tempFilePath) => {
+      if (tempFilePath) { this.setData({ renderedResultUrl: tempFilePath }); console.log('[preview] result preview image generated'); }
+    }).catch((err) => { console.error('[preview] _renderResultCanvas2d failed', err); this.setData({ initialLoading: false }); });
+  },
+
+  _renderPatternCanvas2d() {
+    const { gridData, colorPalette, currentSize } = this.data;
+    if (!gridData.length || !colorPalette.length) return;
+    console.log('[preview] _renderPatternCanvas2d start');
+    waitCanvas2dReady(this, 'patternCanvas2dComp', { timeout: 5000 }).then(({ comp, ctx, canvas }) => {
+      const rect = { width: 1024, height: 1024 };
+      const canvasSize = previewSize(rect.width);
+      comp.resizeSync(canvasSize, canvasSize);
+      renderResult(ctx, { gridData, colorPalette, gridSize: gridData.length }, { width: canvasSize, height: canvasSize });
+      this.setData({ patternRendered: true });
+      console.log('[preview] _renderPatternCanvas2d success');
+    }).catch((err) => { console.error('[preview] _renderPatternCanvas2d failed', err); });
+  },
+
+  _generatePatternPreview2d() {
+    if (this._patternPreviewGenerating || this.data.renderedPatternUrl) return;
+    const { gridData, colorPalette, currentSize } = this.data;
+    if (!gridData.length || !colorPalette.length) return;
+    console.log('[preview] _generatePatternPreview2d start');
+    this._patternPreviewGenerating = true;
+    waitCanvas2dReady(this, 'patternExport2dComp', { timeout: 5000 }).then(({ comp, ctx, canvas }) => {
+      const boardSize = patternExportSize(currentSize);
+      const layoutPreview = drawPatternWithAxes(ctx, gridData, colorPalette, currentSize, boardSize);
+      comp.resizeSync(layoutPreview.totalWidth, layoutPreview.totalHeight);
+      const layout = drawPatternWithAxes(ctx, gridData, colorPalette, currentSize, boardSize);
+      return comp.exportTempFilePath({ x: 0, y: 0, width: layout.totalWidth, height: layout.totalHeight });
+    }).then((tempFilePath) => {
+      if (tempFilePath) { this.setData({ renderedPatternUrl: tempFilePath }); console.log('[preview] pattern preview generated'); }
+      this._patternPreviewGenerating = false;
+    }).catch((err) => { console.error('[preview] _generatePatternPreview2d failed', err); this._patternPreviewGenerating = false; });
+  },
+
+  onSaveToMyPatterns() {
+    ensureProfileComplete().then((ok) => {
+      if (!ok) return;
+      const { isSaved, boxId } = this.data;
+      if (isSaved || boxId) { wx.showToast({ title: '已保存到图纸箱', icon: 'none' }); return; }
+      this.setData({ showNameModal: true, patternNameInput: '' });
+    });
+  },
+
+  onNameInput(e) { this.setData({ patternNameInput: e.detail.value || '' }); },
+  onCloseNameModal() { this.setData({ showNameModal: false }); },
+
+  onConfirmSavePattern() {
+    const { patternNameInput, historyId, draftId, sourceType, mappedPixelData, currentSize, brandName, colorCount, originalUrl } = this.data;
+    if (this.data.savingToBox) return;
+    const name = (patternNameInput || '').trim() || generatePatternName();
+    this.setData({ savingToBox: true });
+    request.post('/box/save', { name, sourceType: sourceType || 'LOCAL', brand: brandName, colorCount, gridSize: currentSize, mappedPixelData: JSON.stringify(mappedPixelData), historyId: historyId || null, draftId: draftId || null, sourceUrl: originalUrl || '' }).then((box) => {
+      const newBoxId = box && box.id ? String(box.id) : null;
+      this.setData({ isSaved: true, boxId: newBoxId, canEnterFocusMode: true, showNameModal: false, savingToBox: false });
+      wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+    }).catch(() => { this.setData({ savingToBox: false }); wx.showToast({ title: '保存失败，请重试', icon: 'none' }); });
+  },
+
+  onEnterFocusMode() {
+    const { boxId, canEnterFocusMode, colorPalette, renderedPatternUrl } = this.data;
+    if (!canEnterFocusMode || !boxId) { wx.showToast({ title: '请先保存到图纸箱', icon: 'none' }); return; }
+    let url = '/pages/focus-mode/focus-mode?boxId=' + boxId;
+    if (renderedPatternUrl) url += '&patternUrl=' + encodeURIComponent(renderedPatternUrl);
+    if (colorPalette && colorPalette.length > 0) url += '&colorStats=' + encodeURIComponent(JSON.stringify(colorPalette));
+    wx.navigateTo({ url });
+  },
+
+  handleToggleEditMode() {
+    const { mappedPixelData, currentSize, brandName, colorCount } = this.data;
+    if (!mappedPixelData || !mappedPixelData.length) { wx.showToast({ title: '暂无可编辑图纸', icon: 'none' }); return; }
+    const storageKey = 'draw_edit_' + Date.now();
+    wx.setStorageSync(storageKey, { gridSize: currentSize, mappedPixelData, brand: brandName || 'MARD', colorCount: colorCount || 0 });
+    wx.navigateTo({ url: '/pages/draw/draw?source=result&storageKey=' + storageKey });
+  },
+
+  onSaveImage() {
+    if (this.data.savingToAlbum) return;
+    const { activeTab, renderedPatternUrl, renderedResultUrl, originalUrl, currentPreviewUrl } = this.data;
+    if (activeTab === 'pattern') { if (renderedPatternUrl) { this.setData({ savingToAlbum: true }); this._saveToAlbum(renderedPatternUrl); } else this._exportPatternWith2d(); return; }
+    if (activeTab === 'result') { if (renderedResultUrl) { this.setData({ savingToAlbum: true }); this._saveToAlbum(renderedResultUrl); } else this._exportResultWith2d(); return; }
+    const url = currentPreviewUrl || originalUrl;
+    if (!url) { wx.showToast({ title: '暂无图片', icon: 'none' }); return; }
+    this.setData({ savingToAlbum: true });
+    if (url.startsWith('http')) wx.downloadFile({ url, success: (res) => { if (res.statusCode === 200) this._saveToAlbum(res.tempFilePath); else { this.setData({ savingToAlbum: false }); wx.showToast({ title: '下载失败', icon: 'error' }); } }, fail: () => { this.setData({ savingToAlbum: false }); wx.showToast({ title: '下载失败', icon: 'error' }); } });
+    else this._saveToAlbum(url);
+  },
+
+  _exportResultWith2d() {
+    this.setData({ savingToAlbum: true });
+    const { gridData, colorPalette, currentSize } = this.data;
+    if (!gridData.length || !colorPalette.length) { this.setData({ savingToAlbum: false }); wx.showToast({ title: '暂无效果图', icon: 'none' }); return; }
+    console.log('[preview] _exportResultWith2d start');
+    waitCanvas2dReady(this, 'resultExport2dComp', { timeout: 5000 }).then(({ comp, ctx, canvas }) => {
+      const exportSize = resultExportSize(currentSize);
+      comp.resizeSync(exportSize, exportSize);
+      renderResult(ctx, { gridData, colorPalette, gridSize: gridData.length }, { width: exportSize, height: exportSize });
+      return comp.exportTempFilePath({ x: 0, y: 0, width: exportSize, height: exportSize });
+    }).then((tempFilePath) => {
+      if (tempFilePath) { this.setData({ renderedResultUrl: tempFilePath }); this._saveToAlbum(tempFilePath); } else throw new Error('导出失败');
+    }).catch((err) => { console.error('[preview] _exportResultWith2d failed', err); this.setData({ savingToAlbum: false }); wx.showToast({ title: '保存失败', icon: 'none' }); });
+  },
+
+  _exportPatternWith2d() {
+    this.setData({ savingToAlbum: true });
+    const { gridData, colorPalette, currentSize } = this.data;
+    if (!gridData.length || !colorPalette.length) { this.setData({ savingToAlbum: false }); wx.showToast({ title: '暂无色号图', icon: 'none' }); return; }
+    console.log('[preview] _exportPatternWith2d start');
+    waitCanvas2dReady(this, 'patternExport2dComp', { timeout: 5000 }).then(({ comp, ctx, canvas }) => {
+      const boardSize = patternExportSize(currentSize);
+      const layoutPreview = drawPatternWithAxes(ctx, gridData, colorPalette, currentSize, boardSize);
+      comp.resizeSync(layoutPreview.totalWidth, layoutPreview.totalHeight);
+      const layout = drawPatternWithAxes(ctx, gridData, colorPalette, currentSize, boardSize);
+      return comp.exportTempFilePath({ x: 0, y: 0, width: layout.totalWidth, height: layout.totalHeight });
+    }).then((tempFilePath) => {
+      if (tempFilePath) { this.setData({ renderedPatternUrl: tempFilePath }); this._saveToAlbum(tempFilePath); } else throw new Error('导出失败');
+    }).catch((err) => { console.error('[preview] _exportPatternWith2d failed', err); this.setData({ savingToAlbum: false }); wx.showToast({ title: '保存失败', icon: 'none' }); });
+  },
+
+  _saveToAlbum(filePath) {
+    wx.saveImageToPhotosAlbum({ filePath, success: () => { this.setData({ savingToAlbum: false }); wx.showToast({ title: '已保存到相册', icon: 'success' }); }, fail: (err) => { this.setData({ savingToAlbum: false }); if (err.errMsg && err.errMsg.includes('auth deny')) wx.showModal({ title: '需要授权', content: '请在设置中允许访问相册', confirmText: '去设置', success: (r) => { if (r.confirm) wx.openSetting(); } }); else wx.showToast({ title: '保存失败', icon: 'error' }); } });
+  },
+
+  noop() {},
+
+  _deriveLegacyFromMapped(mappedPixelData) {
+    const stats = new Map(), order = [];
+    (mappedPixelData || []).forEach((row) => { (row || []).forEach((cell) => { if (!cell || cell.isExternal) return; const key = String(cell.id || '') + '|' + String(cell.hex || ''); if (!stats.has(key)) { stats.set(key, { id: cell.id || '', name: cell.name || '', r: Number(cell.r), g: Number(cell.g), b: Number(cell.b), count: 0 }); order.push(key); } stats.get(key).count++; }); });
+    const colorPalette = order.map((k, i) => ({ index: i, ...stats.get(k) }));
+    const indexMap = new Map(order.map((k, i) => [k, i]));
+    const gridData = (mappedPixelData || []).map((row) => (row || []).map((cell) => { if (!cell || cell.isExternal) return -1; const key = String(cell.id || '') + '|' + String(cell.hex || ''); return indexMap.has(key) ? indexMap.get(key) : -1; }));
+    return { gridData, colorPalette };
+  },
+});

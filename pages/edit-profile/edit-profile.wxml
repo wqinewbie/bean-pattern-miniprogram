@@ -1,0 +1,51 @@
+<view class="edit-profile-page">
+  <!-- 状态栏占位 - 渐变色 -->
+  <view class="status-bar-placeholder" style="height: {{statusBarHeight}}px;"></view>
+
+  <!-- Header 渐变区 -->
+  <view class="edit-header">
+    <view class="edit-nav">
+      <view class="edit-back" bindtap="onBack">
+        <text class="edit-back-icon">‹</text>
+      </view>
+      <view class="edit-title-wrapper">
+        <text class="edit-title">个人资料</text>
+      </view>
+      <view class="edit-nav-spacer"></view>
+    </view>
+  </view>
+
+  <!-- Content -->
+  <scroll-view scroll-y class="edit-scroll">
+    <!-- 头像区域 -->
+    <view class="avatar-section">
+      <view class="avatar-box-edit">
+        <button class="avatar-button" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+          <image wx:if="{{avatarUrl}}" class="avatar-image" src="{{avatarUrl}}" mode="aspectFill"/>
+          <view wx:else class="avatar-placeholder">👤</view>
+        </button>
+      </view>
+      <text class="avatar-tip">点击更换头像</text>
+    </view>
+
+    <!-- 信息字段 -->
+    <view class="fields-container">
+      <view class="field-card">
+        <text class="field-label">昵称</text>
+        <input class="field-input" type="nickname" maxlength="20" value="{{nickName}}" bindinput="onNickNameInput" placeholder="请输入昵称"/>
+      </view>
+
+      <view class="field-card">
+        <text class="field-label">手机号</text>
+        <input class="field-input" type="number" maxlength="11" value="{{phone}}" bindinput="onPhoneInput" placeholder="请输入手机号"/>
+      </view>
+    </view>
+
+    <!-- 保存按钮 -->
+    <view wx:if="{{isEditing}}" class="save-btn" bindtap="onSubmit">
+      {{submitting ? '保存中...' : '保存修改'}}
+    </view>
+
+    <view style="height: 80rpx;"></view>
+  </scroll-view>
+</view>

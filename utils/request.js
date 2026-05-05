@@ -117,4 +117,12 @@ function post(url, data, headers) {
   return request(url, 'POST', data, headers);
 }
 
-module.exports = { request, get, post, ERROR_CODES, ERROR_MESSAGES };
+function put(url, data, headers) {
+  return request(url, 'PUT', data, headers);
+}
+
+function del(url, headers) {
+  return request(url, 'DELETE', undefined, headers);
+}
+
+module.exports = { request, get, post, put, delete: del, ERROR_CODES, ERROR_MESSAGES };

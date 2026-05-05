@@ -26,6 +26,7 @@ Page({
     // 任务
     checkedIn: false,
     tasks: [],
+    draftCount: 0,
     
     // 设置
     cloudProcess: true,
@@ -36,9 +37,9 @@ Page({
     subPage: '',
     subPageLoading: false,
     subPagePatterns: [],
-    subPageHistory: [],
-    subPageRecycle: [],
-    
+    subPagePatternAll: [],
+    patternSearchKeyword: '',
+
     // VIP状态
     isVip: false,
     
@@ -55,6 +56,13 @@ Page({
     
     // 反馈
     feedbackText: '',
+
+    // 消息中心
+    notifications: [],
+    unreadCount: 0,
+
+    // 帮助中心
+    helpFaqs: [],
   },
 
   syncTabBar() {
@@ -62,12 +70,22 @@ Page({
     if (tabBar && typeof tabBar.setSelected === 'function') {
       tabBar.setSelected(3);
     }
+    this.updateTabBarVisibility();
+  },
+
+  updateTabBarVisibility() {
+    const tabBar = this.getTabBar && this.getTabBar();
+    if (tabBar && typeof tabBar.setHidden === 'function') {
+      tabBar.setHidden(!!(this.data.showMagicPanel || this.data.showGiftPanel || this.data.showTaskPanel || this.data.showSettingsPanel || this.data.subPage));
+    }
   },
 
   onLoad() {
     this.calcSafeAreas();
     this.loadWatermarkSetting();
     this.loadLocalData();
+    this.loadNotifications();
+    this.loadHelpFaqs();
   },
 
   calcSafeAreas() {
@@ -79,11 +97,9 @@ Page({
         subHeaderHeightPx: layout.navHeight || 88,
       });
     } catch (e) {
-      wx.getSystemInfo({
-        success: (res) => {
-          this.setData({ statusBarHeight: res.statusBarHeight || 44 });
-        }
-      });
+      const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+      const appBaseInfo = wx.getAppBaseInfo ? wx.getAppBaseInfo() : {};
+      this.setData({ statusBarHeight: windowInfo.statusBarHeight || appBaseInfo.statusBarHeight || 44 });
     }
   },
 
@@ -92,6 +108,21 @@ Page({
     this.calcSafeAreas();
     this.loadProfile();
     this.loadLocalData();
+    this.loadNotifications();
+  },
+
+  onHide() {
+    const tabBar = this.getTabBar && this.getTabBar();
+    if (tabBar && typeof tabBar.setHidden === 'function') {
+      tabBar.setHidden(false);
+    }
+  },
+
+  onUnload() {
+    const tabBar = this.getTabBar && this.getTabBar();
+    if (tabBar && typeof tabBar.setHidden === 'function') {
+      tabBar.setHidden(false);
+    }
   },
 
   loadLocalData() {
@@ -101,6 +132,7 @@ Page({
     const tasks = wx.getStorageSync('tasks') || this.getDefaultTasks();
     const gifts = wx.getStorageSync('gifts') || this.getDefaultGifts();
     const watermarkText = wx.getStorageSync('watermarkText') || '';
+    const draftCount = this.getDraftCount();
     
     const pendingTaskCount = this.calcPendingTaskCount(checkedIn, tasks);
     
@@ -111,6 +143,7 @@ Page({
       gifts,
       watermarkText,
       pendingTaskCount,
+      draftCount,
     });
   },
 
@@ -121,6 +154,11 @@ Page({
       if (!t.done) count++;
     });
     return count;
+  },
+
+  getDraftCount() {
+    const drafts = wx.getStorageSync('drafts') || wx.getStorageSync('draftPatterns') || [];
+    return Array.isArray(drafts) ? drafts.length : 0;
   },
 
   getDefaultTasks() {
@@ -137,6 +175,48 @@ Page({
       { id: 3, type: 'redeem', title: 'AI魔法兑换券', subtitle: '可兑换3次AI魔法' },
       { id: 4, type: 'card_coupon', title: '会员专享购次卡优惠券', subtitle: '立享8折' },
     ];
+  },
+
+  getDefaultNotifications() {
+    return [
+      { id: 'gift', title: '礼品包到账提醒', content: '你有新的会员体验卡可领取，记得及时使用。', time: '刚刚', read: false, type: 'gift' },
+      { id: 'magic', title: 'AI魔法次数提醒', content: '完成任务可以继续领取 AI 魔法次数。', time: '今天', read: false, type: 'magic' },
+      { id: 'system', title: '系统通知', content: '欢迎来到拼豆魔法世界，开始创作你的第一张图纸吧。', time: '昨天', read: true, type: 'system' },
+    ];
+  },
+
+  loadNotifications() {
+    const notifications = wx.getStorageSync('notifications') || this.getDefaultNotifications();
+    const unreadCount = notifications.filter(item => !item.read).length;
+    this.setData({ notifications, unreadCount });
+  },
+
+  loadHelpFaqs() {
+    const faqs = [
+      {
+        question: '如何开始创建我的第一个拼豆图纸？',
+        answer: '您可以选择"图片转图纸"上传照片，或使用"AI一键生成"输入文字描述，系统会自动为您生成拼豆图纸。',
+      },
+      {
+        question: '什么是魔法值？如何获取？',
+        answer: '魔法值用于生成AI图纸和使用高级功能。您可以通过每日签到、完成任务或充值会员获得魔法值。',
+      },
+      {
+        question: '生成的图纸可以修改吗？',
+        answer: '可以！点击图纸进入预览页面后，可以进行颜色替换、尺寸调整等编辑操作。',
+      },
+      {
+        question: '如何保存和分享我的作品？',
+        answer: '在预览页面点击"保存"可将图纸保存到"我的图纸"，点击"分享"可生成海报分享给好友。',
+      },
+    ];
+    this.setData({ helpFaqs: faqs });
+  },
+
+  markNotificationsRead() {
+    const notifications = (this.data.notifications || []).map(item => ({ ...item, read: true }));
+    wx.setStorageSync('notifications', notifications);
+    this.setData({ notifications, unreadCount: 0 });
   },
 
   loadProfile() {
@@ -184,27 +264,35 @@ Page({
 
   // ─── 弹框控制 ───
   onShowMagicPanel() {
-    this.setData({ showMagicPanel: true });
+    this.setData({ showMagicPanel: true }, () => this.updateTabBarVisibility());
   },
 
   onShowGiftPanel() {
-    this.setData({ showGiftPanel: true });
+    this.setData({ showGiftPanel: true }, () => this.updateTabBarVisibility());
   },
 
   onShowTaskPanel() {
-    this.setData({ showTaskPanel: true });
+    this.setData({ showTaskPanel: true }, () => this.updateTabBarVisibility());
   },
 
   onShowTaskPanelFromMagic() {
-    this.setData({ showMagicPanel: false, showTaskPanel: true });
+    this.setData({ showMagicPanel: false, showTaskPanel: true }, () => this.updateTabBarVisibility());
   },
 
   onShowSettings() {
-    this.setData({ showSettingsPanel: true });
+    this.setData({ showSettingsPanel: true }, () => this.updateTabBarVisibility());
   },
 
   onShowFeedback() {
-    this.setData({ subPage: 'feedback', feedbackText: '' });
+    this.setData({ subPage: 'feedback', feedbackText: '' }, () => this.updateTabBarVisibility());
+  },
+
+  onShowPrivacy() {
+    this.setData({ subPage: 'privacy' }, () => this.updateTabBarVisibility());
+  },
+
+  onGoTutorial() {
+    wx.navigateTo({ url: '/pages/tutorial-play/tutorial-play' });
   },
 
   onCloseAllPanels() {
@@ -213,13 +301,17 @@ Page({
       showGiftPanel: false,
       showTaskPanel: false,
       showSettingsPanel: false,
-    });
+    }, () => this.updateTabBarVisibility());
   },
 
   // ─── AI魔法弹框操作 ───
   onGoCards() {
     this.onCloseAllPanels();
-    this.onVip();
+    this.navigateToVipTab('cards');
+  },
+
+  navigateToVipTab(tab = 'vip') {
+    wx.navigateTo({ url: '/pages/vip/vip?tab=' + tab });
   },
 
   // ─── 礼品包操作 ───
@@ -228,7 +320,8 @@ Page({
     if (!gift) return;
 
     if (gift.type === 'vip_coupon' || gift.type === 'card_coupon') {
-      wx.showToast({ title: '请前往开通会员使用优惠券', icon: 'none' });
+      this.onCloseAllPanels();
+      this.navigateToVipTab(gift.type === 'vip_coupon' ? 'vip' : 'cards');
     } else if (gift.type === 'vip_trial') {
       wx.showModal({
         title: '开通体验',
@@ -304,12 +397,29 @@ Page({
 
   onWatermarkChange(e) {
     const enabled = !!e.detail.value;
+    if (!this.data.isVip && !enabled) {
+      this.onCloseAllPanels();
+      this.navigateToVipTab('vip');
+      return;
+    }
     this.setData({ watermarkEnabled: enabled });
     wx.setStorageSync('watermarkEnabled', enabled);
   },
 
   onWatermarkTextChange(e) {
+    if (!this.data.isVip) {
+      this.onCloseAllPanels();
+      this.navigateToVipTab('vip');
+      return;
+    }
     this.setData({ watermarkText: e.detail.value });
+  },
+
+  onCustomWatermarkTap() {
+    if (!this.data.isVip) {
+      this.onCloseAllPanels();
+      this.navigateToVipTab('vip');
+    }
   },
 
   onConfirmSettings() {
@@ -376,36 +486,79 @@ Page({
 
   // ─── 其他导航 ───
   onEditProfile() {
-    wx.navigateTo({ url: '/pages/login/login' });
+    wx.navigateTo({ url: '/pages/edit-profile/edit-profile' });
+  },
+
+  onNotifications() {
+    this.markNotificationsRead();
+    this.setData({ subPage: 'notifications' }, () => this.updateTabBarVisibility());
   },
 
   onVip() {
-    wx.navigateTo({ url: '/pages/vip/vip' });
+    this.navigateToVipTab('vip');
   },
 
   onGoHistory() {
-    this.setData({ subPage: 'history', subPageLoading: true });
-    this.loadHistory();
+    wx.navigateTo({ url: '/pages/history/history' });
   },
 
   onGoDraft() {
     wx.navigateTo({ url: '/pages/draft/draft' });
   },
 
+  onAddPattern() {
+    const maxCapacity = this.data.isVip ? 100 : 10;
+    const current = (this.data.subPagePatternAll || []).length;
+    if (current >= maxCapacity) {
+      wx.showModal({
+        title: '图纸箱容量已满',
+        content: this.data.isVip ? '您的图纸箱已达到100张上限，请先清理一些不用的图纸。' : '普通学徒最多保存10张图纸，清理或者升级会员即可获取更多容量。',
+        confirmText: this.data.isVip ? '我知道了' : '去升级',
+        cancelText: '取消',
+        success: (res) => {
+          if (res.confirm && !this.data.isVip) {
+            this.onVip();
+          }
+        }
+      });
+      return;
+    }
+    wx.showToast({ title: '请前往画板或通过AI生成新图纸', icon: 'none' });
+  },
+
+  onPatternSearchInput(e) {
+    const keyword = (e.detail.value || '').trim();
+    this.setData({ patternSearchKeyword: keyword }, () => this.filterPatterns());
+  },
+
+  filterPatterns() {
+    const keyword = (this.data.patternSearchKeyword || '').trim().toLowerCase();
+    const all = this.data.subPagePatternAll || [];
+    if (!keyword) {
+      this.setData({ subPagePatterns: all });
+      return;
+    }
+    const filtered = all.filter((item) => {
+      const name = String(item.name || '').toLowerCase();
+      const brand = String(item.brand || '').toLowerCase();
+      return name.includes(keyword) || brand.includes(keyword);
+    });
+    this.setData({ subPagePatterns: filtered });
+  },
+
   onGoMyPatterns() {
-    this.setData({ subPage: 'patterns', subPageLoading: true });
-    this.loadPatterns();
+    wx.navigateTo({ url: '/pages/my-patterns/my-patterns' });
   },
 
   onCloseSubPage() {
-    this.setData({ subPage: '' });
+    this.setData({ subPage: '' }, () => this.updateTabBarVisibility());
   },
 
   // ─── 加载子页数据 ───
   loadPatterns() {
     const sessionId = wx.getStorageSync('sessionId');
     if (!sessionId) {
-      this.setData({ subPagePatterns: [], subPageLoading: false });
+      this.setData({ subPagePatterns: [], subPagePatternAll: [], subPageLoading: false });
       return;
     }
     request.get('/box/list')
@@ -420,42 +573,16 @@ Page({
           gridData: item.gridData,
           colorPalette: item.colorPalette,
           sourceUrl: item.sourceUrl,
+          sourceType: item.sourceType || item.source || item.type || '',
+          sourceLabel: this.getPatternSourceLabel(item),
+          sourceClass: this.getPatternSourceClass(item),
           boxId: item.id,
           createdAt: this.formatTime(item.createdAt),
         }));
-        this.setData({ subPagePatterns: patterns, subPageLoading: false });
+        this.setData({ subPagePatternAll: patterns, subPagePatterns: patterns, subPageLoading: false });
       })
       .catch(() => {
-        this.setData({ subPagePatterns: [], subPageLoading: false });
-      });
-  },
-
-  loadHistory() {
-    const sessionId = wx.getStorageSync('sessionId');
-    if (!sessionId) {
-      this.setData({ subPageHistory: [], subPageLoading: false });
-      return;
-    }
-    request.get('/history/list')
-      .then(data => {
-        // 与 history.js 保持一致的数据处理
-        const history = (Array.isArray(data) ? data : []).map((item) => ({
-          id: item.id,
-          name: item.name || ('记录#' + item.id),
-          gridSize: item.gridSize,
-          colorCount: item.colorCount,
-          brand: item.brand,
-          gridData: item.gridData,
-          colorPalette: item.colorPalette,
-          sourceUrl: item.sourceUrl,
-          boxId: item.boxId,
-          historyId: item.id,
-          createdAt: this.formatTime(item.createdAt),
-        }));
-        this.setData({ subPageHistory: history, subPageLoading: false });
-      })
-      .catch(() => {
-        this.setData({ subPageHistory: [], subPageLoading: false });
+        this.setData({ subPagePatterns: [], subPagePatternAll: [], subPageLoading: false });
       });
   },
 
@@ -468,41 +595,40 @@ Page({
            ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   },
 
+  getPatternSourceType(item) {
+    return String(item.sourceType || item.source || item.type || '').toLowerCase();
+  },
+
+  getPatternSourceLabel(item) {
+    const sourceType = this.getPatternSourceType(item);
+    if (sourceType.includes('ai')) return 'AI生成';
+    if (sourceType.includes('draft')) return '草稿箱';
+    if (sourceType.includes('free') || sourceType.includes('convert') || sourceType.includes('image')) return '图片转换';
+    return '';
+  },
+
+  getPatternSourceClass(item) {
+    const sourceType = this.getPatternSourceType(item);
+    if (sourceType.includes('ai')) return 'ai';
+    if (sourceType.includes('draft')) return 'draft';
+    if (sourceType.includes('free') || sourceType.includes('convert') || sourceType.includes('image')) return 'free';
+    return '';
+  },
+
   onSubClearHistory() {
-    wx.showModal({
-      title: '清空时光机',
-      content: '确认清空所有历史记录？',
-      success: (res) => {
-        if (res.confirm) {
-          const sessionId = wx.getStorageSync('sessionId');
-          if (sessionId) {
-            request.post('/history/clear')
-              .then(() => {
-                this.setData({ subPageHistory: [] });
-                wx.showToast({ title: '时光机已清空', icon: 'success' });
-              })
-              .catch(() => {
-                wx.showToast({ title: '清空失败', icon: 'none' });
-              });
-          }
-        }
-      }
-    });
+    wx.showToast({ title: '已下线清空入口', icon: 'none' });
   },
 
   onSubItemTap(e) {
     const item = e.currentTarget.dataset.item;
     if (!item) return;
-    // 与独立页面保持一致，跳转到预加载页面
     if (this.data.subPage === 'history') {
-      // 时光机 -> result-loading
       wx.navigateTo({
-        url: '/pages/result-loading/result-loading?historyId=' + item.id + '&sourceType=HISTORY'
+        url: '/pages/result/result?historyId=' + item.id + '&sourceType=HISTORY'
       });
     } else {
-      // 图纸箱 -> result-loading
       wx.navigateTo({
-        url: '/pages/result-loading/result-loading?boxId=' + item.id + '&sourceType=BOX'
+        url: '/pages/result/result?boxId=' + item.id + '&sourceType=BOX'
       });
     }
   },
@@ -556,5 +682,9 @@ Page({
         }
       }
     });
+  },
+
+  onContactService() {
+    wx.showToast({ title: '客服功能开发中', icon: 'none' });
   },
 });

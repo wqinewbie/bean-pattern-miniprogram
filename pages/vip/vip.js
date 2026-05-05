@@ -62,11 +62,9 @@ Page({
       const layout = getSafeAreaLayout();
       this.setData({ statusBarHeight: layout.statusBarHeight || 44 });
     } catch (e) {
-      wx.getSystemInfo({
-        success: (res) => {
-          this.setData({ statusBarHeight: res.statusBarHeight || 44 });
-        }
-      });
+      const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+      const appBaseInfo = wx.getAppBaseInfo ? wx.getAppBaseInfo() : {};
+      this.setData({ statusBarHeight: windowInfo.statusBarHeight || appBaseInfo.statusBarHeight || 44 });
     }
   },
 

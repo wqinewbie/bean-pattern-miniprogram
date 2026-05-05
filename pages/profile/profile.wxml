@@ -1,20 +1,22 @@
 <view class="profile-page">
   <!-- 安全区域占位 -->
-  <view style="height: {{statusBarHeight}}px; width: 100%;"></view>
+  <view style="height: {{statusBarHeight}}px; width: 100%; background:#FFEBB5;"></view>
   
   <!-- 头部黄色区域 -->
   <view class="header-zone">
     <view class="header-top">
-      <view style="width:60rpx"></view>
-      <view class="bell-wrap">
-        <text class="bell-icon">🔔</text>
-        <view class="bell-dot"></view>
+      <view class="bell-wrap" bindtap="onNotifications">
+        <image class="bell-icon" src="/assets/icons/lucide-bell.svg" mode="aspectFit"/>
+        <view class="bell-dot" wx:if="{{unreadCount > 0}}"></view>
       </view>
     </view>
     <view class="user-row" bindtap="onEditProfile">
-      <view class="avatar-wrap">
-        <image wx:if="{{userInfo.avatarUrl}}" class="avatar" src="{{userInfo.avatarUrl}}" mode="aspectFill"/>
-        <view wx:else class="avatar-ph">👤</view>
+      <view class="avatar-box">
+        <view class="avatar-wrap">
+          <image wx:if="{{userInfo.avatarUrl}}" class="avatar" src="{{userInfo.avatarUrl}}" mode="aspectFill"/>
+          <view wx:else class="avatar-ph">👤</view>
+        </view>
+        <view class="avatar-edit">✎</view>
       </view>
       <view class="user-info">
         <text class="user-name">{{userInfo.nickName || '魔法师小豆'}}</text>
@@ -30,17 +32,26 @@
   <view class="stats-card">
     <view class="stat-item" bindtap="onShowMagicPanel">
       <text class="stat-num">{{magicCount}}</text>
-      <text class="stat-label">✨ AI魔法</text>
+      <view class="stat-label-row">
+        <image class="stat-icon" src="/assets/icons/lucide-wand2-purple.svg" mode="aspectFit"/>
+        <text class="stat-label">AI魔法</text>
+      </view>
     </view>
     <view class="stat-divider"></view>
     <view class="stat-item" bindtap="onShowGiftPanel">
       <text class="stat-num">{{gifts.length}}</text>
-      <text class="stat-label">🎁 礼品包</text>
+      <view class="stat-label-row">
+        <image class="stat-icon" src="/assets/icons/lucide-gift-red.svg" mode="aspectFit"/>
+        <text class="stat-label">礼品包</text>
+      </view>
     </view>
     <view class="stat-divider"></view>
     <view class="stat-item" bindtap="onShowTaskPanel">
       <text class="stat-num">{{pendingTaskCount}}</text>
-      <text class="stat-label">⭐ 任务中心</text>
+      <view class="stat-label-row">
+        <image class="stat-icon" src="/assets/icons/lucide-star-yellow.svg" mode="aspectFit"/>
+        <text class="stat-label">任务中心</text>
+      </view>
     </view>
   </view>
 
@@ -48,6 +59,7 @@
 
     <!-- VIP卡 -->
     <view class="vip-card" bindtap="onVip">
+      <view class="vip-glow"></view>
       <view class="vip-left">
         <text class="vip-title">👑 {{isVip ? '至尊魔法会员' : '升级至尊魔法会员'}}</text>
         <text class="vip-sub">纯净无广告·AI生图次数·定制化水印</text>
@@ -59,20 +71,21 @@
     <view class="section-card">
       <view class="section-title-row">
         <view class="section-bar"></view>
-        <text class="section-title">我的创作中心</text>
+        <text class="section-title">我的创作</text>
       </view>
       <view class="action-grid">
-        <view class="action-item" bindtap="onGoMyPatterns">
-          <view class="action-icon blue">📁</view>
+        <view class="action-item action-item--blue" bindtap="onGoMyPatterns">
+          <image class="action-svg" src="/assets/icons/lucide-folder-blue.svg" mode="aspectFit"/>
           <text class="action-label">图纸箱</text>
         </view>
-        <view class="action-item" bindtap="onGoHistory">
-          <view class="action-icon orange">🕐</view>
-          <text class="action-label">时光机</text>
-        </view>
-        <view class="action-item" bindtap="onGoDraft">
-          <view class="action-icon purple">📝</view>
+        <view class="action-item action-item--orange" bindtap="onGoDraft">
+          <image class="action-svg" src="/assets/icons/lucide-file-text-orange.svg" mode="aspectFit"/>
           <text class="action-label">草稿箱</text>
+          <view wx:if="{{draftCount > 0}}" class="draft-badge">{{draftCount}}</view>
+        </view>
+        <view class="action-item action-item--purple" bindtap="onGoHistory">
+          <image class="action-svg" src="/assets/icons/image_177743243804717.png" mode="aspectFit"/>
+          <text class="action-label">时光机</text>
         </view>
       </view>
     </view>
@@ -81,16 +94,24 @@
     <view class="menu-card">
       <view class="menu-item" bindtap="onShowFeedback">
         <view class="menu-left">
-          <view class="menu-icon" style="background:#E8F5E9;color:#4CAF50">ℹ</view>
-          <text class="menu-title">用户反馈</text>
+          <view class="menu-icon menu-icon--help"><image class="menu-svg" src="/assets/icons/lucide-help-circle-green.svg" mode="aspectFit"/></view>
+          <text class="menu-title">帮助中心</text>
         </view>
         <view class="menu-right"><text class="menu-arrow">›</text></view>
       </view>
       <view class="menu-divider"></view>
       <view class="menu-item" bindtap="onShowSettings">
         <view class="menu-left">
-          <view class="menu-icon" style="background:#ECEFF1;color:#607D8B">⚙</view>
+          <view class="menu-icon menu-icon--settings"><image class="menu-svg" src="/assets/icons/lucide-settings-slate.svg" mode="aspectFit"/></view>
           <text class="menu-title">设置</text>
+        </view>
+        <view class="menu-right"><text class="menu-arrow">›</text></view>
+      </view>
+      <view class="menu-divider"></view>
+      <view class="menu-item" bindtap="onShowPrivacy">
+        <view class="menu-left">
+          <view class="menu-icon menu-icon--privacy"><image class="menu-svg" src="/assets/icons/lucide-shield-purple.svg" mode="aspectFit"/></view>
+          <text class="menu-title">隐私政策</text>
         </view>
         <view class="menu-right"><text class="menu-arrow">›</text></view>
       </view>
@@ -103,108 +124,129 @@
   <view class="sub-page {{subPage?'sub-page--show':''}}">
     <view class="sub-header" style="padding-top: {{subTopSafePx}}px; min-height: {{subHeaderHeightPx}}px;">
       <view class="sub-back" bindtap="onCloseSubPage">←</view>
-      <text class="sub-title">{{subPage==='patterns'?'图纸箱':subPage==='history'?'时光机':subPage==='feedback'?'帮助与反馈':subPage==='privacy'?'隐私安全':subPage==='account'?'账号设置':'回收站'}}</text>
-      <view class="sub-action" wx:if="{{subPage==='history'}}" bindtap="onSubClearHistory">清空</view>
+      <view class="sub-title-wrap">
+        <text class="sub-title">{{subPage==='patterns'?'图纸箱':subPage==='feedback'?'帮助中心':subPage==='privacy'?'隐私政策':subPage==='notifications'?'通知':subPage==='account'?'账号设置':'回收站'}}</text>
+        <text wx:if="{{subPage==='patterns'}}" class="sub-title-badge">📁 {{subPagePatternAll.length}}/{{isVip ? 100 : 10}}</text>
+        <text wx:if="{{subPage==='notifications'}}" class="sub-title-badge">消息中心</text>
+      </view>
+      <view class="sub-action sub-add" wx:if="{{subPage==='patterns'}}" bindtap="onAddPattern">＋</view>
+      <view class="sub-action sub-add sub-add--hidden" wx:else>{{''}}</view>
     </view>
 
     <scroll-view scroll-y class="sub-scroll">
+      <!-- 消息中心 -->
+      <view wx:if="{{subPage==='notifications'}}" class="notifications-page">
+        <view wx:if="{{notifications.length===0}}" class="notifications-empty">
+          <view class="notifications-empty-icon">🔔</view>
+          <text class="notifications-empty-title">暂无消息</text>
+        </view>
+        <view wx:else class="notifications-list">
+          <view wx:for="{{notifications}}" wx:key="id" class="notification-card {{item.read ? '' : 'notification-card--unread'}}">
+            <view class="notification-icon notification-icon--{{item.type}}">{{item.type==='gift'?'🎁':item.type==='magic'?'🪄':'🔔'}}</view>
+            <view class="notification-content">
+              <view class="notification-title-row">
+                <text class="notification-title">{{item.title}}</text>
+                <view wx:if="{{!item.read}}" class="notification-dot"></view>
+              </view>
+              <text class="notification-text">{{item.content}}</text>
+              <text class="notification-time">{{item.time}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
       <!-- 图纸箱 -->
-      <view wx:if="{{subPage==='patterns'}}" class="sub-list">
-        <view wx:if="{{subPagePatterns.length===0}}" class="sub-empty">还没有施展过魔法哦</view>
-        <view wx:for="{{subPagePatterns}}" wx:key="id" class="sub-item" bindtap="onSubItemTap" data-item="{{item}}">
-          <view class="sub-thumb">
-            <image wx:if="{{item.sourceUrl}}" class="sub-thumb-img" src="{{item.sourceUrl}}" mode="aspectFill"/>
-            <view wx:else class="sub-thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
+      <view wx:if="{{subPage==='patterns'}}" class="patterns-page">
+        <view class="patterns-search">
+          <text class="patterns-search-icon">⌕</text>
+          <input class="patterns-search-input" placeholder="搜索图纸..." value="{{patternSearchKeyword}}" bindinput="onPatternSearchInput"/>
+        </view>
+        <view wx:if="{{subPagePatterns.length===0}}" class="patterns-empty">
+          <view class="patterns-empty-icon">📁</view>
+          <text class="patterns-empty-title">{{patternSearchKeyword ? '没有找到相关图纸' : '还没有施展过魔法哦'}}</text>
+        </view>
+        <view wx:else class="patterns-grid">
+          <view wx:for="{{subPagePatterns}}" wx:key="id" class="pattern-card">
+            <view class="pattern-thumb" bindtap="onSubItemTap" data-item="{{item}}">
+              <image wx:if="{{item.sourceUrl}}" class="pattern-thumb-img" src="{{item.sourceUrl}}" mode="aspectFill"/>
+              <view wx:else class="pattern-thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
+              <view wx:if="{{item.sourceLabel}}" class="pattern-source-badge pattern-source-badge--{{item.sourceClass}}">
+                <image wx:if="{{item.sourceClass==='ai'}}" class="pattern-source-icon" src="/assets/icons/lucide-sparkles-brown.svg" mode="aspectFit"/>
+                <image wx:if="{{item.sourceClass==='free'}}" class="pattern-source-icon" src="/assets/icons/lucide-eye-blue.svg" mode="aspectFit"/>
+                <image wx:if="{{item.sourceClass==='draft'}}" class="pattern-source-icon" src="/assets/icons/lucide-file-text-orange.svg" mode="aspectFit"/>
+                <text>{{item.sourceLabel}}</text>
+              </view>
+            </view>
+            <view class="pattern-body">
+              <text class="pattern-name">{{item.name || ('图纸#'+item.id)}}</text>
+              <view class="pattern-actions">
+                <view class="pattern-view-btn" bindtap="onSubItemTap" data-item="{{item}}">
+                  <image class="pattern-action-icon" src="/assets/icons/lucide-eye-blue.svg" mode="aspectFit"/>
+                  <text>查看</text>
+                </view>
+                <view class="pattern-del-btn" catchtap="onSubDelete" data-id="{{item.id}}">⌫</view>
+              </view>
+            </view>
           </view>
-          <view class="sub-info">
-            <text class="sub-name">{{item.name || ('图纸#'+item.id)}}</text>
-            <text class="sub-meta">{{item.brand || 'MARD'}} · {{item.colorCount || 0}}色 · {{item.createdAt}}</text>
-          </view>
-          <view class="sub-del" catchtap="onSubDelete" data-id="{{item.id}}">🗑</view>
         </view>
       </view>
 
-      <!-- 时光机 -->
-      <view wx:if="{{subPage==='history'}}" class="sub-list">
-        <view wx:if="{{subPageHistory.length===0}}" class="sub-empty">时光机里没有草稿哦</view>
-        <view wx:for="{{subPageHistory}}" wx:key="id" class="sub-item" bindtap="onSubItemTap" data-item="{{item}}">
-          <view class="sub-thumb">
-            <image wx:if="{{item.sourceUrl}}" class="sub-thumb-img" src="{{item.sourceUrl}}" mode="aspectFill"/>
-            <view wx:else class="sub-thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
+      <!-- 帮助中心 -->
+      <view wx:if="{{subPage==='feedback'}}" class="help-page">
+        <!-- 常见问题 -->
+        <view class="help-section">
+          <view class="help-section-title-row">
+            <view class="help-section-bar"></view>
+            <text class="help-section-title">常见问题</text>
           </view>
-          <view class="sub-info">
-            <text class="sub-name">{{item.name || ('记录#'+item.id)}}</text>
-            <text class="sub-meta">{{item.brand || 'MARD'}} · {{item.colorCount || 0}}色 · {{item.createdAt}}</text>
+          <view class="help-faq-list">
+            <view wx:for="{{helpFaqs}}" wx:key="question" class="help-faq-item">
+              <view class="help-faq-header">
+                <text class="help-faq-question">{{item.question}}</text>
+                <text class="help-faq-arrow">›</text>
+              </view>
+              <text class="help-faq-answer">{{item.answer}}</text>
+            </view>
           </view>
-          <view class="sub-go">继续</view>
+        </view>
+
+        <!-- 联系客服卡片 -->
+        <view class="help-contact-card">
+          <text class="help-contact-title">还有其他问题？</text>
+          <text class="help-contact-desc">我们的客服团队随时为您服务</text>
+          <view class="help-contact-btn" bindtap="onContactService">联系在线客服</view>
         </view>
       </view>
 
-      <!-- 用户反馈 -->
-      <view wx:if="{{subPage==='feedback'}}" class="feedback-page">
-        <view class="feedback-tutorial-card">
-          <view class="feedback-tutorial-icon">🎬</view>
-          <view class="feedback-tutorial-texts">
-            <text class="feedback-tutorial-title">新手魔法教程</text>
-            <text class="feedback-tutorial-desc">3分钟快速精通拼豆魔法</text>
-          </view>
-          <text class="feedback-tutorial-arrow">›</text>
-        </view>
-        <view class="feedback-section">
-          <text class="feedback-label">写下你的建议</text>
-          <textarea class="feedback-input" placeholder="有什么问题或者新想法，告诉小豆吧..." value="{{feedbackText}}" bindinput="onFeedbackInput" maxlength="200"/>
-          <view class="feedback-send-btn" bindtap="onSendFeedback">发送给小豆 ✉</view>
-        </view>
-      </view>
-
-      <!-- 隐私安全 -->
+      <!-- 隐私政策 -->
       <view wx:if="{{subPage==='privacy'}}" class="privacy-page">
-        <view class="privacy-row">
-          <view class="privacy-row-left">
-            <text class="privacy-row-title">图片云端处理</text>
-            <text class="privacy-row-desc">开启后生图速度更快</text>
+        <view class="feedback-menu-card">
+          <view class="privacy-row privacy-row-link">
+            <view class="privacy-row-left">
+              <text class="privacy-row-title">隐私政策</text>
+              <text class="privacy-row-desc">查看我们如何保护你的创作与账号信息</text>
+            </view>
+            <text class="privacy-row-icon">›</text>
           </view>
-          <switch class="privacy-switch" checked="{{cloudProcess}}" bindchange="onCloudProcessChange" color="#FF9800"/>
-        </view>
-        <view class="privacy-row privacy-row-danger" bindtap="onClearTrace">
-          <view class="privacy-row-left">
-            <text class="privacy-row-title danger">清除魔法痕迹</text>
-            <text class="privacy-row-desc danger">删除所有本地记录与图纸</text>
+          <view class="feedback-menu-divider"></view>
+          <view class="privacy-row">
+            <view class="privacy-row-left">
+              <text class="privacy-row-title">图片云端处理</text>
+              <text class="privacy-row-desc">开启后生图速度更快</text>
+            </view>
+            <switch class="privacy-switch" checked="{{cloudProcess}}" bindchange="onCloudProcessChange" color="#FF9800"/>
           </view>
-          <text class="privacy-row-icon">🧹</text>
-        </view>
-      </view>
-
-      <!-- 账号设置 -->
-      <view wx:if="{{subPage==='account'}}" class="account-page">
-        <view class="account-row">
-          <view class="account-row-left">
-            <text class="account-row-icon">📱</text>
-            <text class="account-row-title">绑定手机号</text>
+          <view class="feedback-menu-divider"></view>
+          <view class="privacy-row privacy-row-danger" bindtap="onClearTrace">
+            <view class="privacy-row-left">
+              <text class="privacy-row-title danger">清除魔法痕迹</text>
+              <text class="privacy-row-desc danger">删除所有本地记录与图纸</text>
+            </view>
+            <text class="privacy-row-icon">🧹</text>
           </view>
-          <text class="account-row-value">{{phone || '未绑定'}}</text>
-        </view>
-        <view class="account-row account-row-danger" bindtap="onLogout">
-          <text class="account-row-icon">🚪</text>
-          <text class="account-row-title danger">退出登录</text>
         </view>
       </view>
 
-      <!-- 回收站 -->
-      <view wx:if="{{subPage==='recycle'}}" class="sub-list">
-        <view wx:if="{{subPageRecycle.length===0}}" class="sub-empty">这里空空如也，魔法很干净</view>
-        <view wx:for="{{subPageRecycle}}" wx:key="id" class="sub-item" bindtap="onSubItemTap" data-item="{{item}}">
-          <view class="sub-thumb">
-            <image wx:if="{{item.patternUrl}}" class="sub-thumb-img" src="{{item.patternUrl}}" mode="aspectFill"/>
-            <view wx:else class="sub-thumb-ph">🖼</view>
-          </view>
-          <view class="sub-info">
-            <text class="sub-name">{{item.patternName || '未命名作品'}}</text>
-            <text class="sub-meta">剩 {{item.daysLeft || 30}} 天</text>
-          </view>
-          <view class="sub-restore" catchtap="onSubRestore" data-id="{{item.id}}">↩</view>
-        </view>
-      </view>
 
       <view style="height:180rpx"></view>
     </scroll-view>
@@ -327,7 +369,7 @@
       </view>
 
       <!-- 自定义水印 -->
-      <view class="settings-row" bindtap="{{isVip ? '' : 'onVip'}}">
+      <view class="settings-row" bindtap="onCustomWatermarkTap">
         <view class="settings-row-left">
           <view class="settings-row-title-row">
             <text class="settings-row-title">自定义水印内容</text>

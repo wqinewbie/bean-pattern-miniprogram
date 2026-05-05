@@ -1,33 +1,39 @@
-<view class="tab-bar">
-  <view class="tab-item {{selected===0?'tab-item--active':''}} {{leaving===0?'tab-item--leaving':''}}" bindtap="onTab" data-index="0" data-url="/pages/home/home">
-    <view class="tab-icon-wrap">
-      <view class="tab-glow tab-glow--orange {{selected===0?'tab-glow--show':''}} {{leaving===0?'tab-glow--hide':''}}"></view>
-      <image class="tab-icon" src="{{selected===0 || leaving===0?'/assets/icons/tab-home-active.svg':'/assets/icons/tab-home.svg'}}" mode="aspectFit"/>
+<view class="tab-bar-shell {{hidden ? 'tab-bar-shell--hidden' : ''}}">
+  <view class="tab-bar">
+    <view class="tab-item {{selected===0?'tab-item--active':''}} {{leaving===0?'tab-item--leaving':''}}" bindtap="onTab" data-index="0" data-url="/pages/home/home">
+      <view class="tab-icon-wrap tab-icon-wrap--orange">
+        <view class="tab-glow tab-glow--orange {{selected===0?'tab-glow--show':''}} {{leaving===0?'tab-glow--hide':''}}"></view>
+        <view class="tab-active-bg {{selected===0?'tab-active-bg--show tab-active-bg--orange':''}} {{leaving===0?'tab-active-bg--hide':''}}"></view>
+        <image class="tab-icon" src="{{selected===0 || leaving===0?'/assets/icons/tab-home-active.svg':'/assets/icons/tab-home.svg'}}" mode="aspectFit"/>
+      </view>
+      <text class="tab-label {{selected===0?'tab-label--active tab-label--orange':''}} {{leaving===0?'tab-label--leaving tab-label--orange':''}}">首页</text>
     </view>
-    <text class="tab-label {{selected===0?'tab-label--active tab-label--orange':''}} {{leaving===0?'tab-label--leaving tab-label--orange':''}}">首页</text>
-  </view>
 
-  <view class="tab-item {{selected===1?'tab-item--active':''}} {{leaving===1?'tab-item--leaving':''}}" bindtap="onTab" data-index="1" data-url="/pages/convert/convert">
-    <view class="tab-icon-wrap">
-      <view class="tab-glow tab-glow--red {{selected===1?'tab-glow--show':''}} {{leaving===1?'tab-glow--hide':''}}"></view>
-      <image class="tab-icon" src="{{selected===1 || leaving===1?'/assets/icons/tab-convert-active.svg':'/assets/icons/tab-convert.svg'}}" mode="aspectFit"/>
+    <view class="tab-item {{selected===1?'tab-item--active':''}} {{leaving===1?'tab-item--leaving':''}}" bindtap="onTab" data-index="1" data-url="/pages/convert/convert">
+      <view class="tab-icon-wrap tab-icon-wrap--red">
+        <view class="tab-glow tab-glow--red {{selected===1?'tab-glow--show':''}} {{leaving===1?'tab-glow--hide':''}}"></view>
+        <view class="tab-active-bg {{selected===1?'tab-active-bg--show tab-active-bg--red':''}} {{leaving===1?'tab-active-bg--hide':''}}"></view>
+        <image class="tab-icon tab-icon--convert" src="{{selected===1 || leaving===1?'/assets/icons/convert-icon-red-uhd.png':'/assets/icons/convert-icon-neutral-uhd.png'}}" mode="aspectFit"/>
+      </view>
+      <text class="tab-label {{selected===1?'tab-label--active tab-label--red':''}} {{leaving===1?'tab-label--leaving tab-label--red':''}}">转图纸</text>
     </view>
-    <text class="tab-label {{selected===1?'tab-label--active tab-label--red':''}} {{leaving===1?'tab-label--leaving tab-label--red':''}}">转图纸</text>
-  </view>
 
-  <view class="tab-item {{selected===2?'tab-item--active':''}} {{leaving===2?'tab-item--leaving':''}}" bindtap="onTab" data-index="2" data-url="/pages/ai-generate/ai-generate">
-    <view class="tab-icon-wrap">
-      <view class="tab-glow tab-glow--purple {{selected===2?'tab-glow--show':''}} {{leaving===2?'tab-glow--hide':''}}"></view>
-      <image class="tab-icon" src="{{selected===2 || leaving===2?'/assets/icons/tab-ai-active.svg':'/assets/icons/tab-ai.svg'}}" mode="aspectFit"/>
+    <view class="tab-item {{selected===2?'tab-item--active':''}} {{leaving===2?'tab-item--leaving':''}}" bindtap="onTab" data-index="2" data-url="/pages/ai-generate/ai-generate">
+      <view class="tab-icon-wrap tab-icon-wrap--purple">
+        <view class="tab-glow tab-glow--purple {{selected===2?'tab-glow--show':''}} {{leaving===2?'tab-glow--hide':''}}"></view>
+        <view class="tab-active-bg {{selected===2?'tab-active-bg--show tab-active-bg--purple':''}} {{leaving===2?'tab-active-bg--hide':''}}"></view>
+        <image class="tab-icon tab-icon--ai" src="{{selected===2 || leaving===2?'/assets/icons/ai-sparkle-purple-uhd.png':'/assets/icons/ai-sparkle-neutral-uhd.png'}}" mode="aspectFit"/>
+      </view>
+      <text class="tab-label {{selected===2?'tab-label--active tab-label--purple':''}} {{leaving===2?'tab-label--leaving tab-label--purple':''}}">AI生成</text>
     </view>
-    <text class="tab-label {{selected===2?'tab-label--active tab-label--purple':''}} {{leaving===2?'tab-label--leaving tab-label--purple':''}}">AI生成</text>
-  </view>
 
-  <view class="tab-item {{selected===3?'tab-item--active':''}} {{leaving===3?'tab-item--leaving':''}}" bindtap="onTab" data-index="3" data-url="/pages/profile/profile">
-    <view class="tab-icon-wrap">
-      <view class="tab-glow tab-glow--green {{selected===3?'tab-glow--show':''}} {{leaving===3?'tab-glow--hide':''}}"></view>
-      <image class="tab-icon" src="{{selected===3 || leaving===3?'/assets/icons/tab-user-active.svg':'/assets/icons/tab-user.svg'}}" mode="aspectFit"/>
+    <view class="tab-item {{selected===3?'tab-item--active':''}} {{leaving===3?'tab-item--leaving':''}}" bindtap="onTab" data-index="3" data-url="/pages/profile/profile">
+      <view class="tab-icon-wrap tab-icon-wrap--green">
+        <view class="tab-glow tab-glow--green {{selected===3?'tab-glow--show':''}} {{leaving===3?'tab-glow--hide':''}}"></view>
+        <view class="tab-active-bg {{selected===3?'tab-active-bg--show tab-active-bg--green':''}} {{leaving===3?'tab-active-bg--hide':''}}"></view>
+        <image class="tab-icon" src="{{selected===3 || leaving===3?'/assets/icons/tab-user-active.svg':'/assets/icons/tab-user.svg'}}" mode="aspectFit"/>
+      </view>
+      <text class="tab-label {{selected===3?'tab-label--active tab-label--green':''}} {{leaving===3?'tab-label--leaving tab-label--green':''}}">我的</text>
     </view>
-    <text class="tab-label {{selected===3?'tab-label--active tab-label--green':''}} {{leaving===3?'tab-label--leaving tab-label--green':''}}">我的</text>
   </view>
 </view>

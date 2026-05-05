@@ -1,181 +1,145 @@
-<view class="focus-page">
-  <!-- 顶部导航 -->
-  <page-nav-bar title="沉浸拼豆" nav-top="{{navTop}}" bind:back="onBack">
-    <view slot="right" class="nav-actions">
-      <view class="nav-action" bindtap="onShowList">列表</view>
-      <view class="nav-action {{keepScreenOn?'nav-action--active':''}}" bindtap="onToggleKeepScreen">常亮</view>
-      <view class="nav-action" bindtap="onSaveProgress">保存</view>
-      <view class="nav-reset" bindtap="onResetAll">重置</view>
-    </view>
-  </page-nav-bar>
-
-  <!-- 图纸列表弹窗 -->
-  <view class="list-modal {{showListModal?'list-modal--show':''}}" wx:if="{{showListModal}}">
-    <view class="list-modal-overlay" bindtap="onCloseList"></view>
-    <view class="list-modal-content">
-      <view class="list-modal-header">
-        <text class="list-modal-title">图纸列表</text>
-        <view class="list-modal-close" bindtap="onCloseList">✕</view>
-      </view>
-      <scroll-view class="list-modal-scroll" scroll-y>
-        <view class="box-list">
-          <view 
-            class="box-item {{item.id===boxId?'box-item--active':''}}"
-            wx:for="{{boxList}}"
-            wx:key="id"
-            bindtap="onSelectBox"
-            data-id="{{item.id}}"
-          >
-            <view class="box-info">
-              <text class="box-name">{{item.name || '未命名图纸'}}</text>
-              <text class="box-meta">{{item.brand}} · {{item.gridSize}}x{{item.gridSize}} · {{item.colorCount}}色</text>
-            </view>
-            <view class="box-check" wx:if="{{item.id===boxId}}">✓</view>
-          </view>
-          <view class="box-empty" wx:if="{{boxList.length===0}}">
-            <text>暂无图纸</text>
-          </view>
+<view class="page">
+  <!-- 顶部导航栏 - Figma 风格 -->
+  <view class="top-bar" style="padding-top: {{statusBarHeight}}px;">
+    <view class="top-bar-inner" style="height: {{navHeight}}px; padding-top: {{navTop - statusBarHeight}}px;">
+      <view class="top-bar-left">
+        <view class="back-btn" bindtap="onBack">
+          <text class="back-icon">←</text>
         </view>
-      </scroll-view>
-    </view>
-  </view>
-
-  <!-- 进度提示 -->
-  <view class="progress-bar" wx:if="{{doneCount > 0}}">
-    <text class="progress-text">已完成 {{doneCount}} 色 / {{palette.length}} 色</text>
-    <text class="progress-percent">{{Math.floor(doneCount / palette.length * 100)}}%</text>
-  </view>
-
-  <view class="summary" wx:if="{{currentColor}}">
-    <view class="summary-btn" bindtap="onPrevColor">← 上一色</view>
-    <view class="summary-center">
-      <view class="summary-dot" style="background:rgb({{currentColor.r}},{{currentColor.g}},{{currentColor.b}})"></view>
-      <view class="summary-meta">
-        <text class="summary-id">{{currentColor.id}}</text>
-        <text class="summary-count">{{currentIndex + 1}} / {{palette.length}} · {{currentColor.count}}颗</text>
+        <view class="title-group">
+          <text class="title-text">沉浸式拼豆</text>
+          <view class="size-badge">{{gridSize}}²</view>
+        </view>
+      </view>
+      <view class="top-bar-right" style="margin-right: {{capsuleWidth + capsuleRight * 2 + 16}}px;">
+        <view class="action-btn" bindtap="onResetAll">
+          <text class="action-icon">↻</text>
+          <text class="action-text">重置</text>
+        </view>
       </view>
     </view>
-    <view class="summary-btn" bindtap="onNextColor">下一色 →</view>
   </view>
 
-  <!-- 画板区域 -->
-  <view 
-    class="canvas-area"
-    bindtouchstart="onBoardTouchStart"
-    bindtouchmove="onBoardTouchMove"
-    bindtouchend="onBoardTouchEnd"
-  >
-    <view 
-      class="board-viewport"
-      style="width: {{boardPx}}px; height: {{boardPx}}px;"
-    >
+  <!-- 主内容区 -->
+  <view class="main-area">
+    <!-- 网格预览区 -->
+    <view class="grid-preview">
       <view 
-        class="board-canvas-wrap"
-        style="width: {{canvasSize}}px; height: {{canvasSize}}px; left: {{canvasLeft}}px; top: {{canvasTop}}px;"
+        class="canvas-container" 
+        style="width:{{canvasSize}}px;height:{{canvasSize}}px;"
+        bindtouchstart="handleTouchStart"
+        bindtouchmove="handleTouchMove"
+        bindtouchend="handleTouchEnd"
+        bindtouchcancel="handleTouchEnd"
       >
-        <canvas 
-          canvas-id="focus-canvas" 
-          style="width: {{canvasSize}}px; height: {{canvasSize}}px;"
-        />
-      </view>
-      <!-- 加载遮罩 -->
-      <view class="board-cover" wx:if="{{isRendering}}">
-        <view class="render-spinner"></view>
+        <view 
+          class="canvas-wrapper"
+          style="transform: translate({{offsetX}}px, {{offsetY}}px) scale({{scale}}); transform-origin: center center;"
+        >
+          <bead-canvas2d 
+            id="immersiveCanvas"
+            canvas-id="immersive-canvas" 
+            width="{{canvasSize}}"
+            height="{{canvasSize}}"
+            auto-init="{{true}}"
+            bind:ready="onCanvasReady"
+            bind:error="onCanvasError"
+          />
+        </view>
       </view>
     </view>
-    <!-- 隐藏画布：用于提取颜色 -->
-    <canvas canvas-id="focus-base-canvas" class="hidden-canvas" style="width: {{boardPx}}px; height: {{boardPx}}px;" />
-  </view>
 
-  <!-- 底部面板：使用 cover-view 覆盖在 canvas 之上 -->
-  <cover-view class="bottom-panel">
-    <cover-view class="panel-handle" bindtap="onTogglePanel">
-      <cover-view wx:if="{{panelExpanded}}" class="handle-icon">⌄</cover-view>
-      <cover-view wx:else class="handle-icon">⌃</cover-view>
-    </cover-view>
-
-    <cover-view wx:if="{{panelExpanded}}" class="panel-body">
-      <cover-view class="control-row">
-        <cover-view class="control-label">对比度</cover-view>
+    <!-- 对比度滑块 -->
+    <view class="contrast-section">
+      <view class="contrast-card">
+        <text class="contrast-label">对比度</text>
         <slider
           class="contrast-slider"
-          min="20"
+          min="0"
           max="100"
           step="10"
           value="{{contrast}}"
-          activeColor="#d97706"
-          backgroundColor="#ffffff"
-          block-color="#ffffff"
+          activeColor="#FF9800"
+          backgroundColor="#FFF4DC"
+          block-color="#FF9800"
           block-size="18"
           bindchange="onContrastChange"
         />
-        <cover-view class="control-value">{{contrast}}%</cover-view>
-      </cover-view>
+        <text class="contrast-value">{{contrast}}%</text>
+      </view>
+    </view>
 
-      <cover-view class="control-row zoom-row">
-        <cover-view class="control-label">缩放</cover-view>
-        <cover-view class="zoom-btns">
-          <cover-view class="zoom-btn-mini" bindtap="onZoomOut">−</cover-view>
-          <cover-view class="zoom-text">{{Math.floor(scale * 100)}}%</cover-view>
-          <cover-view class="zoom-btn-mini" bindtap="onZoomIn">+</cover-view>
-          <cover-view class="zoom-btn-mini reset" bindtap="onZoomReset">⟲</cover-view>
-        </cover-view>
-      </cover-view>
+    <!-- Tab 切换 -->
+    <view class="tabs-section">
+      <view class="tabs-card">
+        <view 
+          class="tab-item {{tab==='color'?'tab-item--active':''}}"
+          bindtap="onTabChange"
+          data-tab="color"
+        >
+          <text class="tab-icon">#</text>
+          <text class="tab-label">按色号</text>
+        </view>
+        <view 
+          class="tab-item {{tab==='row'?'tab-item--active':''}}"
+          bindtap="onTabChange"
+          data-tab="row"
+        >
+          <text class="tab-icon">⇄</text>
+          <text class="tab-label">按横排</text>
+        </view>
+        <view 
+          class="tab-item {{tab==='col'?'tab-item--active':''}}"
+          bindtap="onTabChange"
+          data-tab="col"
+        >
+          <text class="tab-icon">⇅</text>
+          <text class="tab-label">按竖排</text>
+        </view>
+      </view>
+    </view>
 
-      <cover-view class="mode-capsule">
-        <cover-view class="mode-indicator mode-indicator--{{mode}}"></cover-view>
-        <cover-view class="mode-item {{mode==='colorId'?'mode-item--active':''}}" data-mode="colorId" bindtap="onModeChange">色号</cover-view>
-        <cover-view class="mode-item {{mode==='horizontal'?'mode-item--active':''}}" data-mode="horizontal" bindtap="onModeChange">横向计数</cover-view>
-        <cover-view class="mode-item {{mode==='vertical'?'mode-item--active':''}}" data-mode="vertical" bindtap="onModeChange">竖向计数</cover-view>
-      </cover-view>
+    <!-- 提示文字 -->
+    <view class="hint-section">
+      <view class="hint-divider"></view>
+      <text class="hint-text">点击卡片高亮 · 长按标记完成</text>
+      <view class="hint-divider"></view>
+    </view>
 
-      <!-- 引导模式选择 -->
-      <cover-view class="guidance-row">
-        <cover-view class="guidance-label">引导:</cover-view>
-        <cover-view class="guidance-btns">
-          <cover-view 
-            class="guidance-btn {{guidanceMode==='nearest'?'guidance-btn--active':''}}" 
-            data-mode="nearest" 
-            bindtap="onGuidanceModeChange"
-          >最近</cover-view>
-          <cover-view 
-            class="guidance-btn {{guidanceMode==='largest'?'guidance-btn--active':''}}" 
-            data-mode="largest" 
-            bindtap="onGuidanceModeChange"
-          >最大</cover-view>
-          <cover-view 
-            class="guidance-btn {{guidanceMode==='edge'?'guidance-btn--active':''}}" 
-            data-mode="edge" 
-            bindtap="onGuidanceModeChange"
-          >边缘</cover-view>
-        </cover-view>
-      </cover-view>
-
-      <cover-view class="divider"></cover-view>
-
-      <scroll-view class="palette-scroll" scroll-x>
-        <cover-view class="palette-row">
-          <cover-view
-            wx:for="{{palette}}"
-            wx:key="id"
-            class="palette-item"
+    <!-- 卡片列表 -->
+    <scroll-view class="cards-section" scroll-y>
+      <!-- 色号卡片（固定显示，不随 Tab 切换） -->
+      <view class="cards-grid">
+        <view 
+          wx:for="{{palette}}" 
+          wx:key="id"
+          class="card-item {{highlightId===item.id?'card-item--active':''}} {{completedMap[item.id]?'card-item--done':''}}"
+          bindtap="onCardTap"
+          bindlongpress="onCardLongPress"
+          data-type="color"
+          data-value="{{item.id}}"
+        >
+          <view 
+            class="card-bead" 
+            style="background:rgb({{item.r}},{{item.g}},{{item.b}})"
           >
-            <cover-view
-              class="bead {{currentColorId===item.id?'bead--active':''}} {{completedMap[item.id]?'bead--done':''}}"
-              style="background:rgb({{item.r}},{{item.g}},{{item.b}})"
-              bindtap="onPickColor"
-              bindlongpress="onToggleDone"
-              data-id="{{item.id}}"
-            >
-              <cover-view class="bead-id">{{item.id}}</cover-view>
-              <cover-view wx:if="{{completedMap[item.id]}}" class="bead-check">✓</cover-view>
-            </cover-view>
-            <cover-view class="bead-count">{{item.count}}颗</cover-view>
-          </cover-view>
-        </cover-view>
-      </scroll-view>
+            <text wx:if="{{completedMap[item.id]}}" class="card-check">✓</text>
+            <text wx:else class="card-id" style="color:{{item.textColor}}">{{item.id}}</text>
+          </view>
+          <view class="card-info">
+            <text class="card-name">{{item.name || item.id}}</text>
+            <text class="card-count">剩余 {{remainingByColor[item.id] || 0}} 颗</text>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
 
-      <cover-view class="hint">点击高亮 · 长按标记完成</cover-view>
-    </cover-view>
-  </cover-view>
+  <!-- 加载蒙层 -->
+  <view wx:if="{{loading}}" class="loading-overlay">
+    <view class="loading-container">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">加载中...</text>
+    </view>
+  </view>
 </view>

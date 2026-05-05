@@ -1,40 +1,94 @@
-<view class="container">
+<view class="patterns-page">
+  <view class="safe-area" style="height: {{statusBarHeight}}px;"></view>
 
-  <!-- 顶部导航 -->
-  <page-nav-bar title="时光机" nav-top="{{navTop}}" bind:back="onBack">
-    <view slot="right" class="nav-clear" bindtap="onClear">清空</view>
-  </page-nav-bar>
+  <view class="patterns-header" style="height: {{navHeight}}px;">
+    <view class="header-back" bindtap="onBack">
+      <image class="header-icon" src="/assets/icons/lucide-arrow-left-brown.svg" mode="aspectFit"/>
+    </view>
+    <view class="header-title-wrap">
+      <text class="header-title">时光机</text>
+      <view class="header-badge">
+        <image class="header-badge-icon" src="/assets/icons/lucide-clock-orange.svg" mode="aspectFit"/>
+        <text>{{history.length}}</text>
+      </view>
+    </view>
+    <view class="header-right-spacer" style="width: {{capsuleWidth}}px;"></view>
+  </view>
 
-  <text class="hint">只保留近30天的魔法记忆哦</text>
-
-  <scroll-view scroll-y class="scroll-body">
-    <view wx:if="{{history.length===0}}" class="empty-state">
-      <text class="empty-icon">🕐</text>
-      <text class="empty-text">还没有生成记录哦</text>
+  <scroll-view scroll-y class="patterns-scroll">
+    <view class="patterns-toolbar">
+      <view class="search-box {{searchFocused ? 'search-box--focus' : ''}}">
+        <image class="search-icon" src="/assets/icons/lucide-search-orange.svg" mode="aspectFit"/>
+        <input class="search-input" type="text" placeholder="搜索记录..." placeholder-class="search-placeholder" value="{{keyword}}" bindfocus="onSearchFocus" bindblur="onSearchBlur" bindinput="onSearchInput"/>
+      </view>
+      <view class="view-toggle-btn" bindtap="onToggleViewMode">
+        <text>{{viewMode === 'thumb' ? '列表' : '缩略图'}}</text>
+      </view>
     </view>
 
-    <view class="list">
-      <view wx:for="{{history}}" wx:key="id" class="history-item">
-        <view class="item-thumb" bindtap="onItemTap" data-item="{{item}}">
+    <view wx:if="{{loading}}" class="loading-state">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">正在加载时光机...</text>
+    </view>
+
+    <view wx:elif="{{filteredHistory.length===0}}" class="empty-state">
+      <view class="empty-icon-wrap">
+        <image class="empty-icon" src="/assets/icons/lucide-clock-orange.svg" mode="aspectFit"/>
+      </view>
+      <text class="empty-text">{{keyword ? '没有找到相关记录' : '还没有魔法记忆哦'}}</text>
+    </view>
+
+    <!-- 缩略图模式 -->
+    <view wx:elif="{{viewMode === 'thumb'}}" class="patterns-grid">
+      <view wx:for="{{filteredHistory}}" wx:key="id" class="pattern-card">
+        <view class="pattern-thumb" bindtap="onItemTap" data-item="{{item}}">
           <image wx:if="{{item.sourceUrl}}" class="thumb-img" src="{{item.sourceUrl}}" mode="aspectFill" />
           <view wx:else class="thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
-        </view>
-        <view class="item-info" bindtap="onItemTap" data-item="{{item}}">
-          <text class="item-title">{{item.name || ('记录#'+item.id)}}</text>
-          <text class="item-meta">{{item.brand || ''}} · {{item.colorCount || 0}}色 · {{item.createdAt}}</text>
-        </view>
-        <view class="item-actions">
-          <view class="item-save {{item.boxId ? 'saved' : ''}}" bindtap="onSaveToBox" data-item="{{item}}">
-            {{item.boxId ? '已保存' : '保存'}}
+          <view wx:if="{{item.boxId}}" class="source-badge source-badge--saved">
+            <text>已保存</text>
           </view>
-          <view class="item-del" bindtap="onDelete" data-id="{{item.id}}">🗑</view>
+        </view>
+        <view class="pattern-body">
+          <view class="pattern-name-row">
+            <text class="pattern-name">{{item.name || ('记录#'+item.id)}}</text>
+            <view class="pattern-name-actions">
+              <view class="icon-btn icon-btn--delete" catchtap="onDelete" data-id="{{item.id}}">
+                <image class="icon-btn-img" src="/assets/icons/lucide-trash-red.svg" mode="aspectFit"/>
+              </view>
+            </view>
+          </view>
         </view>
       </view>
     </view>
-    <view style="height:120rpx"></view>
+
+    <!-- 列表模式 -->
+    <view wx:else class="patterns-list">
+      <view wx:for="{{filteredHistory}}" wx:key="id" class="list-item-wrapper">
+        <!-- 操作按钮背景层 -->
+        <view class="list-actions-bg">
+          <view class="list-action-bg list-action-bg--delete" catchtap="onDelete" data-id="{{item.id}}">
+            <text>删除</text>
+          </view>
+        </view>
+        <!-- 滑动层 -->
+        <view class="list-item {{touchItemId === item.id && isSwiping ? 'swiping' : ''}}"
+              style="transform: translateX({{swipedOffsets[item.id] || 0}}px);"
+              bindtouchstart="onTouchStart"
+              bindtouchmove="onTouchMove"
+              bindtouchend="onTouchEnd"
+              data-id="{{item.id}}">
+          <view class="list-item-main" bindtap="onItemTap" data-item="{{item}}">
+            <image wx:if="{{item.sourceUrl}}" class="list-thumb" src="{{item.sourceUrl}}" mode="aspectFill" />
+            <view wx:else class="list-thumb list-thumb--ph">{{item.gridSize || 64}}</view>
+            <view class="list-info">
+              <text class="list-name">{{item.name || ('记录#'+item.id)}}</text>
+              <text class="list-meta-text">{{item.gridSize || 64}}x{{item.gridSize || 64}} · {{item.brand || 'MARD'}} · {{item.colorCount || 0}}色 · {{item.createdAt}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view style="height: 48rpx;"></view>
   </scroll-view>
-
-  <!-- 统一底部 TabBar -->
-  <app-tab-bar id="appTabBar" />
-
 </view>

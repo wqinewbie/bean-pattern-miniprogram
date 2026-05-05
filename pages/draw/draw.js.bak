@@ -1,0 +1,1130 @@
+// 拼豆画板 - Canvas 2D 版本
+const request = require('../../utils/request');
+const { ensureProfileComplete } = require('../../utils/profile-guard');
+const { drawBoard } = require('../../utils/canvas2d/renderers/boardRenderer');
+
+// 默认颜色
+const DEFAULT_COLORS = [
+  '#FFFFFF', '#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00',
+  '#FF6B35', '#FF69B4', '#00CED1', '#9370DB', '#FFA500', '#008B8B',
+  '#DC143C', '#32CD32', '#4169E1', '#FFD700', '#808080', '#2F4F4F',
+  '#FF6B6B', '#90EE90', '#87CEEB', '#DDA0DD', '#F0E68C', '#E6E6FA'
+];
+
+Page({
+  data: {
+    gridSize: 52,
+    canvasWidth: 320,
+    canvasHeight: 320,
+    tool: 'pen',
+    brushSize: 1,
+    showGrid: true,
+    symmetry: false,
+    mirror: false,
+    locked: false,
+    activeLayer: 'canvas',
+    showCanvas: true,
+    showBackground: false,
+    backgroundImage: '',
+    hasPixels: false,
+    currentColor: '#FF6B35',
+    currentCode: 'C01',
+    colors: DEFAULT_COLORS,
+    colorsWithCode: [],
+    showColorModal: false,
+    colorCount: 0,
+    loading: false,
+    loadingText: '处理中...',
+    canUndo: false,
+    canRedo: false,
+    source: 'blank',
+    storageKey: '',
+    brand: 'MARD',
+    brandList: ['MARD', 'Hama', 'Perler', 'Artkal'],
+    brandIndex: 0,
+    presetSizes: [24, 36, 50, 52, 64, 78, 104],
+    isPresetSize: true,
+    customSize: '',
+    sizeDropdownOpen: false,
+    brandDropdownOpen: false,
+    paletteDropdownOpen: false,
+    kitList: [],
+    selectedKitId: null,
+    selectedKitName: '',
+    colorPalette: [],
+    statusBarHeight: 20,
+    showSettings: false,
+    colorbarExpanded: false,
+    usedColors: [],
+    colorsRow1: [],
+    colorsRow2: [],
+    canvasReady: false,
+    canvas2dComponent: null,
+    canvasOffsetX: 0,
+    canvasOffsetY: 0,
+    canvasScale: 1,
+    topAxisLabels: [],
+    bottomAxisLabels: [],
+    leftAxisLabels: [],
+    rightAxisLabels: [],
+  },
+
+  _canvas: null,
+  _ctx: null,
+  _dpr: 1,
+  _gridData: null,
+  _cellSize: 10,
+  _undoStack: [],
+  _redoStack: [],
+  _isDrawing: false,
+  _isDragging: false,
+  _lastPos: null,
+  _dragStartX: 0,
+  _dragStartY: 0,
+  _canvasRect: null,
+  _originalGridData: null,
+  _originalColorPalette: null,
+  
+  // 拖拽和缩放优化
+  _touchStartDistance: 0,
+  _touchStartScale: 1,
+  _isPinching: false,
+  _lastTouchTime: 0,
+  _velocityX: 0,
+  _velocityY: 0,
+  _animationFrame: null,
+  _minScale: 0.5,
+  _maxScale: 3,
+  
+  // 拖拽和缩放优化
+  _touchStartDistance: 0,
+  _touchStartScale: 1,
+  _isPinching: false,
+  _lastTouchTime: 0,
+  _velocityX: 0,
+  _velocityY: 0,
+  _animationFrame: null,
+
+  onLoad(options) {
+    const { storageKey, source } = options;
+    const info = wx.getSystemInfoSync();
+    const statusBarHeight = info.statusBarHeight || 20;
+    const menuButton = wx.getMenuButtonBoundingClientRect();
+    const capsuleHeight = menuButton.height || 32;
+    const capsuleTop = menuButton.top - statusBarHeight || 6;
+    const navBarHeight = statusBarHeight + capsuleHeight + capsuleTop * 2;
+    
+    this.setData({
+      storageKey: storageKey || '',
+      source: source || 'blank',
+      statusBarHeight: statusBarHeight,
+      capsuleHeight: capsuleHeight,
+      capsuleTop: capsuleTop,
+      navBarHeight: navBarHeight
+    });
+    
+    // 加载品牌和色卡数据
+    this.loadBrandsAndPalettes();
+    
+    // 初始化颜色行
+    this._updateColorRows();
+    
+    if (source === 'result' && storageKey) {
+      this._loadDrawData(storageKey);
+    } else {
+      this._initData();
+    }
+  },
+
+  loadBrandsAndPalettes() {
+    request.get('/bead/brands').then((data) => {
+      if (!data || typeof data !== 'object') throw new Error('empty brands');
+      const brandNames = Object.keys(data);
+      if (!brandNames.length) throw new Error('empty brands');
+
+      const brandList = brandNames.map((name) => name.toUpperCase());
+      const firstBrand = brandList[0];
+
+      this.setData({
+        brandList: brandList,
+        brand: firstBrand,
+        brandIndex: 0,
+        _brandKitsMap: data
+      });
+
+      // 加载第一个品牌的默认色卡
+      this.loadPaletteColors(firstBrand);
+    }).catch(() => {
+      // 失败时使用默认值
+      console.error('加载品牌列表失败，使用默认值');
+      this.setData({
+        brandList: ['MARD', 'Hama', 'Perler', 'Artkal'],
+        brand: 'MARD',
+        brandIndex: 0,
+        colors: DEFAULT_COLORS
+      });
+      this._updateColorRows();
+    });
+  },
+
+  loadPaletteColors(brandName) {
+    // 先获取品牌ID
+    request.get('/bead/brand-list').then((brandList) => {
+      if (!brandList || !brandList.length) throw new Error('empty brand list');
+      
+      // 查找匹配的品牌
+      const brand = brandList.find(b => b.name.toLowerCase() === brandName.toLowerCase());
+      if (!brand) throw new Error('brand not found');
+      
+      // 保存品牌ID
+      this._currentBrandId = brand.id;
+      
+      // 根据品牌ID获取套餐列表
+      return request.get(`/bead/brands/${brand.id}/kits`);
+    }).then((kits) => {
+      if (!kits || !kits.length) throw new Error('empty kits');
+      
+      // 保存套餐列表，选择第一个套餐（最小色卡）
+      this.setData({ 
+        kitList: kits,
+        selectedKitId: kits[0].id,
+        selectedKitName: kits[0].name
+      });
+      
+      // 加载第一个套餐的色号
+      return this.loadKitColors(kits[0].id);
+    }).catch((err) => {
+      console.error('加载套餐列表失败:', err);
+      // 失败时使用默认颜色
+      this.setData({ colors: DEFAULT_COLORS });
+      this._updateColorRows();
+    });
+  },
+
+  loadKitColors(kitId) {
+    return request.get(`/bead/kits/${kitId}/colors`).then((colorList) => {
+      if (!colorList || !colorList.length) throw new Error('empty colors');
+      
+      // 转换为 hex 格式
+      const colors = colorList.map(c => c.hex);
+      
+      this.setData({ colors });
+      this._updateColorRows();
+    }).catch((err) => {
+      console.error('加载套餐色号失败:', err);
+      throw err;
+    });
+  },
+
+  onSelectKit(e) {
+    const kitId = e.currentTarget.dataset.kitId;
+    const kitName = e.currentTarget.dataset.kitName;
+    
+    this.setData({ 
+      selectedKitId: kitId,
+      selectedKitName: kitName,
+      paletteDropdownOpen: false 
+    });
+    
+    // 重新加载该套餐的色号
+    this.loadKitColors(kitId);
+  },
+
+  onReady() {},
+
+  onCanvasReady(e) {
+    console.log('Canvas 2D Ready', e.detail);
+    const canvas2dComponent = this.selectComponent('#drawCanvas2d');
+    if (!canvas2dComponent) return;
+    const context = canvas2dComponent.getContext();
+    if (!context.ready) return;
+    this._canvas = context.canvas;
+    this._ctx = context.ctx;
+    this._dpr = context.dpr;
+    this.setData({ canvasReady: true, canvas2dComponent: canvas2dComponent });
+    this._updateCanvasRect();
+    if (this._gridData) this._drawFullGrid();
+    this._updateUsedColors();
+  },
+
+  onCanvasError(e) {
+    console.error('Canvas 2D Error:', e.detail);
+    wx.showToast({ title: 'Canvas初始化失败', icon: 'none' });
+  },
+
+  _updateCanvasRect() {
+    const query = wx.createSelectorQuery();
+    query.select('.canvas-box').boundingClientRect();
+    query.exec((res) => {
+      if (res && res[0]) this._canvasRect = res[0];
+    });
+  },
+
+  _loadDrawData(storageKey) {
+    try {
+      const drawData = wx.getStorageSync(storageKey);
+      if (!drawData) { wx.showToast({ title: '数据加载失败', icon: 'none' }); this._initData(); return; }
+      const { gridSize, gridData, colorPalette, brand } = drawData;
+      const info = wx.getSystemInfoSync();
+      const size = Math.min(info.windowWidth - 80, info.windowHeight * 0.4);
+      const canvasSize = Math.floor(size / gridSize) * gridSize;
+      const cellSize = canvasSize / gridSize;
+      const hexGridData = gridData.map(row => row.map(idx => {
+        if (idx === -1) return null;
+        const color = colorPalette[idx];
+        if (!color) return '#FFFFFF';
+        const { r, g, b } = color;
+        return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+      }));
+      const usedColors = new Set();
+      hexGridData.forEach(row => { row.forEach(color => { if (color) usedColors.add(color); }); });
+      const colors = Array.from(usedColors);
+      if (!colors.includes('#FFFFFF')) colors.unshift('#FFFFFF');
+      this._gridData = hexGridData;
+      this._originalGridData = gridData;
+      this._originalColorPalette = colorPalette;
+      this._cellSize = cellSize;
+      this.setData({ gridSize, canvasWidth: canvasSize, canvasHeight: canvasSize, brand: brand || 'MARD', colorPalette, colors, currentColor: colors[1] || colors[0] || '#FF6B35' });
+      
+      // 更新颜色行和已使用颜色
+      this._updateColorRows();
+      this._updateUsedColors();
+      this._updateAxisLabels();
+      
+      wx.removeStorageSync(storageKey);
+    } catch (e) {
+      console.error('加载绘图数据失败:', e);
+      wx.showToast({ title: '数据加载失败', icon: 'none' });
+      this._initData();
+    }
+  },
+
+  _initData() {
+    const info = wx.getSystemInfoSync();
+    const size = Math.min(info.windowWidth - 80, info.windowHeight * 0.4);
+    const canvasSize = Math.floor(size / this.data.gridSize) * this.data.gridSize;
+    this._cellSize = canvasSize / this.data.gridSize;
+    this._gridData = Array.from({ length: this.data.gridSize }, () => Array(this.data.gridSize).fill('#FFFFFF'));
+    this.setData({ canvasWidth: canvasSize, canvasHeight: canvasSize });
+    
+    // 初始化已使用颜色（空白画板时为空）
+    this._updateUsedColors();
+    
+    // 初始化坐标轴
+    this._updateAxisLabels();
+  },
+
+  _drawFullGrid() {
+    if (!this._ctx || !this.data.canvasReady) return;
+    drawBoard(this._ctx, {
+      width: this.data.canvasWidth,
+      height: this.data.canvasHeight,
+      gridSize: this.data.gridSize,
+      gridData: this._gridData,
+      showGrid: this.data.showGrid,
+      dpr: this._dpr
+    });
+  },
+
+  _saveState() {
+    const state = JSON.stringify(this._gridData);
+    this._undoStack.push(state);
+    if (this._undoStack.length > 50) this._undoStack.shift();
+    this._redoStack = [];
+    this.setData({ canUndo: true, canRedo: false });
+  },
+
+  handleTouchStart(e) {
+    if (!this._canvasRect) this._updateCanvasRect();
+    
+    const touches = e.touches;
+    const now = Date.now();
+    
+    // 双指缩放检测
+    if (touches.length === 2) {
+      this._isPinching = true;
+      this._isDrawing = false;
+      this._isDragging = false;
+      
+      const touch1 = touches[0];
+      const touch2 = touches[1];
+      this._touchStartDistance = this._getDistance(touch1, touch2);
+      this._touchStartScale = this.data.canvasScale;
+      
+      // 记录缩放中心点
+      this._pinchCenterX = (touch1.clientX + touch2.clientX) / 2;
+      this._pinchCenterY = (touch1.clientY + touch2.clientY) / 2;
+      return;
+    }
+    
+    const touch = touches[0];
+    this._lastTouchTime = now;
+    
+    // 拖拽工具 - 单指拖动
+    if (this.data.tool === 'drag') {
+      this._isDragging = true;
+      this._dragStartX = touch.clientX;
+      this._dragStartY = touch.clientY;
+      this._velocityX = 0;
+      this._velocityY = 0;
+      
+      // 停止惯性动画
+      if (this._animationFrame) {
+        cancelAnimationFrame(this._animationFrame);
+        this._animationFrame = null;
+      }
+      return;
+    }
+    
+    // 绘制工具
+    const pos = this._getPixelPosition(touch.clientX, touch.clientY);
+    if (!pos) return;
+    this._isDrawing = true;
+    this._lastPos = pos;
+    this._saveState();
+    this._paintPixel(pos.row, pos.col);
+  },
+
+  handleTouchMove(e) {
+    const touches = e.touches;
+    const now = Date.now();
+    
+    // 双指缩放
+    if (touches.length === 2 && this._isPinching) {
+      const touch1 = touches[0];
+      const touch2 = touches[1];
+      const currentDistance = this._getDistance(touch1, touch2);
+      
+      // 计算缩放比例
+      const scaleChange = currentDistance / this._touchStartDistance;
+      let newScale = this._touchStartScale * scaleChange;
+      
+      // 限制缩放范围
+      const minScale = this._minScale || 0.5;
+      const maxScale = this._maxScale || 3;
+      newScale = Math.max(minScale, Math.min(maxScale, newScale));
+      
+      // 计算新的缩放中心
+      const centerX = (touch1.clientX + touch2.clientX) / 2;
+      const centerY = (touch1.clientY + touch2.clientY) / 2;
+      
+      // 调整偏移量，使缩放围绕触摸中心进行
+      const rect = this._canvasRect;
+      if (rect) {
+        const oldScale = this.data.canvasScale;
+        const scaleRatio = newScale / oldScale;
+        
+        // 计算相对于画布中心的偏移调整
+        const canvasCenterX = rect.left + rect.width / 2;
+        const canvasCenterY = rect.top + rect.height / 2;
+        
+        const offsetX = this.data.canvasOffsetX - (centerX - canvasCenterX) * (scaleRatio - 1);
+        const offsetY = this.data.canvasOffsetY - (centerY - canvasCenterY) * (scaleRatio - 1);
+        
+        this.setData({
+          canvasScale: newScale,
+          canvasOffsetX: offsetX,
+          canvasOffsetY: offsetY
+        });
+      } else {
+        this.setData({ canvasScale: newScale });
+      }
+      return;
+    }
+    
+    const touch = touches[0];
+    const deltaTime = now - this._lastTouchTime;
+    
+    // 拖拽工具
+    if (this.data.tool === 'drag' && this._isDragging) {
+      const deltaX = touch.clientX - this._dragStartX;
+      const deltaY = touch.clientY - this._dragStartY;
+      
+      // 计算速度（用于惯性滚动）
+      if (deltaTime > 0) {
+        this._velocityX = deltaX / deltaTime * 16; // 转换为每帧速度
+        this._velocityY = deltaY / deltaTime * 16;
+      }
+      
+      this.setData({
+        canvasOffsetX: this.data.canvasOffsetX + deltaX,
+        canvasOffsetY: this.data.canvasOffsetY + deltaY
+      });
+      
+      this._dragStartX = touch.clientX;
+      this._dragStartY = touch.clientY;
+      this._lastTouchTime = now;
+      return;
+    }
+    
+    // 绘制工具
+    if (!this._isDrawing) return;
+    const pos = this._getPixelPosition(touch.clientX, touch.clientY);
+    if (!pos) return;
+    if (this._lastPos) {
+      this._paintLine(this._lastPos.row, this._lastPos.col, pos.row, pos.col);
+    } else {
+      this._paintPixel(pos.row, pos.col);
+    }
+    this._lastPos = pos;
+  },
+
+  handleTouchEnd(e) {
+    // 如果是双指缩放结束
+    if (this._isPinching) {
+      this._isPinching = false;
+      // 如果还有一个手指，切换到拖拽模式
+      if (e.touches.length === 1 && this.data.tool === 'drag') {
+        const touch = e.touches[0];
+        this._isDragging = true;
+        this._dragStartX = touch.clientX;
+        this._dragStartY = touch.clientY;
+      }
+      return;
+    }
+    
+    // 拖拽工具 - 添加惯性滚动
+    if (this._isDragging && this.data.tool === 'drag') {
+      this._isDragging = false;
+      
+      // 如果有足够的速度，启动惯性动画
+      const speed = Math.sqrt(this._velocityX ** 2 + this._velocityY ** 2);
+      if (speed > 1) {
+        this._startInertiaAnimation();
+      }
+      return;
+    }
+    
+    this._isDrawing = false;
+    this._lastPos = null;
+  },
+  
+  // 计算两点距离
+  _getDistance(touch1, touch2) {
+    const dx = touch2.clientX - touch1.clientX;
+    const dy = touch2.clientY - touch1.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  },
+  
+  // 惯性滚动动画
+  _startInertiaAnimation() {
+    const friction = 0.95; // 摩擦系数
+    const minVelocity = 0.5; // 最小速度阈值
+    
+    const animate = () => {
+      // 应用摩擦力
+      this._velocityX *= friction;
+      this._velocityY *= friction;
+      
+      // 检查是否停止
+      const speed = Math.sqrt(this._velocityX ** 2 + this._velocityY ** 2);
+      if (speed < minVelocity) {
+        this._animationFrame = null;
+        return;
+      }
+      
+      // 更新位置
+      this.setData({
+        canvasOffsetX: this.data.canvasOffsetX + this._velocityX,
+        canvasOffsetY: this.data.canvasOffsetY + this._velocityY
+      });
+      
+      // 继续动画
+      this._animationFrame = requestAnimationFrame(animate);
+    };
+    
+    this._animationFrame = requestAnimationFrame(animate);
+  },
+
+  _getPixelPosition(touchX, touchY) {
+    if (!this._canvasRect) return null;
+    const rect = this._canvasRect;
+    
+    // 考虑画布偏移和缩放
+    const offsetX = this.data.canvasOffsetX || 0;
+    const offsetY = this.data.canvasOffsetY || 0;
+    const scale = this.data.canvasScale || 1;
+    
+    // 调整触摸坐标，减去偏移量并除以缩放
+    const relX = (touchX - rect.left - offsetX) / scale;
+    const relY = (touchY - rect.top - offsetY) / scale;
+    
+    const col = Math.floor((relX / rect.width) * this.data.gridSize);
+    const row = Math.floor((relY / rect.height) * this.data.gridSize);
+    
+    if (col >= 0 && col < this.data.gridSize && row >= 0 && row < this.data.gridSize) {
+      return { row, col };
+    }
+    return null;
+  },
+
+  _paintPixel(row, col) {
+    const { tool, currentColor, symmetry, gridSize, brushSize } = this.data;
+    if (tool === 'picker') {
+      const pickedColor = this._gridData[row] ? this._gridData[row][col] : null;
+      if (pickedColor && pickedColor !== '#FFFFFF') {
+        this.setData({ currentColor: pickedColor, tool: 'pen' });
+      }
+      return;
+    }
+    if (tool === 'fill') {
+      this._floodFill(row, col, currentColor);
+      this._drawFullGrid();
+      this._updateUsedColors();
+      this._updateHasPixels();
+      return;
+    }
+    const color = tool === 'eraser' ? '#FFFFFF' : currentColor;
+    this._gridData[row][col] = color;
+    if (symmetry) {
+      const symCol = gridSize - 1 - col;
+      if (symCol >= 0 && symCol < gridSize) this._gridData[row][symCol] = color;
+    }
+    const half = Math.floor(brushSize / 2);
+    for (let dy = -half; dy <= half; dy++) {
+      for (let dx = -half; dx <= half; dx++) {
+        const r = row + dy;
+        const c = col + dx;
+        if (r >= 0 && r < gridSize && c >= 0 && c < gridSize) {
+          this._gridData[r][c] = color;
+          if (symmetry) {
+            const symC = gridSize - 1 - c;
+            if (symC >= 0 && symC < gridSize) this._gridData[r][symC] = color;
+          }
+        }
+      }
+    }
+    this._drawFullGrid();
+    this._updateUsedColors();
+    this._updateHasPixels();
+  },
+
+  _paintLine(r0, c0, r1, c1) {
+    const dr = Math.abs(r1 - r0);
+    const dc = Math.abs(c1 - c0);
+    const sr = r0 < r1 ? 1 : -1;
+    const sc = c0 < c1 ? 1 : -1;
+    let err = dc - dr;
+    while (true) {
+      this._paintPixel(r0, c0);
+      if (r0 === r1 && c0 === c1) break;
+      const e2 = 2 * err;
+      if (e2 > -dr) { err -= dr; c0 += sc; }
+      if (e2 < dc) { err += dc; r0 += sr; }
+    }
+  },
+
+  _floodFill(startRow, startCol, newColor) {
+    const targetColor = this._gridData[startRow] ? this._gridData[startRow][startCol] : null;
+    if (targetColor === null || targetColor === newColor) return;
+    const { gridSize } = this.data;
+    const stack = [[startRow, startCol]];
+    const visited = new Set();
+    while (stack.length > 0) {
+      const [r, c] = stack.pop();
+      const key = r + ',' + c;
+      if (visited.has(key)) continue;
+      if (r < 0 || r >= gridSize || c < 0 || c >= gridSize) continue;
+      if (this._gridData[r][c] !== targetColor) continue;
+      visited.add(key);
+      this._gridData[r][c] = newColor;
+      stack.push([r + 1, c], [r - 1, c], [r, c + 1], [r, c - 1]);
+    }
+  },
+
+  onUndo() {
+    if (this._undoStack.length === 0) return;
+    this._redoStack.push(JSON.stringify(this._gridData));
+    this._gridData = JSON.parse(this._undoStack.pop());
+    this.setData({ canUndo: this._undoStack.length > 0, canRedo: true });
+    this._drawFullGrid();
+    this._updateUsedColors();
+    this._updateHasPixels();
+  },
+
+  onRedo() {
+    if (this._redoStack.length === 0) return;
+    this._undoStack.push(JSON.stringify(this._gridData));
+    this._gridData = JSON.parse(this._redoStack.pop());
+    this.setData({ canUndo: true, canRedo: this._redoStack.length > 0 });
+    this._drawFullGrid();
+    this._updateUsedColors();
+    this._updateHasPixels();
+  },
+
+  onSelectTool(e) {
+    const tool = e.currentTarget.dataset.tool;
+    this.setData({ tool });
+    
+    // 切换到拖拽工具时，显示提示
+    if (tool === 'drag') {
+      wx.showToast({ title: '拖拽模式：移动画布', icon: 'none', duration: 1500 });
+    }
+    
+    if (this.data.showLeftToolbar) this.setData({ showLeftToolbar: false });
+  },
+
+  onToggleSymmetry() {
+    this.setData({ symmetry: !this.data.symmetry });
+  },
+
+  onToggleMirror() {
+    if (!this.data.hasPixels) {
+      wx.showToast({ title: '画布无笔迹时不可镜像', icon: 'none' });
+      return;
+    }
+    
+    this._saveState();
+    
+    // 左右翻转gridData
+    const gridSize = this.data.gridSize;
+    const newGridData = Array.from({ length: gridSize }, () => Array(gridSize).fill('#FFFFFF'));
+    
+    for (let y = 0; y < gridSize; y++) {
+      for (let x = 0; x < gridSize; x++) {
+        newGridData[y][gridSize - 1 - x] = this._gridData[y][x];
+      }
+    }
+    
+    this._gridData = newGridData;
+    this._drawFullGrid();
+    this._updateUsedColors();
+    
+    wx.showToast({ title: '已镜像翻转', icon: 'success', duration: 1500 });
+  },
+
+  onToggleLock() {
+    if (!this.data.backgroundImage) return;
+    this.setData({ locked: !this.data.locked });
+  },
+
+  onSetActiveLayer(e) {
+    const layer = e.currentTarget.dataset.layer;
+    if (layer === 'background' && !this.data.backgroundImage) return;
+    this.setData({ activeLayer: layer });
+  },
+
+  onToggleCanvas() {
+    this.setData({ showCanvas: !this.data.showCanvas });
+  },
+
+  onToggleBackground() {
+    this.setData({ showBackground: !this.data.showBackground });
+  },
+
+  onBrandChange(e) {
+    const index = e.detail.value;
+    const brand = this.data.brandList[index];
+    this.setData({ brand, brandIndex: index });
+  },
+
+  onToggleSizeDropdown() {
+    this.setData({ 
+      sizeDropdownOpen: !this.data.sizeDropdownOpen,
+      brandDropdownOpen: false,
+      paletteDropdownOpen: false
+    });
+  },
+
+  onToggleBrandDropdown() {
+    this.setData({ 
+      brandDropdownOpen: !this.data.brandDropdownOpen,
+      sizeDropdownOpen: false,
+      paletteDropdownOpen: false
+    });
+  },
+
+  onTogglePaletteDropdown() {
+    this.setData({ 
+      paletteDropdownOpen: !this.data.paletteDropdownOpen,
+      sizeDropdownOpen: false,
+      brandDropdownOpen: false
+    });
+  },
+
+  onSelectPresetSize(e) {
+    const size = e.currentTarget.dataset.size;
+    this.setData({ 
+      gridSize: size, 
+      isPresetSize: true,
+      customSize: '',
+      sizeDropdownOpen: false 
+    });
+    this._updateAxisLabels();
+  },
+
+  onSelectBrand(e) {
+    const brand = e.currentTarget.dataset.brand;
+    const index = this.data.brandList.indexOf(brand);
+    this.setData({ 
+      brand, 
+      brandIndex: index,
+      brandDropdownOpen: false 
+    });
+    
+    // 重新加载该品牌的色卡颜色
+    this.loadPaletteColors(brand);
+  },
+
+  onCustomSizeInput(e) {
+    const value = e.detail.value;
+    this.setData({ customSize: value });
+  },
+
+  onCustomSizeConfirm(e) {
+    const value = e.detail.value;
+    if (!value) return;
+    const size = parseInt(value);
+    if (isNaN(size) || size < 16 || size > 200) {
+      wx.showToast({ title: '数值范围16~200', icon: 'none' });
+      return;
+    }
+    this.setData({ 
+      gridSize: size,
+      isPresetSize: false,
+      sizeDropdownOpen: false
+    });
+    this._updateAxisLabels();
+  },
+
+  onGridSizeInput(e) {
+    const value = parseInt(e.detail.value);
+    if (value && value > 0 && value <= 100) {
+      this.setData({ gridSize: value });
+      this._updateAxisLabels();
+    }
+  },
+
+  onChooseBackground() {
+    wx.chooseImage({
+      count: 1,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        this.setData({ backgroundImage: res.tempFilePaths[0] });
+        wx.showToast({ title: '背景图已上传', icon: 'success' });
+      }
+    });
+  },
+
+  onClearBackground() {
+    this.setData({ 
+      backgroundImage: '',
+      locked: false,
+      activeLayer: 'canvas'
+    });
+    wx.showToast({ title: '背景图已清除', icon: 'success' });
+  },
+
+  _updateAxisLabels() {
+    const gridSize = this.data.gridSize;
+    const labels = [];
+    
+    for (let i = 5; i <= gridSize; i += 5) {
+      const position = (i / gridSize) * 100;
+      labels.push({ label: i, position });
+    }
+    
+    this.setData({
+      topAxisLabels: labels,
+      bottomAxisLabels: labels,
+      leftAxisLabels: labels,
+      rightAxisLabels: labels
+    });
+  },
+
+  _updateHasPixels() {
+    let hasPixels = false;
+    for (let y = 0; y < this.data.gridSize; y++) {
+      for (let x = 0; x < this.data.gridSize; x++) {
+        if (this._gridData[y][x] !== '#FFFFFF') {
+          hasPixels = true;
+          break;
+        }
+      }
+      if (hasPixels) break;
+    }
+    this.setData({ hasPixels });
+  },
+
+  onSelectColor(e) {
+    const color = e.currentTarget.dataset.color;
+    this.setData({ currentColor: color, currentCode: this._getColorCode(color) });
+    if (this.data.colorbarExpanded) {
+      this.setData({ colorbarExpanded: false });
+    }
+  },
+
+  _getColorCode(hex) {
+    const index = this.data.colors.indexOf(hex);
+    if (index >= 0) {
+      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      const letter = letters[Math.floor(index / 10)] || 'A';
+      const num = (index % 10) + 1;
+      return letter + num.toString().padStart(2, '0');
+    }
+    return 'C01';
+  },
+
+  onOpenColorDetail() {
+    const count = this._countColorUsage(this.data.currentColor);
+    this.setData({ showColorModal: true, colorCount: count });
+  },
+
+  onCloseColorModal() {
+    this.setData({ showColorModal: false });
+  },
+
+  _countColorUsage(color) {
+    let count = 0;
+    for (let y = 0; y < this.data.gridSize; y++) {
+      for (let x = 0; x < this.data.gridSize; x++) {
+        if (this._gridData[y][x].toUpperCase() === color.toUpperCase()) count++;
+      }
+    }
+    return count;
+  },
+
+  onClear() {
+    wx.showModal({
+      title: '清空画板',
+      content: '确定要清空整个画布吗？',
+      success: (res) => {
+        if (res.confirm) {
+          this._saveState();
+          this._gridData = Array.from({ length: this.data.gridSize }, () => Array(this.data.gridSize).fill('#FFFFFF'));
+          this._drawFullGrid();
+          this._updateUsedColors();
+          this._updateHasPixels();
+          this.setData({ mirror: false });
+        }
+      }
+    });
+  },
+
+  onSave() {
+    ensureProfileComplete().then((ok) => {
+      if (!ok) return;
+      this._saveDraft();
+    });
+  },
+
+  onSaveToBox() {
+    ensureProfileComplete().then((ok) => {
+      if (!ok) return;
+      this._saveToBox();
+    });
+  },
+
+  _saveToBox() {
+    this.setData({ loading: true, loadingText: '保存到图纸箱...' });
+    const { gridSize, brand } = this.data;
+    const colorStats = this._buildColorStats();
+    if (colorStats.length === 0) {
+      this.setData({ loading: false });
+      wx.showToast({ title: '画板还没有内容', icon: 'none' });
+      return;
+    }
+    const colorPalette = colorStats.map((s, idx) => ({
+      index: idx, id: s.id, name: s.name, r: s.r, g: s.g, b: s.b, count: s.count
+    }));
+    const gridData = this._gridData.map(row => row.map(hex => {
+      const idx = colorStats.findIndex(s => '#' + [s.r, s.g, s.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase() === hex.toUpperCase());
+      return idx >= 0 ? idx : 0;
+    }));
+    request.post('/box/save', {
+      sourceType: 'DRAW',
+      brand: brand || 'MARD',
+      colorCount: colorStats.length,
+      gridSize: gridSize,
+      gridData: JSON.stringify(gridData),
+      colorPalette: JSON.stringify(colorPalette)
+    }).then(() => {
+      this.setData({ loading: false });
+      wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+    }).catch(() => {
+      this.setData({ loading: false });
+      wx.showToast({ title: '保存失败', icon: 'none' });
+    });
+  },
+
+  _saveDraft() {
+    this.setData({ loading: true, loadingText: '保存中...' });
+    const { gridSize, brand, source } = this.data;
+    const colorStats = this._buildColorStats();
+    const colorPalette = colorStats.map((s, idx) => ({
+      index: idx, id: s.id, name: s.name, r: s.r, g: s.g, b: s.b, count: s.count
+    }));
+    const gridData = this._gridData.map(row => row.map(hex => {
+      const idx = colorStats.findIndex(s => '#' + [s.r, s.g, s.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase() === hex.toUpperCase());
+      return idx >= 0 ? idx : 0;
+    }));
+    if (source === 'result') {
+      request.post('/draft/save', {
+        sourceType: 'EDIT', brand: brand || 'MARD', colorCount: colorStats.length,
+        gridSize: gridSize, gridData: JSON.stringify(gridData), colorPalette: JSON.stringify(colorPalette)
+      }).then(() => {
+        this.setData({ loading: false });
+        wx.showToast({ title: '已保存', icon: 'success' });
+        const editResult = { updated: true, gridData, colorPalette, gridSize, brand: brand || 'MARD',
+          colorCount: colorStats.length, totalBeads: colorStats.reduce((a, c) => a + c.count, 0) };
+        const resultStorageKey = 'editResult_' + Date.now();
+        wx.setStorageSync(resultStorageKey, editResult);
+        setTimeout(() => {
+          const pages = getCurrentPages();
+          const prevPage = pages[pages.length - 2];
+          if (prevPage && prevPage.route === 'pages/result/result') {
+            prevPage.setData({ _editResultKey: resultStorageKey });
+            wx.navigateBack({ delta: 1 });
+          } else {
+            wx.navigateBack({ delta: 1 });
+          }
+        }, 1000);
+      }).catch(() => {
+        this.setData({ loading: false });
+        wx.showToast({ title: '保存失败', icon: 'none' });
+      });
+    } else {
+      request.post('/draft/save', {
+        sourceType: 'DRAW', brand: brand || 'MARD', colorCount: colorStats.length,
+        gridSize: gridSize, gridData: JSON.stringify(gridData), colorPalette: JSON.stringify(colorPalette)
+      }).then(() => {
+        this.setData({ loading: false });
+        wx.showToast({ title: '已保存', icon: 'success' });
+      }).catch(() => {
+        this.setData({ loading: false });
+        wx.showToast({ title: '保存失败', icon: 'none' });
+      });
+    }
+  },
+
+  _buildColorStats() {
+    const map = new Map();
+    for (let y = 0; y < this.data.gridSize; y++) {
+      for (let x = 0; x < this.data.gridSize; x++) {
+        const hex = this._gridData[y][x];
+        if (hex === '#FFFFFF') continue;
+        map.set(hex, (map.get(hex) || 0) + 1);
+      }
+    }
+    const stats = [];
+    map.forEach((count, hex) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      stats.push({ id: hex.replace('#', ''), name: hex, count, r, g, b });
+    });
+    return stats.sort((a, b) => b.count - a.count);
+  },
+
+  async onExport() {
+    const stats = this._buildColorStats();
+    if (stats.length === 0) {
+      wx.showToast({ title: '画板还没有内容', icon: 'none' });
+      return;
+    }
+    this.setData({ loading: true, loadingText: '生成中...' });
+    try {
+      const canvas2dComponent = this.data.canvas2dComponent;
+      if (!canvas2dComponent) throw new Error('Canvas组件未就绪');
+      const tempFilePath = await canvas2dComponent.exportTempFilePath({ fileType: 'png', quality: 1 });
+      this.setData({ loading: false });
+      wx.previewImage({ urls: [tempFilePath], current: tempFilePath });
+    } catch (err) {
+      console.error('导出失败:', err);
+      this.setData({ loading: false });
+      wx.showToast({ title: '导出失败', icon: 'none' });
+    }
+  },
+
+  _updateUsedColors() {
+    if (!this._gridData) {
+      this.setData({ usedColors: [] });
+      return;
+    }
+    
+    const colorMap = new Map();
+    for (let y = 0; y < this.data.gridSize; y++) {
+      for (let x = 0; x < this.data.gridSize; x++) {
+        const color = this._gridData[y][x];
+        if (color && color !== '#FFFFFF') {
+          colorMap.set(color, (colorMap.get(color) || 0) + 1);
+        }
+      }
+    }
+    
+    // 按使用数量降序排列，并添加色码
+    const usedColors = Array.from(colorMap.entries()).map(([hex, count]) => ({
+      hex, 
+      count,
+      code: this._getColorCode(hex)
+    })).sort((a, b) => b.count - a.count);
+    
+    this.setData({ usedColors });
+  },
+
+  _updateColorRows() {
+    const colors = this.data.colors || DEFAULT_COLORS;
+    const mid = Math.ceil(colors.length / 2);
+    
+    // 为每个颜色添加色码
+    const colorsWithCode = colors.map(color => ({
+      hex: color,
+      code: this._getColorCode(color)
+    }));
+    
+    this.setData({
+      colorsRow1: colorsWithCode.slice(0, mid),
+      colorsRow2: colorsWithCode.slice(mid),
+      colorsWithCode: colorsWithCode
+    });
+  },
+
+  _updateHasPixels() {
+    let hasPixels = false;
+    for (let y = 0; y < this.data.gridSize; y++) {
+      for (let x = 0; x < this.data.gridSize; x++) {
+        if (this._gridData[y][x] !== '#FFFFFF') {
+          hasPixels = true;
+          break;
+        }
+      }
+      if (hasPixels) break;
+    }
+    this.setData({ hasPixels });
+  },
+
+  onSetActiveLayer(e) {
+    const layer = e.currentTarget.dataset.layer;
+    if (layer === 'background' && !this.data.backgroundImage) return;
+    this.setData({ activeLayer: layer });
+  },
+
+  onToggleSettings() {
+    this.setData({ showSettings: !this.data.showSettings });
+  },
+
+  onCloseSettings() {
+    this.setData({ showSettings: false });
+  },
+
+  onToggleLeftToolbar() {},
+
+  onCloseLeftToolbar() {},
+
+  onToggleColorbar() {
+    this.setData({ colorbarExpanded: !this.data.colorbarExpanded });
+  },
+
+  onCloseColorbar() {
+    this.setData({ colorbarExpanded: false });
+  },
+
+  onCloseAllPanels() {},
+
+  stopPropagation() {},
+
+  onBack() {
+    wx.navigateBack({ delta: 1 });
+  }
+});

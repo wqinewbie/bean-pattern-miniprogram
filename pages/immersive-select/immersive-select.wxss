@@ -1,0 +1,325 @@
+/* Figma 风格 - 沉浸式拼豆选择页面 */
+
+page {
+  height: 100vh;
+  overflow: hidden;
+  background: #FFF9ED;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #FFF9ED;
+}
+
+/* ========== 安全区域占位 ========== */
+.safe-area {
+  width: 100%;
+  flex-shrink: 0;
+  background: #FFF9ED;
+}
+
+/* ========== 顶部卡片 ========== */
+.header-card {
+  background: #FFEBB5;
+  margin: 32rpx 40rpx 0;
+  padding: 48rpx 48rpx 48rpx;
+  border-radius: 32rpx;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 16rpx 40rpx rgba(255, 160, 0, 0.08);
+}
+
+.header-bg-circle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 256rpx;
+  height: 256rpx;
+  background: #FFF4DC;
+  border-radius: 50%;
+  opacity: 0.5;
+  transform: translate(80rpx, -80rpx);
+}
+
+.header-content {
+  position: relative;
+  z-index: 1;
+}
+
+.header-back {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.header-back:active {
+  opacity: 0.7;
+}
+
+.back-icon {
+  font-size: 40rpx;
+  color: #5D4037;
+  font-weight: bold;
+}
+
+.back-text {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #5D4037;
+}
+
+.header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  margin-bottom: 16rpx;
+}
+
+.header-icon-wrap {
+  width: 80rpx;
+  height: 80rpx;
+  background: #9C27B0;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4rpx 12rpx rgba(156, 39, 176, 0.3);
+}
+
+.header-icon {
+  font-size: 40rpx;
+}
+
+.header-title {
+  font-size: 44rpx;
+  font-weight: 800;
+  color: #5D4037;
+}
+
+.header-subtitle {
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #A1887F;
+}
+
+/* ========== 主内容区 ========== */
+.main-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ========== 加载状态 ========== */
+.loading-state {
+  padding: 120rpx 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32rpx;
+}
+
+.loading-spinner {
+  width: 80rpx;
+  height: 80rpx;
+  border: 8rpx solid #FFEBB5;
+  border-top-color: #FF9800;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #A1887F;
+}
+
+/* ========== 空状态 ========== */
+.empty-state {
+  padding: 80rpx 64rpx 160rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.empty-icon-wrap {
+  width: 256rpx;
+  height: 256rpx;
+  background: #F3E5F5;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 48rpx;
+  box-shadow: 0 16rpx 40rpx rgba(156, 39, 176, 0.1);
+}
+
+.empty-icon {
+  font-size: 112rpx;
+  opacity: 0.5;
+}
+
+.empty-title {
+  font-size: 40rpx;
+  font-weight: 800;
+  color: #5D4037;
+  margin-bottom: 16rpx;
+  text-align: center;
+}
+
+.empty-subtitle {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #A1887F;
+  text-align: center;
+  margin-bottom: 64rpx;
+  max-width: 560rpx;
+  line-height: 1.5;
+}
+
+.empty-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  width: 100%;
+  max-width: 560rpx;
+}
+
+.empty-btn {
+  height: 96rpx;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30rpx;
+  font-weight: 800;
+  transition: all 0.2s;
+}
+
+.empty-btn:active {
+  transform: scale(0.95);
+}
+
+.empty-btn--primary {
+  background: #FF6B6B;
+  color: #FFFFFF;
+  box-shadow: 0 16rpx 40rpx rgba(255, 107, 107, 0.3);
+}
+
+.empty-btn--secondary {
+  background: #9C27B0;
+  color: #FFFFFF;
+  box-shadow: 0 16rpx 40rpx rgba(156, 39, 176, 0.3);
+}
+
+.empty-btn--tertiary {
+  background: #FFFFFF;
+  color: #5D4037;
+  border: 4rpx solid #E0E0E0;
+}
+
+/* ========== 图纸网格 ========== */
+.patterns-grid {
+  padding: 48rpx 40rpx 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 32rpx;
+}
+
+.pattern-card {
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  overflow: hidden;
+  box-shadow: 0 16rpx 40rpx rgba(140, 107, 75, 0.08);
+  border: 4rpx solid #FFF4DC;
+  transition: all 0.2s;
+}
+
+.pattern-card:active {
+  transform: scale(0.95);
+}
+
+/* ========== 图纸缩略图 ========== */
+.pattern-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  background: linear-gradient(135deg, #FFF4DC 0%, #FFE5E5 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumb-size {
+  font-size: 48rpx;
+  font-weight: 800;
+  color: #A1887F;
+  opacity: 0.3;
+}
+
+.thumb-badge {
+  position: absolute;
+  top: 16rpx;
+  right: 16rpx;
+  background: #9C27B0;
+  color: #FFFFFF;
+  font-size: 20rpx;
+  font-weight: 800;
+  padding: 6rpx 16rpx;
+  border-radius: 999rpx;
+  box-shadow: 0 4rpx 12rpx rgba(156, 39, 176, 0.3);
+}
+
+/* ========== 图纸信息 ========== */
+.pattern-info {
+  padding: 24rpx;
+}
+
+.pattern-name {
+  font-size: 26rpx;
+  font-weight: 800;
+  color: #5D4037;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 8rpx;
+}
+
+.pattern-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 22rpx;
+  font-weight: 800;
+  color: #A1887F;
+}
+
+.pattern-brand {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pattern-colors {
+  flex-shrink: 0;
+  margin-left: 16rpx;
+}

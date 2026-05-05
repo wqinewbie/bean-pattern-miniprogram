@@ -1,7 +1,6 @@
 {
   "navigationStyle": "custom",
   "usingComponents": {
-    "page-nav-bar": "/components/page-nav-bar/index",
-    "card-shell": "/components/card-shell/index"
+    "bead-canvas2d": "/components/bead-canvas2d/index"
   }
 }

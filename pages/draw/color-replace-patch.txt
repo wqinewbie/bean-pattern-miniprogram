@@ -1,0 +1,264 @@
+// ============================================
+// 空白画板功能补充代码
+// ============================================
+
+// 1. 在 data 中添加以下字段（在 rightAxisLabels 后面）：
+showColorReplaceModal: false,
+replaceTargetColor: '',
+
+// 2. 在文件末尾 onBack() 之前添加以下方法：
+
+  onLongPressColor(e) {
+    const color = e.currentTarget.dataset.color;
+    
+    // 如果没有已使用色号，提示无可替换色号
+    if (this.data.usedColors.length === 0) {
+      wx.showToast({ title: '无可替换色号', icon: 'none' });
+      return;
+    }
+    
+    // 显示色号替换面板
+    this.setData({ 
+      showColorReplaceModal: true,
+      replaceTargetColor: color
+    });
+  },
+
+  onReplaceColor(e) {
+    const sourceColor = e.currentTarget.dataset.color;
+    const targetColor = this.data.replaceTargetColor;
+    
+    if (!sourceColor || !targetColor) return;
+    
+    this._saveState();
+    
+    // 替换所有匹配的颜色
+    let replaceCount = 0;
+    for (let y = 0; y < this.data.gridSize; y++) {
+      for (let x = 0; x < this.data.gridSize; x++) {
+        if (this._gridData[y][x].toUpperCase() === sourceColor.toUpperCase()) {
+          this._gridData[y][x] = targetColor;
+          replaceCount++;
+        }
+      }
+    }
+    
+    this._drawFullGrid();
+    this._updateUsedColors();
+    
+    this.setData({ showColorReplaceModal: false });
+    wx.showToast({ title: `已替换${replaceCount}个色块`, icon: 'success' });
+  },
+
+  onCloseColorReplaceModal() {
+    this.setData({ showColorReplaceModal: false });
+  },
+
+// ============================================
+// WXML 补充代码 - 在 </view> 结束标签前添加
+// ============================================
+
+<!-- 色号替换弹窗 -->
+<view wx:if="{{showColorReplaceModal}}" class="color-replace-modal">
+  <view class="modal-mask" bindtap="onCloseColorReplaceModal"></view>
+  <view class="modal-content">
+    <view class="modal-header">
+      <text class="modal-title">选择要替换的色号</text>
+      <text class="modal-close" bindtap="onCloseColorReplaceModal">✕</text>
+    </view>
+    <view class="modal-body">
+      <view class="replace-target">
+        <text class="label">替换为：</text>
+        <view class="color-bead" style="background:{{replaceTargetColor}};"></view>
+        <text class="color-code">{{replaceTargetColor}}</text>
+      </view>
+      <view class="replace-divider"></view>
+      <view class="replace-source-title">
+        <text>选择画布中的色号：</text>
+      </view>
+      <scroll-view class="used-colors-grid" scroll-y>
+        <view 
+          wx:for="{{usedColors}}" 
+          wx:key="hex"
+          class="color-item"
+          bindtap="onReplaceColor"
+          data-color="{{item.hex}}"
+        >
+          <view class="color-bead" style="background:{{item.hex}};"></view>
+          <text class="color-code">{{item.code}}</text>
+          <text class="color-count">×{{item.count}}</text>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</view>
+
+// ============================================
+// 修改色号列表，添加长按事件
+// ============================================
+
+在 draw.wxml 中找到色号列表部分，为每个颜色项添加 bindlongpress 事件：
+
+<!-- 展开模式：网格布局 -->
+<block wx:else>
+  <view 
+    wx:for="{{colorsWithCode}}" 
+    wx:key="hex"
+    class="color-item {{currentColor===item.hex?'active':''}}"
+    bindtap="onSelectColor"
+    bindlongpress="onLongPressColor"
+    data-color="{{item.hex}}"
+  >
+    <view class="color-bead" style="background:{{item.hex}};">
+      <text wx:if="{{currentColor===item.hex}}" class="check-icon">✓</text>
+    </view>
+    <text class="color-code">{{item.code}}</text>
+  </view>
+</block>
+
+// ============================================
+// WXSS 补充样式
+// ============================================
+
+/* 色号替换弹窗 */
+.color-replace-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+}
+
+.modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.modal-content {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80%;
+  max-width: 500rpx;
+  max-height: 70vh;
+  background: #FFFFFF;
+  border-radius: 24rpx;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 32rpx;
+  border-bottom: 1px solid #F0F0F0;
+}
+
+.modal-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #1A1A1A;
+}
+
+.modal-close {
+  font-size: 40rpx;
+  color: #999999;
+  cursor: pointer;
+}
+
+.modal-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.replace-target {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 32rpx;
+  background: #F8F8F8;
+}
+
+.replace-target .label {
+  font-size: 28rpx;
+  color: #666666;
+}
+
+.replace-target .color-bead {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 12rpx;
+  border: 2px solid #E0E0E0;
+}
+
+.replace-target .color-code {
+  font-size: 28rpx;
+  color: #333333;
+  font-weight: 500;
+}
+
+.replace-divider {
+  height: 1px;
+  background: #F0F0F0;
+  margin: 0 32rpx;
+}
+
+.replace-source-title {
+  padding: 24rpx 32rpx 16rpx;
+  font-size: 28rpx;
+  color: #666666;
+}
+
+.used-colors-grid {
+  flex: 1;
+  padding: 0 32rpx 32rpx;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16rpx;
+  overflow-y: auto;
+}
+
+.used-colors-grid .color-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+  padding: 16rpx;
+  background: #FFFFFF;
+  border: 2px solid #E0E0E0;
+  border-radius: 12rpx;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.used-colors-grid .color-item:active {
+  background: #F8F8F8;
+  transform: scale(0.95);
+}
+
+.used-colors-grid .color-bead {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 12rpx;
+  border: 2px solid #E0E0E0;
+}
+
+.used-colors-grid .color-code {
+  font-size: 24rpx;
+  color: #333333;
+}
+
+.used-colors-grid .color-count {
+  font-size: 20rpx;
+  color: #999999;
+}

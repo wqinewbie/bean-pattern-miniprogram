@@ -1,9 +1,5 @@
 {
   "navigationStyle": "custom",
   "navigationBarTitleText": "时光机",
-  "enablePullDownRefresh": true,
-  "usingComponents": {
-    "page-nav-bar": "/components/page-nav-bar/index",
-    "app-tab-bar": "/custom-tab-bar/index"
-  }
+  "usingComponents": {}
 }

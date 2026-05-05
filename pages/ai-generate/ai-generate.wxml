@@ -1,67 +1,177 @@
 <view class="container">
-
-  <!-- 标题区 -->
-  <view class="header" style="padding-top:{{statusBarHeight + 24}}px">
-    <view class="header-icon">✨</view>
-    <view class="header-texts">
-      <text class="header-title">AI 一键生成</text>
-      <text class="header-sub">描述画面，AI帮你画图纸</text>
-    </view>
-  </view>
+  <view class="status-bar" style="height:{{statusBarHeight}}px"></view>
 
   <scroll-view scroll-y style="height:{{scrollHeight}}px" class="scroll-body">
+    <!-- 标题区 -->
+    <view class="header">
+      <view class="header-icon-card">
+        <image class="header-icon" src="/assets/icons/6a80bb15-4304-48d3-8446-214e4fae91c6.png" mode="aspectFit"></image>
+      </view>
+      <view class="header-texts">
+        <text class="header-title">AI 一键生成</text>
+        <text class="header-sub">高级定制专属图纸</text>
+      </view>
+    </view>
 
-    <!-- 输入区 -->
-    <view class="input-card">
-      <textarea class="prompt-input"
-        placeholder="例如：戴围巾的橘猫，旁边有一杯热咖啡..."
-        value="{{prompt}}"
-        bindinput="onPromptInput"
+    <!-- 图片上传卡片 -->
+    <view class="upload-section">
+      <view class="zoom-hint">
+        <text class="zoom-hint-icon">✦</text>
+        <text>支持双指缩放调整图片</text>
+      </view>
+      <view class="upload-card" bindtap="onChooseImage">
+        <view wx:if="{{uploadedImage}}" class="preview-interact" catchtouchstart="onPreviewTouchStart" catchtouchmove="onPreviewTouchMove" catchtouchend="onPreviewTouchEnd" catchtouchcancel="onPreviewTouchEnd">
+          <view class="preview-image-layer" style="left:{{previewLeft}}px;top:{{previewTop}}px;width:{{previewBaseW}}px;height:{{previewBaseH}}px;transform:translate3d({{previewX}}px,{{previewY}}px,0) scale({{previewScale}});">
+            <image class="preview-img" src="{{uploadedImage}}" mode="scaleToFill"/>
+          </view>
+        </view>
+        <view wx:if="{{uploadedImage}}" class="upload-overlay" catchtap="onChooseImage">
+          <view class="upload-overlay-text">点击重新上传</view>
+        </view>
+        <view wx:else class="upload-placeholder">
+          <image class="upload-icon" src="/assets/icons/upload-icon.png" mode="aspectFit"/>
+          <text class="upload-title">点击上传图片</text>
+          <text class="upload-desc">支持正方形图片,自动居中裁剪</text>
+        </view>
+        <view wx:if="{{uploadedImage}}" class="grid-overlay">
+          <view class="grid-line h" style="top:33.3%"></view>
+          <view class="grid-line h" style="top:66.6%"></view>
+          <view class="grid-line v" style="left:33.3%"></view>
+          <view class="grid-line v" style="left:66.6%"></view>
+        </view>
+      </view>
+    </view>
+
+    <!-- AI 指令（可选） -->
+    <view class="ai-instruction-card">
+      <textarea
+        class="ai-instruction-input"
+        placeholder="AI指令（可选）例如：去除背景、修改帽子颜色..."
+        value="{{aiInstruction}}"
+        bindinput="onAiInstructionInput"
         maxlength="100"
         auto-height
       />
-      <view class="input-footer">
-        <view class="random-btn" bindtap="onRandom">✨ 随便试试</view>
-        <text class="char-count">{{prompt.length}}/100</text>
-      </view>
     </view>
 
-    <!-- 风格选择 -->
+    <!-- 魔法风格选择 -->
     <view class="section">
-      <text class="section-title">🎨 选择魔法风格</text>
-      <view class="style-list">
-        <view wx:for="{{styles}}" wx:key="*this"
-          class="style-item {{selectedStyle===item?'style-item--active':''}}"
-          bindtap="onStyleTap" data-style="{{item}}">
-          {{item}}
+      <view class="section-header">
+        <text class="section-title">魔法风格</text>
+      </view>
+      <scroll-view scroll-x class="magic-styles-scroll">
+        <view class="magic-styles-list">
+          <view wx:for="{{magicStyles}}" wx:key="name"
+            class="magic-style-item {{selectedStyle===item.name?'magic-style-item--active':''}}"
+            bindtap="onStyleTap" data-style="{{item.name}}">
+            <view class="magic-style-icon-box">
+              <text class="magic-style-icon">{{item.icon}}</text>
+              <view class="magic-style-tag">{{item.tag}}</view>
+            </view>
+            <text class="magic-style-name">{{item.name}}</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <!-- 图纸参数 -->
+    <view class="section">
+      <view class="section-header">
+        <text class="section-title">图纸参数</text>
+      </view>
+
+      <view class="param-container">
+        <!-- 图纸尺寸 -->
+        <view class="param-group">
+          <text class="param-label">图纸尺寸</text>
+          <view class="size-mode-buttons">
+            <view class="size-mode-btn {{sizeMode==='default'?'size-mode-btn--active':''}}" bindtap="onSizeModeTap" data-mode="default">
+              默认尺寸
+            </view>
+            <view class="size-mode-btn {{sizeMode==='small'?'size-mode-btn--active':''}}" bindtap="onSizeModeTap" data-mode="small">
+              小图特化
+            </view>
+          </view>
+          <view class="param-hint-box">
+            <text class="param-hint">{{sizeMode==='default'?'默认则根据图片自动匹配尺寸 (区间在30~80)':'小图模式会将拼豆尺寸控制在 40 以内'}}</text>
+          </view>
+        </view>
+
+        <!-- 品牌、色号、镜像 -->
+        <view class="param-row-three">
+          <view class="param-col">
+            <text class="param-label-small">拼豆品牌</text>
+            <view class="param-picker" bindtap="onShowBrandSheet">
+              <text>{{brands[brandIndex]}}</text>
+              <text class="param-picker-arrow">⌄</text>
+            </view>
+          </view>
+          <view class="param-col">
+            <text class="param-label-small">色号选择</text>
+            <view class="param-picker" bindtap="onShowColorSheet">
+              <text>{{colorSets[colorSetIndex]}}</text>
+              <text class="param-picker-arrow">⌄</text>
+            </view>
+          </view>
+          <view class="param-col param-col--small">
+            <text class="param-label-small">图纸镜像</text>
+            <view class="param-switch {{isMirrored?'param-switch--on':''}}" bindtap="onMirrorToggle">
+              {{isMirrored ? '已开启' : '已关闭'}}
+            </view>
+          </view>
         </view>
       </view>
     </view>
 
-    <!-- 尺寸选择 -->
-    <view class="section">
-      <text class="section-title">⊞ 图纸尺寸（格）</text>
-      <view class="size-grid">
-        <view wx:for="{{sizes}}" wx:key="*this"
-          class="size-item {{selectedSize===item?'size-item--active':''}}"
-          bindtap="onSizeTap" data-size="{{item}}">
-          {{item}}
-        </view>
+    <view style="height: 200rpx;"></view>
+  </scroll-view>
+
+  <!-- 品牌底部弹窗 -->
+  <view wx:if="{{showBrandSheet}}" class="sheet-mask" bindtap="onHideBrandSheet"></view>
+  <view class="color-sheet {{showBrandSheet?'color-sheet--show':''}}">
+    <view class="sheet-handle"></view>
+    <view class="sheet-title">选择拼豆品牌</view>
+    <view class="sheet-list">
+      <view wx:for="{{brands}}" wx:key="*this"
+        class="sheet-item {{brandIndex === index ? 'sheet-item--active':''}}"
+        bindtap="onSelectBrand" data-index="{{index}}">
+        {{item}}
       </view>
     </view>
+    <view class="sheet-btn-cancel" bindtap="onHideBrandSheet">取消</view>
+  </view>
 
-    <!-- 生成按钮 -->
-    <view class="generate-btn {{(!prompt||isGenerating)?'generate-btn--disabled':''}}" bindtap="onGenerate">
+  <!-- 色号底部弹窗 -->
+  <view wx:if="{{showColorSheet}}" class="sheet-mask" bindtap="onHideColorSheet"></view>
+  <view class="color-sheet {{showColorSheet?'color-sheet--show':''}}">
+    <view class="sheet-handle"></view>
+    <view class="sheet-title">选择色号范围</view>
+    <view class="sheet-list">
+      <view wx:for="{{colorSets}}" wx:key="*this"
+        class="sheet-item {{colorSetIndex===index?'sheet-item--active':''}}"
+        bindtap="onSelectColorSet" data-index="{{index}}">
+        {{item}}
+      </view>
+    </view>
+    <view class="sheet-btn-cancel" bindtap="onHideColorSheet">取消</view>
+  </view>
+
+  <!-- 底部固定按钮区 -->
+  <view class="bottom-action" wx:if="{{!showBrandSheet && !showColorSheet}}">
+    <view class="generate-btn {{(!uploadedImage||isGenerating)?'generate-btn--disabled':''}}" bindtap="onGenerate">
       <view wx:if="{{isGenerating}}" class="btn-loading">
         <view class="spinner"></view>
         <text>施法中...</text>
       </view>
-      <text wx:else>✨ 立即施展魔法</text>
+      <view wx:else class="btn-content">
+        <text class="btn-icon">✨</text>
+        <text>立即施展魔法</text>
+      </view>
     </view>
-
-    <text class="energy-hint">本次消耗 1 次魔法能量（剩余 3 次）</text>
-
-    <view style="height:60rpx"></view>
-  </scroll-view>
-
+    <text class="btn-sub">剩余魔法 {{magicCount}} 次</text>
+    <view class="ad-btn">
+      <text class="ad-icon">📹</text>
+      <text>看广告领取免费魔法次数</text>
+    </view>
+  </view>
 </view>

@@ -6,7 +6,9 @@ App({
       profile: null,
       stats: null,
       profileAt: 0,
-    }
+    },
+    // 结果页数据缓存：key = resultToken
+    resultDataMap: {}
   },
 
   _silentLoginPromise: null,

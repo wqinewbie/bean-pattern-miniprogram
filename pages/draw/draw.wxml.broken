@@ -1,0 +1,368 @@
+<view class="page">
+  <!-- 顶部导航 - 与微信胶囊按钮对齐 -->
+  <view class="top-bar" style="padding-top: {{navBarTop}}px; height: {{navBarTop + capsuleHeight + 8}}px;">
+    <view class="top-bar-left">
+      <view class="back-btn" bindtap="onBack">
+        <text class="back-icon">←</text>
+      </view>
+      <view class="title-group">
+        <text class="title-icon">✨</text>
+        <text class="title-text">{{source === 'result' ? '编辑图纸' : '空白画板'}}</text>
+        <view class="size-badge">
+          <text>{{gridSize}}²</text>
+        </view>
+      </view>
+    </view>
+    <view class="top-bar-right" style="margin-right: {{safeRightInset}}px;">
+      <view class="preview-btn" bindtap="onExport">
+        <text class="btn-text">预览</text>
+      </view>
+      <view class="save-btn" bindtap="onSave">
+        <text class="btn-text">保存草稿</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 画布区域 -->
+  <view class="canvas-section">
+    <view class="canvas-area">
+      <canvas canvas-id="drawCanvas" class="canvas" style="width:{{canvasWidth}}px;height:{{canvasHeight}}px;" bindtouchstart="handleTouchStart" bindtouchmove="handleTouchMove" bindtouchend="handleTouchEnd" />
+    </view>
+    <!-- 网格大小指示 -->
+    <view class="g  <!-- 主内容区：全屏画布 -->
+  <view class="main-content">
+    <!-- 左侧工具栏遮罩背景 -->
+    <view wx:if="{{showLeftToolbar}}" class="toolbar-mask" bindtap="onCloseLeftToolbar"></view>
+    
+    <!-- 左侧一体化工具栏（遮罩模式） -->
+    <view class="left-rail {{showSettingsModal ? 'expanded' : ''}} {{showLeftToolbar ? 'show' : ''}}"
+ew>
+      <view class="tool {{tool==='eraser'?'active':''}}" bindtap="onSelectTool" data-tool="eraser">
+        <text class="icon">⌫</text>
+      </view>
+      <view class="tool {{tool==='fill'?'active':''}}" bindtap="onSelectTool" data-tool="fill">
+        <text class="icon">◧</text>
+      </view>
+      <view class="tool {{tool==='picker'?'active':''}}" bindtap="onSelectTool" data-tool="picker">
+        <text class="icon">⊕</text>
+      </view>
+    </view>
+
+    <view class="divider-v"></view>
+
+    <!-- 操作组 -->
+    <view class="tool-group">
+      <view class="tool small" bindtap="onUndo">
+        <text class="icon">↩</text>
+      </view>
+      <view class="tool small" bindtap="onRedo">
+        <text class="icon">↪</text>
+      </view>
+    </view>
+
+    <view class="divider-v"></view>
+
+    <!-- 笔刷大小 -->
+    <view class="brush-group">
+      <view class="brush {{brushSize===1?'active':''}}" bindtap="onBrushSize" data-size="1"></view>
+      <view class="brush {{brushSize===2?'active':''}}" bindtap="onBrushSize" data-size="2"></view>
+      <view class="brush {{brushSize===3?'active':''}}" bindtap="onBrushSize" data-size="3"></view>
+    </view>
+
+    <view class="divider-v"></view>
+
+    <!-- 开关 -->
+    <view class="toggle-group">
+      <view class="toggle {{showGrid?'active':''}}" bindtap="onToggleGrid">格</view>
+      <view class="toggle {{symmetry?'active':''}}" bindtap="onToggleSymmetry">对称</view>
+    </view>
+  </view>
+
+  <!-- 颜色栏 -->
+  <view class="colorbar">
+    <view class="current" bindtap="onOpenColorDetail">
+      <view class="color-swatch" style="background:{{currentColor}};"></view>
+      <text class="color-code">{{currentCode}}</text>
+    </view>
+    <scroll-view class="palette" scroll-x>
+      <view class="colors">
+        <view wx:for="{{colors}}" wx:key="*this" class="color {{currentColor===item?'active':''}}" style="background:{{item}};" bindtap="onSelectColor" data-color="{{item}}"></view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 底部按钮 -->
+  <view class="bottom-bar">
+    <view class="btn secondary" bindtap="onClear">
+      <text>清空</text>
+    </view>
+    <view class="btn primary" bindtap="onExport">
+      <text>导出图纸</text>
+    </view>
+  </view>
+
+  <!-- 颜色详情弹窗 -->
+  <view wx:if="{{showColorModal}}" class="modal-mask" bindtap="onCloseColorModal"></view>
+  <view wx:if="{{showColorModal}}" class="modal">
+    <view class="modal-header">
+      <text>当前颜色</text>
+      <view class="modal-close" bindtap="onCloseColorModal">×</view>
+    </view>
+    <view class="modal-body">
+      <view class="modal-color" style="background:{{currentColor}};"></view>
+      <view class="modal-info">
+        <view class="info-line"><text class="label">色号</text><text class="value">{{currentCode}}</text></view>
+        <view class="info-line"><text class="label">HEX</text><text class="value">{{currentColor}}</text></view>
+        <view class="info-line"><text class="label">用量</text><text class="value">{{colorCount}}颗</text></view>
+      </view>
+    </view>
+    <view class="modal-footer">
+      <view class="modal-btn" bindtap="onCloseColorModal">关闭</view>
+      <view class="modal-btn primary" bindtap="onSave">保存</view>
+    </view>
+  </view>
+</view>
+            <view class="canvas-area" style="width:{{canvasWidth}}px;height:{{canvasHeight}}px;transform: scale({{canvasScale}}); transform-origin: center center;">
+  <view class="colorbar {{colorbarExpanded ? 'show' : ''}}"
+        <!-- 收起：单行横向滚动 -->
+        <scroll-view wx:if="{{!colorbarExpanded}}" class="used-colors-scroll-x" scroll-x show-scrollbar="false" enhanced>
+          <view class="used-colors-list collapsed">
+            <view class="used-color-item" wx:for="{{usedColorsList}}" wx:key="hex">
+              <view class="used-color-swatch {{currentColor === item.hex ? 'selected' : ''}} {{replaceMode && replaceFromHex===item.hex ? 'replace-source' : ''}}" style="background:{{item.hex}};" bindtap="onToggleHighlight" bindlongpress="onLongPressUsedColor" data-hex="{{item.hex}}">
+                <text class="used-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+              </view>
+              <text class="used-color-code">{{item.code}}</text>
+              <text class="used-color-count">{{item.count}}</text>
+            </view>
+          </view>
+        </scroll-view>
+
+        <!-- 展开：两行/多行并纵向滚动 -->
+        <scroll-view wx:if="{{colorbarExpanded}}" class="used-colors-scroll-y" scroll-y show-scrollbar="false" enhanced>
+          <view class="used-colors-list expanded">
+            <view class="used-color-item" wx:for="{{usedColorsList}}" wx:key="hex">
+              <view class="used-color-swatch {{currentColor === item.hex ? 'selected' : ''}} {{replaceMode && replaceFromHex===item.hex ? 'replace-source' : ''}}" style="background:{{item.hex}};" bindtap="onToggleHighlight" bindlongpress="onLongPressUsedColor" data-hex="{{item.hex}}">
+                <text class="used-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+              </view>
+              <text class="used-color-code">{{item.code}}</text>
+              <text class="used-color-count">{{item.count}}</text>
+            </view>
+          </view>
+        </scroll-view>
+      </block>
+
+      <block wx:else>
+        <text class="used-colors-empty">尚未使用色号</text>
+      </block>
+    </view>
+
+    <!-- 分割线 -->
+    <view class="colorbar-divider"></view>
+
+    <!-- 色卡列表 -->
+    <view class="palette-section">
+      <view class="palette-header">
+        <text class="palette-label">{{currentBrandLabel}} - {{currentCardLabel}}{{replaceMode ? '（替换模式）' : ''}}</text>
+        <text class="palette-count">{{paletteColors.length}}色</text>
+      </view>
+      <view class="palette-list {{colorbarExpanded ? 'expanded-mode' : 'collapsed-mode'}}">
+        <!-- 折叠模式：当前颜色固定 + 其余横向滚动 -->
+        <block wx:if="{{!colorbarExpanded}}">
+          <view class="palette-collapsed-wrap">
+            <view class="pinned-color">
+              <view class="pinned-color-swatch" style="background:{{currentColor}};"><text class="pinned-color-check">✓</text></view>
+              <text class="pinned-color-label">{{currentCode}}</text>
+            </view>
+            <scroll-view class="palette-scroll-x" scroll-x show-scrollbar="false" enhanced>
+              <view class="palette-two-row">
+                <view class="palette-two-row-line">
+                  <block wx:for="{{paletteItems}}" wx:key="hex" wx:for-item="item" wx:for-index="idx">
+                    <view wx:if="{{item.hex !== currentColor && idx % 2 === 0}}" class="palette-color-item">
+                      <view class="palette-color {{currentColor === item.hex ? 'selected' : ''}}" style="background:{{item.hex}};" bindtap="onSelectColor" data-hex="{{item.hex}}">
+                        <text class="palette-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+                      </view>
+                      <text class="palette-color-code">{{item.code}}</text>
+                    </view>
+                  </block>
+                </view>
+                <view class="palette-two-row-line">
+                  <block wx:for="{{paletteItems}}" wx:key="hex" wx:for-item="item" wx:for-index="idx">
+                    <view wx:if="{{item.hex !== currentColo    <!-- 画布区域（全屏） -->
+    <view class="canvas-wrapper">
+      <!-- 左上角工具栏触发按钮 -->
+      <view class="toolbar-trigger left" bindtap="onToggleLeftToolbar">
+        <text class="trigger-icon">{{showLeftToolbar ? '✕' : '🛠'}}</text>
+      </view>
+      
+      <!-- 右下角颜色栏触发按钮 -->
+      <view class="toolbar-trigger bottom" bindtap="onToggleColorbar">
+        <text class="trigger-icon">{{colorbarExpanded ? '✕' : '🎨'}}</text>
+      </view>
+xt>
+                    </view>
+                  </block>
+                </view>
+              </view>
+            </scroll-view>
+          </view>
+        </block>
+
+        <!-- 展开模式：多行并纵向滚动 -->
+        <block wx:if="{{colorbarExpanded}}">
+          <scroll-view class="palette-scroll-y" scroll-y show-scrollbar="false" enhanced>
+            <view class="palette-grid">
+              <view class="palette-color-item" wx:for="{{paletteItems}}" wx:key="hex" wx:for-item="item">
+                <view class="palette-color {{currentColor === item.hex ? 'selected' : ''}}" style="background:{{item.hex}};" bindtap="onSelectColor" data-hex="{{item.hex}}">
+                  <text class="palette-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+                </view>
+                <text class="palette-color-code">{{item.code}}</text>
+              </view>
+            </view>
+          </scroll-view>
+        </block>
+  <!-- 底部颜色栏 -->
+  <view class="colorbar">
+  <!-- 底部颜色栏遮罩背景 -->
+  <view wx:if="{{colorbarExpanded}}" class="colorbar-mask" bindtap="onCloseColorbar"></view>
+  
+  <!-- 底部颜色栏（遮罩模式） -->
+  <view class="colorbar {{colorb            <view class="canvas-area" style="width:{{canvasWidth}}px;height:{{canvasHeight}}px;transform: scale({{canvasScale}}); transform-origin: center center;">
+         <view class="used-color-item" wx:for="{{usedColorsList}}" wx:key="hex">
+              <view class="used-color-swatch {{currentColor === item.hex ? 'selected' : ''}} {{replaceMode && replaceFromHex===item.hex ? 'replace-source' : ''}}" style="background:{{item.hex}};" bindtap="onToggleHighlight" bindlongpress="onLongPressUsedColor" data-hex="{{item.hex}}">
+                <text class="used-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+              </view>
+              <text class="used-color-code">{{item.code}}</text>
+              <text class="used-color-count">{{item.count}}</text>
+            </view>
+          </view>
+        </scroll-view>
+      </block>
+
+      <block wx:else>
+        <text class="used-colors-empty">尚未使用色号</text>
+      </block>
+    </view>
+
+    <!-- 分割线 -->
+    <view class="colorbar-divider"></view>
+
+    <!-- 色卡列表 -->
+    <view class="palette-section">
+      <view class="palette-header">
+        <text class="palette-label">{{currentBrandLabel}} - {{currentCardLabel}}{{replaceMode ? '（替换模式）' : ''}}</text>
+        <text class="palette-count">{{paletteColors.length}}色</text>
+      </view>
+      <view class="palette-list">
+        <scroll-view class="palette-scroll-y" scroll-y show-scrollbar="false" enhanced>
+          <view class="palette-grid">
+            <view class="palette-color-item" wx:for="{{paletteItems}}" wx:key="hex" wx:for-item="item">
+              <view class="palette-color {{currentColor === item.hex ? 'selected' : ''}}" style="background:{{item.hex}};" bindtap="onSelectColor" data-hex="{{item.hex}}">
+                <text class="palette-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+              </view>
+              <text class="palette-color-code">{{item.code}}</text>
+            </view>
+          </view>
+        </scroll-view>
+  <view class="colorbar {{colorbarExpanded ? 'show' : ''}}">
+  <view class="colorbar {{colorbarExpanded ? 'show' : ''}}"
+  <view class="colorbar {{colorbarExpan  <!-- 底部颜色栏遮罩背景 -->
+  <view wx:if="{{colorbarExpanded}}" class="colorbar-mask" bindtap="onCloseColorbar"></view>
+  
+  <!-- 底部颜色栏（遮罩模式） -->
+  <view class="colorbar {{colorbarExpanded ? 'show' : ''}}"
+ow-scrollbar="false" enhanced>
+          <view class="used-colors-list collapsed">
+            <view class="used-color-item" wx:for="{{usedColorsList}}" wx:key="hex">
+              <view class="used-color-swatch {{currentColor === item.hex ? 'selected' : ''}} {{replaceMode && replaceFromHex===item.hex ? 'replace-source' : ''}}" style="background:{{item.hex}};" bindtap="onToggleHighlight" bindlongpress="onLongPressUsedColor" data-hex="{{item.hex}}">
+                <text class="used-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+              </view>
+              <text class="used-color-code">{{item.code}}</text>
+              <text class        <!-- 收起：单行横向滚动 -->
+        <scroll-view wx:if="{{!colorbarExpanded}}" class="used-colors-scroll-x" scroll-x show-scrollbar="false" enhanced>
+          <view class="used-colors-list collapsed">
+            <view class="used-color-item" wx:for="{{usedColorsList}}" wx:key="hex">
+              <view class="used-color-swatch {{currentColor === item.hex ? 'selected' : ''}} {{replaceMode && replaceFromHex===item.hex ? 'replace-source' : ''}}" style="background:{{item.hex}};" bindtap="onToggleHighlight" bindlongpress="onLongPressUsedColor" data-hex="{{item.hex}}">
+                <text class="used-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+              </view>
+              <text class="used-color-code">{{item.code}}</text>
+              <text class="used-color-count">{{item.count}}</text>
+            </view>
+          </view>
+        </scroll-view>
+
+        <!-- 展开：两行/多行并纵向滚动 -->
+        <scroll-view wx:if="{{colorbarExpanded}}" class="used-colors-scroll-y" scroll-y show-scrollbar="false" enhanced>
+          <view class="used-colors-list expanded">
+            <view class="used-color-item" wx:for="{{usedColorsList}}" wx:key="hex">
+              <view class="used-color-swatch {{currentColor === item.hex ? 'selected' : ''}} {{replaceMode && replaceFromHex===item.hex ? 'replace-source' : ''}}" style="background:{{item.hex}};" bindtap="onToggleHighlight" bindlongpress="onLongPressUsedColor" data-hex="{{item.hex}}">
+                <text class="used-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+              </view>
+              <text class="used-color-code">{{item.code}}</text>
+              <text class="used-color-count">{{item.count}}</text>
+            </view>
+          </view>
+        </scroll-view>
+      </block>
+
+      <block wx:else>
+        <text class="used-colors-empty">尚未使用色号</text>
+      </block>
+    </view>
+
+    <!-- 分割线 -->
+    <view class="colorbar-divider"></view>
+
+    <!-- 色卡列表 -->
+    <view class="palette-section">
+      <view class="palette-header">
+        <text class="palette-label">{{currentBrandLabel}} - {{currentCardLabel}}{{replaceMode ? '（替换模式）' : ''}}</text>
+        <text class="palette-count">{{paletteColors.length}}色</text>
+      </view>
+      <view class="palette-list {{colorbarExpanded ? 'expanded-mode' : 'collapsed-mode'}}">
+        <!-- 折叠模式：当前颜色固定 + 其余横向滚动 -->
+        <block wx:if="{{!colorbarExpanded}}">
+          <view class="palette-collapsed-wrap">
+            <view class="pinned-color">
+              <view class="pinned-color-swatch" style="background:{{currentColor}};"><text class="pinned-color-check">✓</text></view>
+              <text class="pinned-color-label">{{currentCode}}</text>
+            </view>
+            <scroll-view class="palette-scroll-x" scroll-x show-scrollbar="false" enhanced>
+              <view class="palette-two-row">
+                <view class="palette-two-row-line">
+                  <block wx:for="{{paletteItems}}" wx:key="hex" wx:for-item="item" wx:for-index="idx">
+                    <view wx:if="{{item.hex !== currentColor && idx % 2 === 0}}" class="palette-color-item">
+                      <view class="palette-color {{currentColor === item.hex ? 'selected' : ''}}" style="background:{{item.hex}};" bindtap="onSelectColor" data-hex="{{item.hex}}">
+                        <text class="palette-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+                      </view>
+                      <text class="palette-color-code">{{item.code}}</text>
+                    </view>
+                  </block>
+                </view>
+                <view class="palette-two-row-line">
+                  <block wx:for="{{paletteItems}}" wx:key="hex" wx:for-item="item" wx:for-index="idx">
+                    <view wx:if="{{item.hex !== currentColor && idx % 2 === 1}}" class="palette-color-item">
+                      <view class="palette-color {{currentColor === item.hex ? 'selected' : ''}}" style="background:{{item.hex}};" bindtap="onSelectColor" data-hex="{{item.hex}}">
+                        <text class="palette-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+                      </view>
+                      <text class="palette-color-code">{{item.code}}</text>
+                    </view>
+                  </block>
+                </view>
+              </view>
+            </scroll-view>
+          </view>
+        </block>
+
+        <!-- 展开模式：多行并纵向滚动 -->
+        <block wx:if="{{colorbarExpanded}}">
+          <scroll-view class="palette-scroll-y" scroll-y show-scrollbar="false" enhanced>
+            <view class="palette-grid">
+              <view class="palette-color-item" wx:for="{{paletteItems}}" wx:key="hex" wx:for-item="item">
+                <view class="palette-color {{currentColor === item.hex ? 'selected' : ''}}" style="background:{{item.hex}};" bindtap="onSelectColor" data-hex="{{item.hex}}">
+                  <text class="palette-color-check" wx:if="{{currentColor === item.hex}}">✓</text>
+                </view>
+                <text class="palette-color-code">{{item.code}}</text>
+              </view>
+            </view>
+          </scroll-view>
+        </block>

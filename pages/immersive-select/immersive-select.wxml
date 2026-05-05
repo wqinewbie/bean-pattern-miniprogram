@@ -1,0 +1,86 @@
+<view class="page">
+  <!-- 安全区域占位 -->
+  <view class="safe-area" style="height: {{statusBarHeight}}px;"></view>
+  
+  <!-- 顶部卡片 -->
+  <view class="header-card">
+    <view class="header-bg-circle"></view>
+    <view class="header-content">
+      <view class="header-back" bindtap="onBack">
+        <text class="back-icon">←</text>
+        <text class="back-text">返回</text>
+      </view>
+      <view class="header-title-group">
+        <view class="header-icon-wrap">
+          <text class="header-icon">✨</text>
+        </view>
+        <text class="header-title">沉浸式拼豆</text>
+      </view>
+      <text class="header-subtitle">从图纸箱选择一张图纸 ({{patterns.length}})</text>
+    </view>
+  </view>
+
+  <!-- 主内容区 -->
+  <scroll-view class="main-scroll" scroll-y>
+    <!-- 加载状态 -->
+    <view wx:if="{{loading}}" class="loading-state">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">正在加载...</text>
+    </view>
+
+    <!-- 空状态 -->
+    <view wx:elif="{{patterns.length === 0}}" class="empty-state">
+      <view class="empty-icon-wrap">
+        <text class="empty-icon">📦</text>
+      </view>
+      <text class="empty-title">图纸箱空空如也</text>
+      <text class="empty-subtitle">请先生成图纸，然后将图纸保存到图纸箱中</text>
+      <view class="empty-actions">
+        <view class="empty-btn empty-btn--primary" bindtap="onGoConvert">
+          <text>图片转图纸</text>
+        </view>
+        <view class="empty-btn empty-btn--secondary" bindtap="onGoAI">
+          <text>AI一键生成</text>
+        </view>
+        <view class="empty-btn empty-btn--tertiary" bindtap="onGoDraw">
+          <text>空白画板创作</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 图纸网格 -->
+    <view wx:else class="patterns-grid">
+      <view 
+        wx:for="{{patterns}}" 
+        wx:key="id"
+        class="pattern-card"
+        bindtap="onSelectPattern"
+        data-item="{{item}}"
+      >
+        <view class="pattern-thumb">
+          <image 
+            wx:if="{{item.coverUrl}}"
+            class="thumb-img" 
+            src="{{item.coverUrl}}" 
+            mode="aspectFill"
+          />
+          <view wx:else class="thumb-placeholder">
+            <text class="thumb-size">{{item.gridSize}}×{{item.gridSize}}</text>
+          </view>
+          <view class="thumb-badge">
+            <text>{{item.gridSize}}²</text>
+          </view>
+        </view>
+        <view class="pattern-info">
+          <text class="pattern-name">{{item.name || '未命名图纸'}}</text>
+          <view class="pattern-meta">
+            <text class="pattern-brand">{{item.brand}}</text>
+            <text class="pattern-colors">{{item.colorCount}}色</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view style="height: 48rpx;"></view>
+  </scroll-view>
+</view>

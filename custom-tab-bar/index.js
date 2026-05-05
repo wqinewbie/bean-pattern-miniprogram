@@ -3,6 +3,7 @@ Component({
     selected: 0,
     leaving: -1,
     transitioning: false,
+    hidden: false,
   },
 
   lifetimes: {
@@ -47,6 +48,10 @@ Component({
         leaving: -1,
         transitioning: false,
       });
+    },
+
+    setHidden(hidden) {
+      this.setData({ hidden: !!hidden });
     },
 
     syncSelectedByRoute() {
