@@ -339,7 +339,9 @@ page {
   width: 96rpx;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(40rpx);
-  border-right: 4rpx solid #FFEBB5;
+  border-right: 4rpx solid #FFD700;
+  border-bottom: 4rpx solid #FFD700;
+  border-radius: 0 0 32rpx 0;
   box-shadow: 4rpx 0 20rpx rgba(140, 107, 75, 0.03);
   padding: 16rpx 0;
   display: flex;
@@ -411,7 +413,7 @@ page {
   flex-shrink: 0;
 }
 
-/* ========== 画布区域 - 无限画布 ========== */
+/* ========== 画布区域 - 标准多层架构 ========== */
 .canvas-area {
   position: absolute;
   left: 0;
@@ -419,29 +421,18 @@ page {
   right: 0;
   bottom: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   background-image: radial-gradient(circle, rgba(140, 107, 75, 0.08) 2rpx, transparent 2rpx);
   background-size: 32rpx 32rpx;
   overflow: visible;
 }
 
-/* 锁定舞台：锁定时背景和画布共享同一个父级 transform */
-.locked-stage {
-  position: absolute;
-  transform-origin: center center;
-  z-index: 2;
-}
-
-/* 背景图层包装器 - 独立移动 */
-.background-layer-wrapper {
-  position: absolute;
+/* 背景图层 */
+.background-layer {
   pointer-events: none;
-  transform-origin: center center;
-  /* 移除 transition，避免闪烁 */
   will-change: transform;
   backface-visibility: hidden;
-  z-index: 1;
 }
 
 .background-image {
@@ -450,36 +441,44 @@ page {
   image-rendering: crisp-edges;
 }
 
-/* 画布组 - 画布+坐标轴绑定 */
-.canvas-group {
-  position: absolute;
-  transform-origin: center center;
-  /* 移除 transition，避免闪烁 */
+/* 画布层 */
+.canvas-layer {
   will-change: transform;
   backface-visibility: hidden;
-  z-index: 2;
 }
 
 /* 当前激活层的视觉提示 */
-.canvas-group.active-canvas .canvas-wrapper {
+.canvas-layer.active-canvas .canvas-wrapper {
   border: 4rpx solid #FF9800;
   box-shadow: 0 16rpx 60rpx rgba(255, 152, 0, 0.25), 0 0 0 4rpx rgba(255, 152, 0, 0.15);
   border-radius: 8rpx;
 }
 
-.canvas-group.active-background .canvas-wrapper {
+.canvas-layer.active-background .canvas-wrapper {
   border: 4rpx solid #9C27B0;
   box-shadow: 0 16rpx 60rpx rgba(156, 39, 176, 0.25), 0 0 0 4rpx rgba(156, 39, 176, 0.15);
   border-radius: 8rpx;
 }
 
+/* 网格层 */
+.grid-layer {
+  pointer-events: none;
+}
+
+/* 色号层 */
+.code-layer {
+  pointer-events: none;
+}
+
+/* 坐标轴层 */
+.axis-layer {
+  pointer-events: none;
+}
+
 /* 坐标轴容器 */
 .axis-container {
-  position: absolute;
+  position: relative;
   pointer-events: none;
-  top: 0;
-  left: 0;
-  z-index: 1;
 }
 
 /* 坐标轴 */
