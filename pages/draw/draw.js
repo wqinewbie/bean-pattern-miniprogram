@@ -2,6 +2,7 @@
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { drawBoard, drawPixel } = require('../../utils/canvas2d/renderers/boardRenderer');
+const { getScheduler } = require('../../utils/canvas2d/renderScheduler');
 
 // 默认颜色
 const DEFAULT_COLORS = [
@@ -80,6 +81,8 @@ Page({
     backgroundOffsetX: 0,
     backgroundOffsetY: 0,
     backgroundScale: 1,
+    canvasAreaWidth: 0, // 完美版：canvas-area 宽度
+    canvasAreaHeight: 0, // 完美版：canvas-area 高度
     // 标准架构：去掉 stageOffsetX/Y/Scale，锁定模式通过同步变量实现
     topAxisLabels: [],
     bottomAxisLabels: [],
@@ -128,6 +131,9 @@ Page({
   _pendingChangedCells: new Set(),
   _colorUsageMap: new Map(),
   _nonWhiteCount: 0,
+  _renderScheduler: null, // 完美版：渲染调度器
+  _pendingDrawPos: null, // 完美版：待绘制位置（防误触）
+  _pendingDrawTime: 0, // 完美版：待绘制时间（防误触）
   
   // 拖拽和缩放优化
   _touchStartDistance: 0,
@@ -232,6 +238,13 @@ Page({
       .exec((res) => {
         if (res && res[0]) {
           this._canvasAreaRect = res[0];
+          
+          // 完美版：同步更新到 data，供组件使用
+          this.setData({
+            canvasAreaWidth: res[0].width,
+            canvasAreaHeight: res[0].height
+          });
+          
           console.log('[坐标系] canvas-area rect:', this._canvasAreaRect);
         }
       });
@@ -316,13 +329,14 @@ Page({
   },
 
   _normalizeColor(color) {
-    if (!color) return '#FFFFFF';
+    // 透明仅由 null/undefined/空字符串 表示；白色是有效可绘制颜色
+    if (color === null || color === undefined || color === '') return null;
     return String(color).toUpperCase();
   },
 
   _bumpColorCount(color, delta) {
     const c = this._normalizeColor(color);
-    if (c === '#FFFFFF') return;
+    if (c === null) return; // 透明色不计数
     const next = (this._colorUsageMap.get(c) || 0) + delta;
     if (next <= 0) this._colorUsageMap.delete(c);
     else this._colorUsageMap.set(c, next);
@@ -339,7 +353,7 @@ Page({
       if (!this._gridData[y] || !Array.isArray(this._gridData[y])) continue; // 检查行是否存在
       for (let x = 0; x < this._gridData[y].length; x++) {
         const color = this._normalizeColor(this._gridData[y][x]);
-        if (color !== '#FFFFFF') {
+        if (color !== null) { // 完美版：只统计非透明色
           this._colorUsageMap.set(color, (this._colorUsageMap.get(color) || 0) + 1);
           this._nonWhiteCount++;
         }
@@ -378,6 +392,9 @@ Page({
     const capsuleHeight = menuButton.height || 32;
     const capsuleTop = menuButton.top - statusBarHeight || 6;
     const navBarHeight = capsuleHeight + capsuleTop * 2;
+    
+    // 完美版：初始化渲染调度器
+    this._renderScheduler = getScheduler();
     
     this.setData({
       storageKey: storageKey || '',
@@ -700,7 +717,36 @@ Page({
     const canvasSize = this._getAdaptiveCanvasSize();
     this._cellSize = canvasSize / newGridSize;
 
-    let newGridData = Array.from({ length: newGridSize }, () => Array(newGridSize).fill('#FFFFFF'));
+    // 完美版：记录切换前的相对位置
+    let relativePosition = null;
+    if (keepContent && this._canvasAreaRect && this.data.canvasWidth > 0) {
+      const oldCanvasSize = this.data.canvasWidth;
+      const oldScale = this.data.canvasScale;
+      const oldOffsetX = this.data.canvasOffsetX;
+      const oldOffsetY = this.data.canvasOffsetY;
+      
+      // 计算画布中心点在容器中的相对位置（0-1）
+      const canvasCenterX = oldOffsetX + (oldCanvasSize * oldScale) / 2;
+      const canvasCenterY = oldOffsetY + (oldCanvasSize * oldScale) / 2;
+      const relativeX = canvasCenterX / this._canvasAreaRect.width;
+      const relativeY = canvasCenterY / this._canvasAreaRect.height;
+      
+      relativePosition = {
+        relativeX,
+        relativeY,
+        scale: oldScale
+      };
+      
+      console.log('[_applyGridSize] 记录相对位置:', {
+        oldSize: oldCanvasSize,
+        newSize: canvasSize,
+        oldScale,
+        relativeX: (relativeX * 100).toFixed(1) + '%',
+        relativeY: (relativeY * 100).toFixed(1) + '%'
+      });
+    }
+
+    let newGridData = Array.from({ length: newGridSize }, () => Array(newGridSize).fill(null)); // 完美版：使用透明色
 
     if (keepContent && this._gridData && Array.isArray(this._gridData)) {
       // 使用实际的 gridData 长度，防止越界
@@ -751,7 +797,11 @@ Page({
       this._redoStack = [];
     }
 
-    // 标准做法：setData 完成后立即居中
+    // 完美版：根据是否保持内容，决定缩放和位置
+    const newScale = relativePosition ? relativePosition.scale : 1;
+    const newBackgroundScale = relativePosition ? relativePosition.scale : 1;
+
+    // 标准做法：setData 完成后计算位置
     this.setData({
       gridSize: newGridSize,
       canvasWidth: canvasSize,
@@ -763,34 +813,45 @@ Page({
       gridLines: this._buildGridLines(newGridSize, canvasSize),
       canUndo: this._undoStack.length > 0,
       canRedo: this._redoStack.length > 0,
-      canvasScale: 1,
-      backgroundScale: 1
+      canvasScale: newScale,
+      backgroundScale: newBackgroundScale
     }, () => {
-      // setData 完成后，如果容器尺寸已知，立即居中
+      // setData 完成后，计算新的偏移量
       if (this._canvasAreaRect) {
-        const centerX = (this._canvasAreaRect.width - canvasSize) / 2;
-        const centerY = (this._canvasAreaRect.height - canvasSize) / 2;
+        let newOffsetX, newOffsetY;
         
-        console.log('[_applyGridSize] 画布尺寸变化，立即居中:', {
-          canvasSize,
-          areaSize: [this._canvasAreaRect.width, this._canvasAreaRect.height],
-          center: [centerX, centerY],
-          当前offset: [this.data.canvasOffsetX, this.data.canvasOffsetY]
-        });
+        if (relativePosition) {
+          // 完美版：按相对位置重新定位
+          const newCanvasCenterX = relativePosition.relativeX * this._canvasAreaRect.width;
+          const newCanvasCenterY = relativePosition.relativeY * this._canvasAreaRect.height;
+          newOffsetX = newCanvasCenterX - (canvasSize * newScale) / 2;
+          newOffsetY = newCanvasCenterY - (canvasSize * newScale) / 2;
+          
+          console.log('[_applyGridSize] 按相对位置重新定位:', {
+            relativeX: (relativePosition.relativeX * 100).toFixed(1) + '%',
+            relativeY: (relativePosition.relativeY * 100).toFixed(1) + '%',
+            newOffset: [newOffsetX.toFixed(1), newOffsetY.toFixed(1)]
+          });
+        } else {
+          // 初始化：居中
+          newOffsetX = (this._canvasAreaRect.width - canvasSize) / 2;
+          newOffsetY = (this._canvasAreaRect.height - canvasSize) / 2;
+          
+          console.log('[_applyGridSize] 初始化居中:', {
+            canvasSize,
+            areaSize: [this._canvasAreaRect.width, this._canvasAreaRect.height],
+            center: [newOffsetX, newOffsetY]
+          });
+        }
         
         this.setData({
-          canvasOffsetX: centerX,
-          canvasOffsetY: centerY,
-          backgroundOffsetX: centerX,
-          backgroundOffsetY: centerY
-        }, () => {
-          console.log('[_applyGridSize] 居中完成，新offset:', {
-            canvasOffsetX: this.data.canvasOffsetX,
-            canvasOffsetY: this.data.canvasOffsetY
-          });
+          canvasOffsetX: newOffsetX,
+          canvasOffsetY: newOffsetY,
+          backgroundOffsetX: newOffsetX,
+          backgroundOffsetY: newOffsetY
         });
       } else {
-        console.warn('[_applyGridSize] 容器尺寸未知，无法居中，将在下次 setData 时重试');
+        console.warn('[_applyGridSize] 容器尺寸未知，无法定位');
       }
     });
 
@@ -821,14 +882,22 @@ Page({
       }
     });
     
-    console.log('[主Canvas] 构建色码映射表:', {
-      colorsWithCodeLength: (this.data.colorsWithCode || []).length,
-      colorCodeMapSize: Object.keys(colorCodeMap).length,
-      sampleKeys: Object.keys(colorCodeMap).slice(0, 5),
-      sampleValues: Object.values(colorCodeMap).slice(0, 5),
-      currentColor: this.data.currentColor,
-      currentCode: this.data.currentCode
-    });
+    // 完美版：计算可视区域
+    let visibleRange = null;
+    if (this._renderScheduler && this._canvasAreaRect) {
+      const viewport = {
+        canvasWidth: this.data.canvasWidth,
+        canvasHeight: this.data.canvasHeight,
+        canvasOffsetX: this.data.canvasOffsetX,
+        canvasOffsetY: this.data.canvasOffsetY,
+        canvasScale: this.data.canvasScale,
+        areaWidth: this._canvasAreaRect.width,
+        areaHeight: this._canvasAreaRect.height
+      };
+      visibleRange = this._renderScheduler.getVisibleRange(viewport, this.data.gridSize);
+      
+      console.log('[主Canvas] 可视区域:', visibleRange);
+    }
     
     // 更新 data，供色号组件使用
     this.setData({
@@ -841,11 +910,7 @@ Page({
     });
     
     // 方案B：网格由独立的 grid-overlay 组件绘制，主 Canvas 只绘制色块
-    console.log('[主Canvas] 绘制色块（不含网格和色号）:', {
-      showGrid: false,
-      hasBackground: hasBackground,
-      colorCodeMapSize: Object.keys(colorCodeMap).length
-    });
+    console.log('[主Canvas] 绘制色块（支持可视区域裁剪）');
     
     drawBoard(this._ctx, {
       width: this.data.canvasWidth,
@@ -856,10 +921,11 @@ Page({
       dpr: this._renderDpr || this._dpr,
       hasBackground: hasBackground,
       viewScale: this.data.canvasScale,
-      colorCodeMap: null  // 主 Canvas 不绘制色号
+      colorCodeMap: null,  // 主 Canvas 不绘制色号
+      visibleRange: visibleRange // 完美版：传入可视区域
     });
     
-    console.log('[主Canvas] 绘制完成，网格和色号由独立组件显示');
+    console.log('[主Canvas] 绘制完成');
   },
 
   _renderChangedPixels(changedCells) {
@@ -905,6 +971,11 @@ Page({
   },
 
   handleTouchStart(e) {
+    // 完美版：标记手势开始
+    if (this._renderScheduler) {
+      this._renderScheduler.startGesture();
+    }
+    
     // 每次触摸开始时更新 canvas-area 和 canvas-touch-layer 位置
     this._updateCanvasAreaRect();
     this._updateCanvasRect();
@@ -914,6 +985,18 @@ Page({
     
     // 双指缩放检测
     if (touches.length === 2) {
+      // 完美版：双指开始时，取消可能的误触绘制
+      if (this._isDrawing && !this._isPinching) {
+        console.log('[防误触] 检测到双指，取消单指绘制');
+        this._isDrawing = false;
+        this._lastPos = null;
+        // 撤销刚才的误触绘制
+        if (this._undoStack.length > 0 && (now - this._lastTouchTime) < 200) {
+          console.log('[防误触] 撤销误触绘制');
+          this.onUndo();
+        }
+      }
+      
       this._isPinching = true;
       this._isDrawing = false;
       this._isDragging = false;
@@ -993,10 +1076,28 @@ Page({
       return;
     }
     
-    this._isDrawing = true;
-    this._lastPos = pos;
-    this._saveState();
-    this._paintPixel(pos.row, pos.col);
+    // 完美版：延迟绘制，防止双指误触
+    this._pendingDrawPos = pos;
+    this._pendingDrawTime = now;
+    
+    // 100ms后才真正开始绘制
+    setTimeout(() => {
+      // 如果已经变成双指，取消绘制
+      if (this._isPinching) {
+        console.log('[防误触] 延迟检测到双指，取消绘制');
+        this._pendingDrawPos = null;
+        return;
+      }
+      
+      // 如果位置没变，才执行绘制
+      if (this._pendingDrawPos && this._pendingDrawPos === pos) {
+        this._isDrawing = true;
+        this._lastPos = pos;
+        this._saveState();
+        this._paintPixel(pos.row, pos.col);
+        this._pendingDrawPos = null;
+      }
+    }, 100);
   },
 
   handleTouchMove(e) {
@@ -1166,6 +1267,21 @@ Page({
   },
 
   handleTouchEnd(e) {
+    // 完美版：标记手势结束，触发高精重绘
+    if (this._renderScheduler) {
+      this._renderScheduler.endGesture(() => {
+        this._redrawCanvasAtCurrentScale();
+        
+        // 通知网格组件重绘
+        const gridOverlay = this.selectComponent('#gridOverlay');
+        if (gridOverlay) gridOverlay.redraw();
+        
+        // 通知色号组件重绘
+        const codeOverlay = this.selectComponent('#codeOverlay');
+        if (codeOverlay) codeOverlay.redraw();
+      });
+    }
+    
     // 如果是双指缩放结束
     if (this._isPinching) {
       this._isPinching = false;
@@ -1276,17 +1392,23 @@ Page({
   },
 
   _redrawCanvasAtCurrentScale() {
-    // 根据当前缩放比例调整 Canvas 分辨率
+    // 完美版：根据当前缩放比例调整 Canvas 分辨率
     const scale = this.data.canvasScale;
-    if (!this._canvas || !this._ctx) return;
+    if (!this._canvas || !this._ctx || !this._renderScheduler) return;
     
-    // 计算新的物理分辨率
+    // 计算自适应 DPR
     const baseWidth = this.data.canvasWidth;
     const baseHeight = this.data.canvasHeight;
-    const dpr = this._dpr || 1;
+    const systemDpr = this._dpr || 1;
     
-    // 动态调整分辨率：保持在合理范围内，避免小程序 Canvas 超限
-    const effectiveDpr = Math.min(dpr * 2, dpr * 4);
+    const effectiveDpr = this._renderScheduler.getAdaptiveDpr(
+      baseWidth,
+      baseHeight,
+      scale,
+      systemDpr,
+      'high' // 手势结束后使用高质量模式
+    );
+    
     this._renderDpr = effectiveDpr;
     
     // 调整 Canvas 物理尺寸
@@ -1296,6 +1418,8 @@ Page({
     // 重置 transform 并缩放
     this._ctx.setTransform(1, 0, 0, 1, 0, 0);
     this._ctx.scale(effectiveDpr, effectiveDpr);
+    
+    console.log('[完美重绘] DPR:', effectiveDpr.toFixed(2), '物理尺寸:', this._canvas.width, 'x', this._canvas.height);
     
     // 重新绘制
     this._drawFullGrid();
@@ -2083,12 +2207,23 @@ Page({
       wx.showToast({ title: '背景图层无法绘制', icon: 'none' });
       return;
     }
+    
     const { tool, currentColor, symmetry, gridSize, brushSize } = this.data;
+    
+    // 完美版：画笔和填充工具需要选择颜色，橡皮擦和吸色工具不需要
+    if ((tool === 'pen' || tool === 'fill') && (!currentColor || currentColor === '')) {
+      wx.showToast({ title: '请先选择色号', icon: 'none', duration: 1500 });
+      return;
+    }
+    
     const { skipRender = false, skipStats = false, changedCells = null } = options;
     if (tool === 'picker') {
       const pickedColor = this._gridData[row] ? this._gridData[row][col] : null;
       if (pickedColor && pickedColor !== '#FFFFFF') {
         this.setData({ currentColor: pickedColor, tool: 'pen' });
+        // 查找对应的色号
+        const colorItem = this.data.colorsWithCode.find(c => c.hex === pickedColor);
+        if (colorItem) this.setData({ currentCode: colorItem.code });
       }
       return;
     }
@@ -2100,7 +2235,7 @@ Page({
       this._updateHasPixels();
       return;
     }
-    const color = tool === 'eraser' ? '#FFFFFF' : currentColor;
+    const color = tool === 'eraser' ? null : currentColor; // 完美版：橡皮擦使用透明色
     const changed = changedCells || new Set();
     const isEraser = tool === 'eraser';
 
@@ -2299,10 +2434,13 @@ Page({
   },
 
   _countColorUsage(color) {
+    if (!color) return 0;
     let count = 0;
     for (let y = 0; y < this.data.gridSize; y++) {
       for (let x = 0; x < this.data.gridSize; x++) {
-        if (this._gridData[y][x].toUpperCase() === color.toUpperCase()) count++;
+        const cell = this._gridData[y] && this._gridData[y][x];
+        if (!cell) continue;
+        if (String(cell).toUpperCase() === String(color).toUpperCase()) count++;
       }
     }
     return count;
@@ -2319,7 +2457,7 @@ Page({
       success: (res) => {
         if (res.confirm) {
           this._saveState();
-          this._gridData = Array.from({ length: this.data.gridSize }, () => Array(this.data.gridSize).fill('#FFFFFF'));
+          this._gridData = Array.from({ length: this.data.gridSize }, () => Array(this.data.gridSize).fill(null));
           this._rebuildColorStatsFromGrid();
           this._drawFullGrid();
           this._updateUsedColors();
@@ -2333,34 +2471,55 @@ Page({
   onSave() {
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
-      this._saveDraft();
+      this._promptNameAndSave('draft');
     });
   },
 
   onSaveToBox() {
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
-      this._saveToBox();
+      this._promptNameAndSave('box');
     });
   },
 
-  _saveToBox() {
+  _promptNameAndSave(type) {
+    const title = type === 'box' ? '保存到图纸箱' : '保存草稿';
+    const defaultName = `拼豆图纸_${Date.now()}`;
+    wx.showModal({
+      title,
+      editable: true,
+      placeholderText: '请输入名称',
+      content: '',
+      success: (res) => {
+        if (!res.confirm) return;
+        const input = String((res.content || '')).trim();
+        const name = input || defaultName;
+        if (type === 'box') this._saveToBox(name);
+        else this._saveDraft(name);
+      }
+    });
+  },
+
+  _saveToBox(name) {
     this.setData({ loading: true, loadingText: '保存到图纸箱...' });
     const { gridSize, brand } = this.data;
-    const colorStats = this._buildColorStats();
-    if (colorStats.length === 0) {
+    if (!this._hasDrawableContent()) {
       this.setData({ loading: false });
       wx.showToast({ title: '画板还没有内容', icon: 'none' });
       return;
     }
+    const colorStats = this._buildColorStats();
     const colorPalette = colorStats.map((s, idx) => ({
       index: idx, id: s.id, name: s.name, r: s.r, g: s.g, b: s.b, count: s.count
     }));
     const gridData = this._gridData.map(row => row.map(hex => {
-      const idx = colorStats.findIndex(s => '#' + [s.r, s.g, s.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase() === hex.toUpperCase());
-      return idx >= 0 ? idx : 0;
+      if (hex === null || hex === undefined || hex === '') return -1;
+      const hexUpper = String(hex).toUpperCase();
+      const idx = colorStats.findIndex(s => '#' + [s.r, s.g, s.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase() === hexUpper);
+      return idx >= 0 ? idx : -1;
     }));
     request.post('/box/save', {
+      name,
       sourceType: 'DRAW',
       brand: brand || 'MARD',
       colorCount: colorStats.length,
@@ -2376,7 +2535,7 @@ Page({
     });
   },
 
-  _saveDraft() {
+  _saveDraft(name) {
     this.setData({ loading: true, loadingText: '保存中...' });
     const { gridSize, brand, source, backgroundImage, backgroundImageWidth, backgroundImageHeight, backgroundOffsetX, backgroundOffsetY, backgroundScale, locked } = this.data;
     const colorStats = this._buildColorStats();
@@ -2384,8 +2543,10 @@ Page({
       index: idx, id: s.id, name: s.name, r: s.r, g: s.g, b: s.b, count: s.count
     }));
     const gridData = this._gridData.map(row => row.map(hex => {
-      const idx = colorStats.findIndex(s => '#' + [s.r, s.g, s.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase() === hex.toUpperCase());
-      return idx >= 0 ? idx : 0;
+      if (hex === null || hex === undefined || hex === '') return -1;
+      const hexUpper = String(hex).toUpperCase();
+      const idx = colorStats.findIndex(s => '#' + [s.r, s.g, s.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase() === hexUpper);
+      return idx >= 0 ? idx : -1;
     }));
     
     // 保存背景图层状态
@@ -2401,6 +2562,7 @@ Page({
     
     if (source === 'result') {
       request.post('/draft/save', {
+        name,
         sourceType: 'EDIT', brand: brand || 'MARD', colorCount: colorStats.length,
         gridSize: gridSize, gridData: JSON.stringify(gridData), colorPalette: JSON.stringify(colorPalette),
         backgroundState: backgroundState ? JSON.stringify(backgroundState) : null
@@ -2427,6 +2589,7 @@ Page({
       });
     } else {
       request.post('/draft/save', {
+        name,
         sourceType: 'DRAW', brand: brand || 'MARD', colorCount: colorStats.length,
         gridSize: gridSize, gridData: JSON.stringify(gridData), colorPalette: JSON.stringify(colorPalette),
         backgroundState: backgroundState ? JSON.stringify(backgroundState) : null
@@ -2440,13 +2603,27 @@ Page({
     }
   },
 
+  _hasDrawableContent() {
+    if (!this._gridData || !Array.isArray(this._gridData)) return false;
+    for (let y = 0; y < this._gridData.length; y++) {
+      const row = this._gridData[y];
+      if (!Array.isArray(row)) continue;
+      for (let x = 0; x < row.length; x++) {
+        const cell = row[x];
+        if (cell !== null && cell !== undefined && cell !== '') return true;
+      }
+    }
+    return false;
+  },
+
   _buildColorStats() {
     const map = new Map();
     for (let y = 0; y < this.data.gridSize; y++) {
       for (let x = 0; x < this.data.gridSize; x++) {
-        const hex = this._gridData[y][x];
-        if (hex === '#FFFFFF') continue;
-        map.set(hex, (map.get(hex) || 0) + 1);
+        const hex = this._gridData[y] ? this._gridData[y][x] : null;
+        if (hex === null || hex === undefined || hex === '') continue;
+        const hexUpper = String(hex).toUpperCase();
+        map.set(hexUpper, (map.get(hexUpper) || 0) + 1);
       }
     }
     const stats = [];
@@ -2460,8 +2637,7 @@ Page({
   },
 
   async onExport() {
-    const stats = this._buildColorStats();
-    if (stats.length === 0) {
+    if (!this._hasDrawableContent()) {
       wx.showToast({ title: '画板还没有内容', icon: 'none' });
       return;
     }
@@ -2776,7 +2952,9 @@ Page({
     // 遍历画布，替换所有匹配的颜色
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        if (this._gridData[y][x].toUpperCase() === oldColor.toUpperCase()) {
+        const cell = this._gridData[y] ? this._gridData[y][x] : null;
+        if (!cell) continue;
+        if (String(cell).toUpperCase() === String(oldColor).toUpperCase()) {
           this._gridData[y][x] = newColor;
           replaceCount++;
         }
@@ -2811,7 +2989,9 @@ Page({
     let replaceCount = 0;
     for (let y = 0; y < this.data.gridSize; y++) {
       for (let x = 0; x < this.data.gridSize; x++) {
-        if (this._gridData[y][x].toUpperCase() === sourceColor.toUpperCase()) {
+        const cell = this._gridData[y] ? this._gridData[y][x] : null;
+        if (!cell) continue;
+        if (String(cell).toUpperCase() === String(sourceColor).toUpperCase()) {
           this._gridData[y][x] = targetColor;
           replaceCount++;
         }

@@ -178,7 +178,7 @@ function drawCellCode(ctx, color, code, cx, cy, fontSize) {
 }
 
 /**
- * 绘制完整画板
+ * 绘制完整画板（完美版：支持可视区域裁剪）
  */
 function drawBoard(ctx, options) {
   if (!ctx) return;
@@ -192,22 +192,12 @@ function drawBoard(ctx, options) {
     hasBackground = false,
     viewScale = 1,
     dpr = 1,
-    colorCodeMap = null
+    colorCodeMap = null,
+    visibleRange = null // 完美版：可视区域裁剪
   } = options;
 
   const cellSize = width / gridSize;
   const codeCfg = getCellCodeConfig(cellSize, viewScale);
-
-  // 问题1调试：输出网格绘制参数
-  console.log('[boardRenderer] drawBoard 参数:', {
-    showGrid,
-    viewScale,
-    dpr,
-    cellSize,
-    codeCfg,
-    hasColorCodeMap: !!colorCodeMap,
-    colorCodeMapSize: colorCodeMap ? Object.keys(colorCodeMap).length : 0
-  });
 
   ctx.clearRect(0, 0, width, height);
 
@@ -216,11 +206,30 @@ function drawBoard(ctx, options) {
     ctx.fillRect(0, 0, width, height);
   }
 
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
+  // 完美版：计算绘制范围
+  let startRow = 0;
+  let endRow = gridSize;
+  let startCol = 0;
+  let endCol = gridSize;
+
+  if (visibleRange && !visibleRange.isFullView) {
+    startRow = visibleRange.minRow;
+    endRow = visibleRange.maxRow + 1;
+    startCol = visibleRange.minCol;
+    endCol = visibleRange.maxCol + 1;
+    
+    console.log('[boardRenderer] 可视区域裁剪:', {
+      total: gridSize * gridSize,
+      visible: (endRow - startRow) * (endCol - startCol),
+      ratio: ((endRow - startRow) * (endCol - startCol) / (gridSize * gridSize) * 100).toFixed(1) + '%'
+    });
+  }
+
+  // 完美版：只绘制可见格子
+  for (let y = startRow; y < endRow; y++) {
+    for (let x = startCol; x < endCol; x++) {
       const color = gridData[y] ? gridData[y][x] : null;
       if (color === null || color === undefined) continue;
-      if (hasBackground && color === '#FFFFFF') continue;
 
       ctx.fillStyle = color;
       const px = x * cellSize;
@@ -230,7 +239,6 @@ function drawBoard(ctx, options) {
       if (codeCfg.show && colorCodeMap && color !== '#FFFFFF') {
         const code = colorCodeMap[String(color).toUpperCase()];
         if (code) {
-          console.log('[boardRenderer] 绘制色码:', { color, code, x, y, fontSize: codeCfg.fontSize });
           drawCellCode(ctx, color, code, px + cellSize / 2, py + cellSize / 2, codeCfg.fontSize);
         }
       }
@@ -238,7 +246,6 @@ function drawBoard(ctx, options) {
   }
 
   if (showGrid && cellSize >= 2) {
-    console.log('[boardRenderer] 绘制网格线');
     drawGridLineRects(ctx, width, height, gridSize, cellSize, viewScale, dpr);
   }
 }

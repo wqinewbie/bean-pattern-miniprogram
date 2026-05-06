@@ -11,7 +11,12 @@ Component({
     scale: { type: Number, value: 1 },
     gridData: { type: Array, value: [] },
     colorCodeMap: { type: Object, value: {} },
-    show: { type: Boolean, value: true }
+    show: { type: Boolean, value: true },
+    // 完美版：可视区域裁剪参数
+    canvasOffsetX: { type: Number, value: 0 },
+    canvasOffsetY: { type: Number, value: 0 },
+    areaWidth: { type: Number, value: 0 },
+    areaHeight: { type: Number, value: 0 }
   },
 
   data: {
@@ -70,7 +75,7 @@ Component({
     drawCodes() {
       if (!this.ctx || !this.canvas) return;
 
-      const { width, height, gridSize, gridData, colorCodeMap, scale } = this.data;
+      const { width, height, gridSize, gridData, colorCodeMap, scale, canvasOffsetX, canvasOffsetY, areaWidth, areaHeight } = this.data;
       
       if (!gridData || gridData.length === 0 || !colorCodeMap || Object.keys(colorCodeMap).length === 0) {
         return;
@@ -79,18 +84,17 @@ Component({
       const ctx = this.ctx;
       const canvas = this.canvas;
       
-      // 适中 DPR 平衡清晰度和性能，避免 Canvas 超限
+      // 完美版：色号层 DPR 策略（文字需要更高清晰度）
       const currentScale = scale || 1;
       const systemDpr = this.dpr || 2;
-      const targetDpr = systemDpr * 1.5 * Math.max(1, currentScale);
+      const qualityFactor = 2.0; // 文字层需要最高清晰度
+      const targetDpr = systemDpr * qualityFactor * Math.max(1, Math.min(currentScale, 1.5));
       
-      // 限制 Canvas 最大物理尺寸为 3072px（保守限制）
-      const maxPhysicalSize = 3072;
+      // 限制 Canvas 最大物理尺寸为 4096px
+      const maxPhysicalSize = 4096;
       const maxDprByWidth = maxPhysicalSize / width;
       const maxDprByHeight = maxPhysicalSize / height;
-      const dpr = Math.min(targetDpr, maxDprByWidth, maxDprByHeight, 12);
-
-      console.log('[CodeOverlay] 绘制色号，DPR:', dpr, '缩放:', currentScale, '物理尺寸:', Math.floor(width * dpr));
+      const dpr = Math.max(1, Math.min(targetDpr, maxDprByWidth, maxDprByHeight, 8));
 
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
@@ -99,42 +103,62 @@ Component({
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, width, height);
       
-      // 文字渲染必须开启抗锯齿
+      // 完美版：文字渲染必须开启高质量抗锯齿
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
 
       const cellSize = width / gridSize;
       const visualCell = cellSize * currentScale;
 
-      if (visualCell < 15) {
-        console.log('[CodeOverlay] 格子太小，不显示色号:', visualCell);
-        return;
+      // 完美版：色号显示阈值优化（提高到25px，约2倍缩放才显示）
+      if (visualCell < 25) {
+        return; // 太小不显示
       }
 
-      // 字体大小适中，不超出格子
-      const fontSize = Math.max(4, Math.min(cellSize * 0.4, visualCell * 0.2));
+      // 完美版：字体大小分级策略（再减少80%，极致精简）
+      let fontSize;
+      if (visualCell < 35) {
+        fontSize = Math.max(3, cellSize * 0.0175); // 1.75%
+      } else if (visualCell < 60) {
+        fontSize = Math.max(4, cellSize * 0.02); // 2%
+      } else {
+        fontSize = Math.max(5, Math.min(cellSize * 0.0225, 8)); // 2.25%，最大8px
+      }
 
-      console.log('[CodeOverlay] 开始绘制色号:', { cellSize, visualCell, fontSize, gridSize, dpr });
+      // 完美版：计算可视区域（只绘制可见的色号）
+      let startRow = 0;
+      let endRow = gridSize;
+      let startCol = 0;
+      let endCol = gridSize;
+
+      if (areaWidth > 0 && areaHeight > 0) {
+        const scaledCellSize = cellSize * currentScale;
+        const visibleLeft = Math.max(0, -canvasOffsetX);
+        const visibleTop = Math.max(0, -canvasOffsetY);
+        const visibleRight = Math.min(width * currentScale, areaWidth - canvasOffsetX);
+        const visibleBottom = Math.min(height * currentScale, areaHeight - canvasOffsetY);
+
+        startCol = Math.max(0, Math.floor(visibleLeft / scaledCellSize) - 1);
+        startRow = Math.max(0, Math.floor(visibleTop / scaledCellSize) - 1);
+        endCol = Math.min(gridSize, Math.ceil(visibleRight / scaledCellSize) + 1);
+        endRow = Math.min(gridSize, Math.ceil(visibleBottom / scaledCellSize) + 1);
+      }
 
       let drawnCount = 0;
-      let nonWhiteCount = 0;
-      let missCodeCount = 0;
+      let totalCount = 0;
 
-      for (let y = 0; y < gridSize; y++) {
-        for (let x = 0; x < gridSize; x++) {
+      for (let y = startRow; y < endRow; y++) {
+        for (let x = startCol; x < endCol; x++) {
           const rawColor = gridData[y] ? gridData[y][x] : null;
           if (!rawColor) continue;
 
           const color = String(rawColor).trim().toUpperCase();
           if (color === '#FFFFFF') continue;
 
-          nonWhiteCount++;
+          totalCount++;
 
           const code = colorCodeMap[color] || colorCodeMap[String(rawColor).trim()] || '';
-          if (!code) {
-            missCodeCount++;
-            continue;
-          }
+          if (!code) continue;
 
           const px = x * cellSize + cellSize / 2;
           const py = y * cellSize + cellSize / 2;
@@ -144,7 +168,15 @@ Component({
         }
       }
 
-      console.log('[CodeOverlay] 色号绘制完成:', { drawnCount, nonWhiteCount, missCodeCount });
+      console.log('[CodeOverlay] 完美渲染:', { 
+        scale: currentScale.toFixed(2),
+        dpr: dpr.toFixed(2),
+        fontSize: fontSize.toFixed(1),
+        drawn: drawnCount,
+        total: totalCount,
+        culling: startRow > 0 || endRow < gridSize || startCol > 0 || endCol < gridSize,
+        ratio: totalCount > 0 ? (drawnCount / totalCount * 100).toFixed(1) + '%' : '100%'
+      });
     },
 
     _drawCode(ctx, color, code, cx, cy, fontSize, dpr) {
@@ -152,15 +184,29 @@ Component({
 
       const textColor = this._getCodeTextColor(color);
 
-      // 使用清晰的字体渲染
+      // 完美版：使用最清晰的字体渲染设置
       ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      // 亚像素对齐
+      // 完美版：亚像素对齐（关键！）
       const alignedX = Math.round(cx * dpr) / dpr;
       const alignedY = Math.round(cy * dpr) / dpr;
 
+      // 完美版：添加文字描边增强对比度
+      if (textColor === '#FFFFFF') {
+        // 白色文字添加黑色描边
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.lineWidth = Math.max(0.8, fontSize * 0.12);
+        ctx.strokeText(code, alignedX, alignedY);
+      } else {
+        // 黑色文字添加白色描边
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.lineWidth = Math.max(0.8, fontSize * 0.12);
+        ctx.strokeText(code, alignedX, alignedY);
+      }
+
+      // 绘制填充文字
       ctx.fillStyle = textColor;
       ctx.fillText(code, alignedX, alignedY);
     },

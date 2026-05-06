@@ -292,6 +292,10 @@
               gridSize="{{gridSize}}"
               scale="{{canvasScale}}"
               show="{{showGrid}}"
+              canvasOffsetX="{{canvasOffsetX}}"
+              canvasOffsetY="{{canvasOffsetY}}"
+              areaWidth="{{canvasAreaWidth}}"
+              areaHeight="{{canvasAreaHeight}}"
             />
           </view>
           
@@ -307,6 +311,12 @@
               gridSize="{{gridSize}}"
               scale="{{canvasScale}}"
               gridData="{{overlayGridData}}"
+              colorCodeMap="{{overlayColorCodeMap}}"
+              show="{{true}}"
+              canvasOffsetX="{{canvasOffsetX}}"
+              canvasOffsetY="{{canvasOffsetY}}"
+              areaWidth="{{canvasAreaWidth}}"
+              areaHeight="{{canvasAreaHeight}}"
               colorCodeMap="{{overlayColorCodeMap}}"
               show="{{true}}"
             />
