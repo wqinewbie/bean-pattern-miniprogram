@@ -452,12 +452,14 @@ page {
   border: 4rpx solid #FF9800;
   box-shadow: 0 16rpx 60rpx rgba(255, 152, 0, 0.25), 0 0 0 4rpx rgba(255, 152, 0, 0.15);
   border-radius: 8rpx;
+  transition: border-color 0.3s, box-shadow 0.3s;
 }
 
 .canvas-layer.active-background .canvas-wrapper {
   border: 4rpx solid #9C27B0;
   box-shadow: 0 16rpx 60rpx rgba(156, 39, 176, 0.25), 0 0 0 4rpx rgba(156, 39, 176, 0.15);
   border-radius: 8rpx;
+  transition: border-color 0.3s, box-shadow 0.3s;
 }
 
 /* 网格层 */
@@ -547,7 +549,6 @@ page {
   position: relative;
   border: 1rpx solid #FFEBB5;
   box-shadow: 0 8rpx 24rpx rgba(140, 107, 75, 0.08);
-  transition: all 0.3s;
   display: block;
   z-index: 2;
   background: transparent;

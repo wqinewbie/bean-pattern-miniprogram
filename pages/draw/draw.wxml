@@ -274,7 +274,7 @@
             width="{{canvasWidth}}"
             height="{{canvasHeight}}"
             auto-init="{{true}}"
-            style="background: {{backgroundImage ? 'transparent' : '#FFFFFF'}};"
+            style="background: {{backgroundImage ? 'transparent' : '#FFFFFF'}}; width: {{canvasWidth * canvasScale}}px; height: {{canvasHeight * canvasScale}}px; transform: scale({{1 / canvasScale}}); transform-origin: 0 0;"
             bind:ready="onCanvasReady"
             bind:error="onCanvasError"
           />
@@ -283,33 +283,34 @@
           <view 
             wx:if="{{showGrid}}"
             class="grid-layer-inner"
-            style="position: absolute; left: 0; top: 0; width: {{canvasWidth}}px; height: {{canvasHeight}}px; pointer-events: none;"
+            style="position: absolute; left: 0; top: 0; width: {{canvasWidth * overlayScale}}px; height: {{canvasHeight * overlayScale}}px; pointer-events: none; transform: scale({{1 / overlayScale}}); transform-origin: 0 0;"
           >
             <grid-overlay
               id="gridOverlay"
-              width="{{canvasWidth}}"
-              height="{{canvasHeight}}"
+              width="{{canvasWidth * overlayScale}}"
+              height="{{canvasHeight * overlayScale}}"
               gridSize="{{gridSize}}"
-              scale="{{canvasScale}}"
+              scale="{{overlayScale}}"
               show="{{showGrid}}"
               canvasOffsetX="{{canvasOffsetX}}"
               canvasOffsetY="{{canvasOffsetY}}"
               areaWidth="{{canvasAreaWidth}}"
               areaHeight="{{canvasAreaHeight}}"
+              gesturing="{{isPinching}}"
             />
           </view>
           
           <!-- 色号层（在 wrapper 内部，自动对齐） -->
           <view 
             class="code-layer-inner"
-            style="position: absolute; left: 0; top: 0; width: {{canvasWidth}}px; height: {{canvasHeight}}px; pointer-events: none;"
+            style="position: absolute; left: 0; top: 0; width: {{canvasWidth * overlayScale}}px; height: {{canvasHeight * overlayScale}}px; pointer-events: none; transform: scale({{1 / overlayScale}}); transform-origin: 0 0;"
           >
             <code-overlay
               id="codeOverlay"
-              width="{{canvasWidth}}"
-              height="{{canvasHeight}}"
+              width="{{canvasWidth * overlayScale}}"
+              height="{{canvasHeight * overlayScale}}"
               gridSize="{{gridSize}}"
-              scale="{{canvasScale}}"
+              scale="{{overlayScale}}"
               gridData="{{overlayGridData}}"
               colorCodeMap="{{overlayColorCodeMap}}"
               show="{{true}}"
@@ -317,8 +318,7 @@
               canvasOffsetY="{{canvasOffsetY}}"
               areaWidth="{{canvasAreaWidth}}"
               areaHeight="{{canvasAreaHeight}}"
-              colorCodeMap="{{overlayColorCodeMap}}"
-              show="{{true}}"
+              gesturing="{{isPinching}}"
             />
           </view>
           

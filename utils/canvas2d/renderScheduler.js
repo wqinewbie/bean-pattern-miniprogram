@@ -11,7 +11,7 @@
 const GESTURE_DEBOUNCE = 120; // 手势结束后延迟重绘时间(ms)
 const MAX_PHYSICAL_SIZE = 4096; // Canvas 物理像素上限
 const MIN_DPR = 1;
-const MAX_DPR = 4;
+const MAX_DPR = 12;
 
 class RenderScheduler {
   constructor() {
@@ -96,12 +96,17 @@ class RenderScheduler {
    * @param {string} mode - 渲染模式 'low' | 'high'
    */
   getAdaptiveDpr(baseWidth, baseHeight, scale, systemDpr, mode = 'high') {
-    const qualityFactor = mode === 'high' ? 1.5 : 1.0;
-    const targetDpr = systemDpr * qualityFactor * Math.max(1, scale * 0.5);
+    const qualityFactor = mode === 'high' ? 1.25 : 1.0;
+    const safeWidth = Math.max(1, Number(baseWidth) || 1);
+    const safeHeight = Math.max(1, Number(baseHeight) || 1);
+    const safeScale = Math.max(1, Number(scale) || 1);
+    const safeSystemDpr = Math.max(MIN_DPR, Number(systemDpr) || MIN_DPR);
+    const targetDpr = safeSystemDpr * safeScale * qualityFactor;
     
-    // 按物理尺寸上限计算最大 DPR
-    const maxDprByWidth = MAX_PHYSICAL_SIZE / (baseWidth * scale);
-    const maxDprByHeight = MAX_PHYSICAL_SIZE / (baseHeight * scale);
+    // 父级使用 CSS transform 放大画板，因此 backing store 需要随 scale 增大。
+    // 上限只按逻辑画布尺寸裁剪，避免 scale 越大 DPR 反而越低。
+    const maxDprByWidth = MAX_PHYSICAL_SIZE / safeWidth;
+    const maxDprByHeight = MAX_PHYSICAL_SIZE / safeHeight;
     
     const finalDpr = Math.min(
       targetDpr,

@@ -80,6 +80,8 @@ function resize2dCanvas({ canvas, ctx, width, height, dpr }) {
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.scale(ratio, ratio);
+  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingQuality = 'low';
 }
 
 function clear2dCanvas(ctx, width, height) {

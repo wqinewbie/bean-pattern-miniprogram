@@ -1,5 +1,9 @@
 /**
  * 网格覆盖层组件
+ * 
+ * width/height = canvasWidth * scale（缩放后的 CSS 显示尺寸）
+ * 内部以 logicalWidth = width/scale 为逻辑坐标绘制，ctx.scale(dpr * scale) 映射到物理像素
+ * 确保与主 Canvas 使用完全相同的坐标系
  */
 Component({
   properties: {
@@ -8,11 +12,11 @@ Component({
     gridSize: { type: Number, value: 52 },
     scale: { type: Number, value: 1 },
     show: { type: Boolean, value: true },
-    // 完美版：可视区域裁剪参数
     canvasOffsetX: { type: Number, value: 0 },
     canvasOffsetY: { type: Number, value: 0 },
     areaWidth: { type: Number, value: 0 },
-    areaHeight: { type: Number, value: 0 }
+    areaHeight: { type: Number, value: 0 },
+    gesturing: { type: Boolean, value: false }
   },
 
   data: {
@@ -20,9 +24,11 @@ Component({
     _visible: 'visible'
   },
 
+  _traceEnabled: true,
+
   lifetimes: {
     attached() {
-      console.log('[GridOverlay] 组件加载');
+      this._gestureLock = false;
     },
     ready() {
       setTimeout(() => this.initCanvas(), 100);
@@ -35,25 +41,56 @@ Component({
 
   observers: {
     'width, height, gridSize': function(width, height, gridSize) {
-      if (this.ctx && width > 0 && height > 0 && gridSize > 0) this.drawGrid();
+      if (this._gestureLock || this.data.gesturing || this.properties.gesturing) {
+        this._trace('skip observer(width,height,gridSize)');
+        return;
+      }
+      if (this.ctx && width > 0 && height > 0 && gridSize > 0) {
+        this._trace('run observer(width,height,gridSize)');
+        this.drawGrid();
+      }
     },
     'scale': function(scale) {
-      console.log('[GridOverlay] 缩放变化:', scale);
-      if (this.ctx) this.drawGrid();
+      if (this._gestureLock || this.data.gesturing || this.properties.gesturing) {
+        this._trace('skip observer(scale)');
+        return;
+      }
+      if (this.ctx) {
+        this._trace('run observer(scale)');
+        this.drawGrid();
+      }
     },
     'show': function(show) {
       this.setData({ _visible: show ? 'visible' : 'hidden' });
+    },
+    'gesturing': function(gesturing) {
+      this._gestureLock = !!gesturing;
+      this._trace('observer(gesturing) -> ' + gesturing);
+      if (!gesturing && this.ctx) {
+        this._trace('run observer(gesturing=false) redraw');
+        this.drawGrid();
+      }
     }
   },
 
   methods: {
+    _trace(reason) {
+      if (!this._traceEnabled) return;
+      const p = this.properties || {};
+      console.log('[GRID_REDRAW_TRACE]', reason, {
+        gesturingProp: !!p.gesturing,
+        gestureLock: !!this._gestureLock,
+        scale: p.scale,
+        width: p.width,
+        height: p.height
+      });
+    },
     initCanvas() {
       const query = wx.createSelectorQuery().in(this);
       query.select('#gridCanvas').node().exec((res) => {
         if (!res || !res[0]) return;
         this.canvas = res[0].node;
         this.ctx = this.canvas.getContext('2d');
-        console.log('[GridOverlay] Canvas 初始化成功');
         this.drawGrid();
       });
     },
@@ -61,140 +98,74 @@ Component({
     drawGrid() {
       if (!this.ctx || !this.canvas) return;
 
-      const { width, height, gridSize, scale, canvasOffsetX, canvasOffsetY, areaWidth, areaHeight } = this.data;
+      const { width, height, gridSize, scale } = this.data;
       const ctx = this.ctx;
       const canvas = this.canvas;
 
-      // 完美版：动态 DPR 策略
+      const currentScale = Math.max(Number(scale) || 1, 0.5);
+      // Logical size = the base canvas size (before zoom)
+      const logicalW = width / currentScale;
+      const logicalH = height / currentScale;
+      const cellSize = logicalW / gridSize;
+
       const systemDpr = wx.getSystemInfoSync().pixelRatio || 2;
-      const qualityFactor = 1.8; // 网格层需要更高清晰度
-      const targetDpr = systemDpr * qualityFactor * Math.max(1, Math.min(scale, 2));
-      
-      // 限制 Canvas 最大物理尺寸为 4096px
       const maxPhysicalSize = 4096;
       const maxDprByWidth = maxPhysicalSize / width;
       const maxDprByHeight = maxPhysicalSize / height;
-      const dpr = Math.max(1, Math.min(targetDpr, maxDprByWidth, maxDprByHeight, 6));
+      const dpr = Math.max(1, Math.min(systemDpr, maxDprByWidth, maxDprByHeight));
 
-      const logicalW = width;
-      const logicalH = height;
-      canvas.width = Math.max(1, Math.floor(logicalW * dpr));
-      canvas.height = Math.max(1, Math.floor(logicalH * dpr));
+      const physW = Math.max(1, Math.floor(width * dpr));
+      const physH = Math.max(1, Math.floor(height * dpr));
+      canvas.width = physW;
+      canvas.height = physH;
 
+      // Draw in logical coordinates, scale by dpr * scale to fill the zoomed CSS area
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.scale(dpr, dpr);
+      ctx.scale(dpr * currentScale, dpr * currentScale);
       ctx.clearRect(0, 0, logicalW, logicalH);
-      
-      // 完美版：网格线必须关闭抗锯齿
       ctx.imageSmoothingEnabled = false;
 
-      const cellSize = width / gridSize;
-      const visualCellSize = cellSize * scale;
-
-      // 完美版：细网格显示阈值优化（更早显示，避免突然出现）
+      const visualCellSize = cellSize * currentScale;
       const showMinorGrid = visualCellSize >= 8;
-      
-      // 完美版：计算可视区域（只绘制可见的网格线）
-      let visibleRange = null;
-      if (areaWidth > 0 && areaHeight > 0) {
-        const scaledCellSize = cellSize * scale;
-        const visibleLeft = Math.max(0, -canvasOffsetX);
-        const visibleTop = Math.max(0, -canvasOffsetY);
-        const visibleRight = Math.min(width * scale, areaWidth - canvasOffsetX);
-        const visibleBottom = Math.min(height * scale, areaHeight - canvasOffsetY);
 
-        const minCol = Math.max(0, Math.floor(visibleLeft / scaledCellSize) - 1);
-        const minRow = Math.max(0, Math.floor(visibleTop / scaledCellSize) - 1);
-        const maxCol = Math.min(gridSize, Math.ceil(visibleRight / scaledCellSize) + 1);
-        const maxRow = Math.min(gridSize, Math.ceil(visibleBottom / scaledCellSize) + 1);
-
-        visibleRange = { minRow, maxRow, minCol, maxCol };
-        
-        console.log('[GridOverlay] 可视区域裁剪:', {
-          total: (gridSize + 1) * 2,
-          visible: (maxRow - minRow + maxCol - minCol) * 2,
-          ratio: ((maxRow - minRow + maxCol - minCol) / (gridSize * 2) * 100).toFixed(1) + '%'
-        });
-      }
-      
       if (showMinorGrid) {
-        this._drawThinLines(ctx, logicalW, logicalH, gridSize, cellSize, dpr, visibleRange);
+        this._drawThinLines(ctx, logicalW, logicalH, gridSize, cellSize, dpr * currentScale);
       }
-      this._drawThickLines(ctx, logicalW, logicalH, gridSize, cellSize, dpr, visibleRange);
-
-      console.log('[GridOverlay] 完美渲染:', {
-        scale: scale.toFixed(2),
-        dpr: dpr.toFixed(2),
-        physicalSize: `${Math.floor(logicalW * dpr)}x${Math.floor(logicalH * dpr)}`,
-        visualCellSize: visualCellSize.toFixed(1),
-        showMinor: showMinorGrid,
-        culling: !!visibleRange
-      });
+      this._drawThickLines(ctx, logicalW, logicalH, gridSize, cellSize, dpr * currentScale);
     },
 
-    _drawThinLines(ctx, width, height, gridSize, cellSize, dpr, visibleRange) {
-      ctx.strokeStyle = '#CCCCCC';
-      // 固定物理像素线宽
-      ctx.lineWidth = 1 / dpr;
-      ctx.beginPath();
+    _drawThinLines(ctx, width, height, gridSize, cellSize, effectiveDpr) {
+      ctx.fillStyle = '#CCCCCC';
+      const lineWidth = 1 / effectiveDpr;
+      const halfLine = lineWidth / 2;
 
-      // 完美版：只绘制可见范围的线条
-      const startRow = visibleRange ? visibleRange.minRow : 0;
-      const endRow = visibleRange ? visibleRange.maxRow : gridSize;
-      const startCol = visibleRange ? visibleRange.minCol : 0;
-      const endCol = visibleRange ? visibleRange.maxCol : gridSize;
-
-      // 垂直线（跳过5的倍数，避免与粗线重复）
-      for (let i = startCol; i <= endCol && i <= gridSize; i++) {
-        if (i % 5 === 0) continue; // 跳过粗线位置
-        const pos = this._alignToPixel(i * cellSize, dpr);
-        ctx.moveTo(pos, 0);
-        ctx.lineTo(pos, height);
+      for (let i = 0; i <= gridSize; i++) {
+        if (i % 5 === 0) continue;
+        const pos = i * cellSize - halfLine;
+        ctx.fillRect(pos, 0, lineWidth, height);
       }
       
-      // 水平线（跳过5的倍数，避免与粗线重复）
-      for (let i = startRow; i <= endRow && i <= gridSize; i++) {
-        if (i % 5 === 0) continue; // 跳过粗线位置
-        const pos = this._alignToPixel(i * cellSize, dpr);
-        ctx.moveTo(0, pos);
-        ctx.lineTo(width, pos);
+      for (let i = 0; i <= gridSize; i++) {
+        if (i % 5 === 0) continue;
+        const pos = i * cellSize - halfLine;
+        ctx.fillRect(0, pos, width, lineWidth);
       }
-      
-      ctx.stroke();
     },
 
-    _drawThickLines(ctx, width, height, gridSize, cellSize, dpr, visibleRange) {
-      ctx.strokeStyle = '#000000';
-      // 固定物理像素线宽
-      ctx.lineWidth = 2 / dpr;
-      ctx.beginPath();
+    _drawThickLines(ctx, width, height, gridSize, cellSize, effectiveDpr) {
+      ctx.fillStyle = '#000000';
+      const lineWidth = 2 / effectiveDpr;
+      const halfLine = lineWidth / 2;
 
-      // 完美版：只绘制可见范围的粗线
-      const startRow = visibleRange ? Math.floor(visibleRange.minRow / 5) * 5 : 0;
-      const endRow = visibleRange ? Math.ceil(visibleRange.maxRow / 5) * 5 : gridSize;
-      const startCol = visibleRange ? Math.floor(visibleRange.minCol / 5) * 5 : 0;
-      const endCol = visibleRange ? Math.ceil(visibleRange.maxCol / 5) * 5 : gridSize;
-
-      // 垂直线
-      for (let i = startCol; i <= endCol && i <= gridSize; i += 5) {
-        const pos = this._alignToPixel(i * cellSize, dpr);
-        ctx.moveTo(pos, 0);
-        ctx.lineTo(pos, height);
+      for (let i = 0; i <= gridSize; i += 5) {
+        const pos = i * cellSize - halfLine;
+        ctx.fillRect(pos, 0, lineWidth, height);
       }
       
-      // 水平线
-      for (let i = startRow; i <= endRow && i <= gridSize; i += 5) {
-        const pos = this._alignToPixel(i * cellSize, dpr);
-        ctx.moveTo(0, pos);
-        ctx.lineTo(width, pos);
+      for (let i = 0; i <= gridSize; i += 5) {
+        const pos = i * cellSize - halfLine;
+        ctx.fillRect(0, pos, width, lineWidth);
       }
-      
-      ctx.stroke();
-    },
-
-    _alignToPixel(value, dpr) {
-      // 精确像素对齐
-      return Math.round(value * dpr) / dpr;
     },
 
     redraw() {

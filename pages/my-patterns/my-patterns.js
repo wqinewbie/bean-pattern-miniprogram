@@ -79,6 +79,7 @@ Page({
               ? (typeof item.mappedPixelData === 'string' ? JSON.parse(item.mappedPixelData) : item.mappedPixelData)
               : [];
           } catch (e) {
+            console.error('解析 mappedPixelData 失败:', e, 'item.id:', item.id);
             mappedPixelData = [];
           }
           const rawSourceUrl = item.sourceUrl || '';
@@ -86,7 +87,23 @@ Page({
           const resolvedCoverUrl = resolveImageUrl(item.coverUrl || item.sourceUrl || '');
           const hasOriginal = !!(resolvedSourceUrl && resolvedSourceUrl.trim());
           const isDraftSource = !hasOriginal && (item.sourceType === 'DRAW' || !!item.draftId);
+          const hasMappedData = Array.isArray(mappedPixelData) && mappedPixelData.length > 0;
           const sourceType = this.getPatternSourceType(item);
+
+          // 调试日志
+          if (isDraftSource) {
+            console.log('草稿箱来源记录:', {
+              id: item.id,
+              name: item.name,
+              sourceType: item.sourceType,
+              draftId: item.draftId,
+              hasOriginal,
+              hasMappedData,
+              mappedPixelDataLength: mappedPixelData.length,
+              mappedPixelDataType: typeof mappedPixelData
+            });
+          }
+
           return {
             id: item.id,
             name: item.name || ('图纸#' + item.id),
@@ -105,7 +122,7 @@ Page({
             boxId: item.id,
             hasOriginal,
             isDraftSource,
-            hasCanvasCover: isDraftSource && mappedPixelData.length > 0,
+            hasCanvasCover: isDraftSource && hasMappedData,
           };
         });
         this.setData({ patterns }, () => {
@@ -331,23 +348,29 @@ Page({
           const canvas = res[0].node;
           const ctx = canvas.getContext('2d');
           const deviceInfo = wx.getDeviceInfo ? wx.getDeviceInfo() : {};
-          const dpr = deviceInfo.pixelRatio || 1;
+          const dpr = Math.min(deviceInfo.pixelRatio || 2, 2);
           const size = Math.min(res[0].width, res[0].height) || 200;
           canvas.width = size * dpr;
           canvas.height = size * dpr;
           ctx.scale(dpr, dpr);
           const gridSize = item.gridSize || 64;
           const cellSize = size / gridSize;
-          const pixels = item.mappedPixelData || [];
-          ctx.clearRect(0, 0, size, size);
-          if (pixels.length > 0) {
-            pixels.forEach(pixel => {
-              const x = (pixel.x || pixel.col || 0);
-              const y = (pixel.y || pixel.row || 0);
-              const color = pixel.color || pixel.hex || '#ddd';
-              ctx.fillStyle = color;
-              ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-            });
+          const mappedPixelData = item.mappedPixelData || [];
+
+          // 绘制底色
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, size, size);
+
+          // mappedPixelData 是二维数组，每个元素是 { id, name, r, g, b, hex, isExternal }
+          if (mappedPixelData.length > 0) {
+            for (let y = 0; y < gridSize; y++) {
+              for (let x = 0; x < gridSize; x++) {
+                const cell = mappedPixelData[y] && mappedPixelData[y][x];
+                if (!cell || cell.isExternal) continue;
+                ctx.fillStyle = 'rgb(' + cell.r + ', ' + cell.g + ', ' + cell.b + ')';
+                ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+              }
+            }
           }
         });
     });
