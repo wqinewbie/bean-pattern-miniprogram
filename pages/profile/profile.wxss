@@ -343,7 +343,7 @@
   left: 0;
   right: 0;
   top: 0;
-  bottom: calc(120rpx + env(safe-area-inset-bottom));
+  bottom: 0;
   background: #FFF9ED;
   z-index: 40;
   transform: translateY(100%);
@@ -435,7 +435,11 @@
   visibility: hidden;
 }
 
-.sub-scroll { flex: 1; }
+.sub-scroll {
+  flex: 1;
+  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
 .sub-loading, .sub-empty {
   height: 320rpx;
   display: flex;
@@ -1232,31 +1236,80 @@
 }
 
 /* ─── 隐私政策页 ─── */
-.privacy-page { padding: 32rpx; }
+.privacy-page {
+  padding: 40rpx;
+}
 
-.privacy-row {
-  padding: 24rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.privacy-content {
+  background: #fff;
   border-radius: 32rpx;
+  padding: 48rpx 40rpx;
+  box-shadow: 0 8rpx 24rpx rgba(140,107,75,0.06);
+  border: 4rpx solid #FFF4DC;
 }
 
-.privacy-row-link:active,
-.privacy-row-danger:active { background: #FFF9ED; }
-
-.privacy-row-left { flex: 1; }
-.privacy-row-title { font-size: 30rpx; font-weight: 800; color: #5D4037; display: block; }
-.privacy-row-desc { font-size: 22rpx; color: #A1887F; font-weight: 700; display: block; margin-top: 8rpx; }
-.privacy-row-title.danger { color: #D32F2F; }
-.privacy-row-desc.danger { color: #E57373; }
-.privacy-row-icon { font-size: 40rpx; color: #D0B8A1; }
-.privacy-switch { transform: scale(0.85); }
-
-.privacy-row-danger {
-  background: #FFE5E5;
+.privacy-section {
+  margin-bottom: 48rpx;
 }
 
-.privacy-row-danger:active { transform: scale(0.98); }
+.privacy-section:last-child {
+  margin-bottom: 0;
+}
+
+.privacy-section-title {
+  display: block;
+  font-size: 44rpx;
+  font-weight: 800;
+  color: #5D4037;
+  margin-bottom: 16rpx;
+  text-align: center;
+}
+
+.privacy-update-time {
+  display: block;
+  font-size: 22rpx;
+  color: #A1887F;
+  text-align: center;
+  font-weight: 700;
+  margin-bottom: 8rpx;
+}
+
+.privacy-subtitle {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 800;
+  color: #5D4037;
+  margin-bottom: 24rpx;
+  padding-left: 24rpx;
+  border-left: 6rpx solid #FF9800;
+}
+
+.privacy-text {
+  display: block;
+  font-size: 26rpx;
+  line-height: 1.8;
+  color: #8C6B4B;
+  font-weight: 500;
+  margin-bottom: 20rpx;
+  text-align: justify;
+}
+
+.privacy-text:last-child {
+  margin-bottom: 0;
+}
+
+.privacy-footer {
+  margin-top: 64rpx;
+  padding-top: 32rpx;
+  border-top: 2rpx solid #FFF4DC;
+  text-align: center;
+}
+
+.privacy-footer-text {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #FF9800;
+}
 
 

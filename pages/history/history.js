@@ -8,6 +8,11 @@ Page({
     filteredHistory: [],
     keyword: '',
     loading: false,
+    loadingMore: false,
+    hasMore: true,
+    page: 1,
+    pageSize: 20,
+    total: 0,
     statusBarHeight: 44,
     navHeight: 32,
     capsuleWidth: 87,
@@ -26,7 +31,7 @@ Page({
   },
   onShow() {
     this.calcNavTop();
-    this.loadHistory();
+    this.loadHistory(true);
   },
 
   calcNavTop() {
@@ -39,16 +44,32 @@ Page({
     });
   },
 
-  loadHistory() {
-    this.setData({ loading: true, history: [], filteredHistory: [] });
+  loadHistory(reset = false) {
+    if (reset) {
+      this.setData({
+        page: 1,
+        history: [],
+        filteredHistory: [],
+        hasMore: true,
+        loading: true
+      });
+    } else {
+      if (!this.data.hasMore || this.data.loadingMore) return;
+      this.setData({ loadingMore: true });
+    }
+
     ensureProfileComplete().then((ok) => {
       if (!ok) {
-        this.setData({ loading: false });
+        this.setData({ loading: false, loadingMore: false });
         return;
       }
-      request.get('/history/list')
-        .then((data) => {
-          const history = (Array.isArray(data) ? data : []).map((item) => ({
+
+      request.get('/history/list', {
+        page: this.data.page,
+        pageSize: this.data.pageSize
+      })
+        .then((res) => {
+          const newItems = (Array.isArray(res.list) ? res.list : []).map((item) => ({
             id: item.id,
             name: item.name || ('记录#' + item.id),
             gridSize: item.gridSize,
@@ -60,16 +81,35 @@ Page({
             boxId: item.boxId,
             createdAt: this.formatTime(item.createdAt),
           }));
-          this.setData({ history }, () => {
+
+          const history = reset ? newItems : [...this.data.history, ...newItems];
+
+          this.setData({
+            history,
+            page: this.data.page + 1,
+            hasMore: res.hasMore || false,
+            total: res.total || 0,
+            loading: false,
+            loadingMore: false
+          }, () => {
             this.applyFilter();
-            this.setData({ loading: false });
           });
         })
         .catch(() => {
-          this.setData({ loading: false });
+          this.setData({ loading: false, loadingMore: false });
           wx.showToast({ title: '加载失败', icon: 'none' });
         });
     });
+  },
+
+  onReachBottom() {
+    if (this.data.keyword) return;
+    this.loadHistory(false);
+  },
+
+  onPullDownRefresh() {
+    this.loadHistory(true);
+    wx.stopPullDownRefresh();
   },
 
   onItemTap(e) {

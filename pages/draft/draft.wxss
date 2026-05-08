@@ -168,6 +168,21 @@
   color: #8C6B4B;
 }
 
+.load-more {
+  padding: 32rpx 0;
+  text-align: center;
+}
+
+.load-more .loading-text {
+  font-size: 28rpx;
+  color: #FF8C42;
+}
+
+.load-more .no-more {
+  font-size: 28rpx;
+  color: #B8956A;
+}
+
 @keyframes pattern-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }

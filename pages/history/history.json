@@ -1,5 +1,7 @@
 {
   "navigationStyle": "custom",
   "navigationBarTitleText": "时光机",
+  "enablePullDownRefresh": true,
+  "onReachBottomDistance": 50,
   "usingComponents": {}
 }

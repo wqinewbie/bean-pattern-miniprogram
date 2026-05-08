@@ -21,6 +21,11 @@ Page({
     filteredPatterns: [],
     keyword: '',
     loading: true,
+    loadingMore: false,
+    hasMore: true,
+    page: 1,
+    pageSize: 20,
+    total: 0,
     navTop: 88,
     statusBarHeight: 44,
     navHeight: 32,
@@ -41,7 +46,7 @@ Page({
   },
   onShow() {
     this.calcNavTop();
-    this.loadPatterns();
+    this.loadPatterns(true);
     const tab = this.selectComponent('#appTabBar');
     if (tab && tab.setSelected) tab.setSelected(3);
   },
@@ -60,19 +65,33 @@ Page({
     });
   },
 
-  loadPatterns() {
-    this.setData({ loading: true, patterns: [], filteredPatterns: [] });
+  loadPatterns(reset = false) {
+    if (reset) {
+      this.setData({
+        page: 1,
+        patterns: [],
+        filteredPatterns: [],
+        hasMore: true,
+        loading: true
+      });
+    } else {
+      if (!this.data.hasMore || this.data.loadingMore) return;
+      this.setData({ loadingMore: true });
+    }
 
     if (!hasSession()) {
       wx.showToast({ title: '请先登录', icon: 'none' });
       wx.navigateTo({ url: '/pages/login/login' });
-      this.setData({ loading: false });
+      this.setData({ loading: false, loadingMore: false });
       return;
     }
 
-    request.get('/box/list')
-      .then((data) => {
-        const patterns = (Array.isArray(data) ? data : []).map(item => {
+    request.get('/box/list', {
+      page: this.data.page,
+      pageSize: this.data.pageSize
+    })
+      .then((res) => {
+        const newItems = (Array.isArray(res.list) ? res.list : []).map(item => {
           let mappedPixelData = [];
           try {
             mappedPixelData = item.mappedPixelData
@@ -90,7 +109,6 @@ Page({
           const hasMappedData = Array.isArray(mappedPixelData) && mappedPixelData.length > 0;
           const sourceType = this.getPatternSourceType(item);
 
-          // 调试日志
           if (isDraftSource) {
             console.log('草稿箱来源记录:', {
               id: item.id,
@@ -125,17 +143,35 @@ Page({
             hasCanvasCover: isDraftSource && hasMappedData,
           };
         });
-        this.setData({ patterns }, () => {
+
+        const patterns = reset ? newItems : [...this.data.patterns, ...newItems];
+
+        this.setData({
+          patterns,
+          page: this.data.page + 1,
+          hasMore: res.hasMore || false,
+          total: res.total || 0,
+          loading: false,
+          loadingMore: false
+        }, () => {
           this.applyFilter();
-          this.setData({ loading: false }, () => {
-            setTimeout(() => this.renderThumbnails(), 60);
-          });
+          setTimeout(() => this.renderThumbnails(), 60);
         });
       })
       .catch(() => {
         wx.showToast({ title: '加载失败', icon: 'none' });
-        this.setData({ loading: false });
+        this.setData({ loading: false, loadingMore: false });
       });
+  },
+
+  onReachBottom() {
+    if (this.data.keyword) return;
+    this.loadPatterns(false);
+  },
+
+  onPullDownRefresh() {
+    this.loadPatterns(true);
+    wx.stopPullDownRefresh();
   },
 
   onItemTap(e) {

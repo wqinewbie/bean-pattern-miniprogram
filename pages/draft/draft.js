@@ -6,6 +6,11 @@ const { generateDraftName } = require('../../utils/name-helper');
 Page({
   data: {
     loading: false,
+    loadingMore: false,
+    hasMore: true,
+    page: 1,
+    pageSize: 20,
+    total: 0,
     drafts: [],
     filteredDrafts: [],
     keyword: '',
@@ -31,7 +36,7 @@ Page({
 
   onShow() {
     this.calcNavTop();
-    this.loadDrafts();
+    this.loadDrafts(true);
   },
 
   calcNavTop() {
@@ -45,16 +50,31 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadDrafts().finally(() => {
+    this.loadDrafts(true).finally(() => {
       wx.stopPullDownRefresh();
     });
   },
 
-  loadDrafts() {
-    this.setData({ loading: true, drafts: [], filteredDrafts: [] });
-    return request.get('/draft/list')
-      .then((drafts) => {
-        const processedDrafts = (drafts || []).map((draft) => {
+  loadDrafts(reset = false) {
+    if (reset) {
+      this.setData({
+        page: 1,
+        drafts: [],
+        filteredDrafts: [],
+        hasMore: true,
+        loading: true
+      });
+    } else {
+      if (!this.data.hasMore || this.data.loadingMore) return;
+      this.setData({ loadingMore: true });
+    }
+
+    return request.get('/draft/list', {
+      page: this.data.page,
+      pageSize: this.data.pageSize
+    })
+      .then((res) => {
+        const newItems = (res.list || []).map((draft) => {
           let mappedPixelData = [];
           try {
             mappedPixelData = draft.mappedPixelData
@@ -83,17 +103,29 @@ Page({
             colorPalette,
           };
         });
-        this.setData({ drafts: processedDrafts }, () => {
+
+        const drafts = reset ? newItems : [...this.data.drafts, ...newItems];
+
+        this.setData({
+          drafts,
+          page: this.data.page + 1,
+          hasMore: res.hasMore || false,
+          total: res.total || 0,
+          loading: false,
+          loadingMore: false
+        }, () => {
           this.applyFilter();
-          this.setData({ loading: false }, () => {
-            // 延迟渲染，分批处理
-            setTimeout(() => this.renderVisibleThumbnails(), 150);
-          });
+          setTimeout(() => this.renderVisibleThumbnails(), 150);
         });
       })
       .catch(() => {
-        this.setData({ loading: false });
+        this.setData({ loading: false, loadingMore: false });
       });
+  },
+
+  onReachBottom() {
+    if (this.data.keyword) return;
+    this.loadDrafts(false);
   },
 
   // 渲染可见区域的缩略图（分批渲染，避免性能问题）

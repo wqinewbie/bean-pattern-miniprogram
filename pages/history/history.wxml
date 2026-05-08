@@ -89,6 +89,16 @@
       </view>
     </view>
 
+    <!-- 加载更多提示 -->
+    <view class="load-more" wx:if="{{!loading && filteredHistory.length > 0}}">
+      <view wx:if="{{loadingMore}}" class="loading-text">
+        <text>加载中...</text>
+      </view>
+      <view wx:elif="{{!hasMore}}" class="no-more">
+        <text>没有更多了</text>
+      </view>
+    </view>
+
     <view style="height: 48rpx;"></view>
   </scroll-view>
 </view>

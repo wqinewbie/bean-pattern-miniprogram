@@ -220,29 +220,77 @@
 
       <!-- 隐私政策 -->
       <view wx:if="{{subPage==='privacy'}}" class="privacy-page">
-        <view class="feedback-menu-card">
-          <view class="privacy-row privacy-row-link">
-            <view class="privacy-row-left">
-              <text class="privacy-row-title">隐私政策</text>
-              <text class="privacy-row-desc">查看我们如何保护你的创作与账号信息</text>
-            </view>
-            <text class="privacy-row-icon">›</text>
+        <view class="privacy-content">
+          <view class="privacy-section">
+            <text class="privacy-section-title">隐私政策</text>
+            <text class="privacy-update-time">更新日期：2026年5月9日</text>
           </view>
-          <view class="feedback-menu-divider"></view>
-          <view class="privacy-row">
-            <view class="privacy-row-left">
-              <text class="privacy-row-title">图片云端处理</text>
-              <text class="privacy-row-desc">开启后生图速度更快</text>
-            </view>
-            <switch class="privacy-switch" checked="{{cloudProcess}}" bindchange="onCloudProcessChange" color="#FF9800"/>
+
+          <view class="privacy-section">
+            <text class="privacy-subtitle">引言</text>
+            <text class="privacy-text">欢迎使用魔法拼豆小程序（以下简称"本小程序"）。我们非常重视您的隐私保护和个人信息安全。本隐私政策将帮助您了解我们如何收集、使用、存储和保护您的个人信息。</text>
           </view>
-          <view class="feedback-menu-divider"></view>
-          <view class="privacy-row privacy-row-danger" bindtap="onClearTrace">
-            <view class="privacy-row-left">
-              <text class="privacy-row-title danger">清除魔法痕迹</text>
-              <text class="privacy-row-desc danger">删除所有本地记录与图纸</text>
-            </view>
-            <text class="privacy-row-icon">🧹</text>
+
+          <view class="privacy-section">
+            <text class="privacy-subtitle">一、我们收集的信息</text>
+            <text class="privacy-text">为了向您提供更好的服务，我们可能会收集以下信息：</text>
+            <text class="privacy-text">1. 账号信息：包括您的微信昵称、头像、手机号码等基本信息</text>
+            <text class="privacy-text">2. 创作内容：您上传的图片、生成的拼豆图纸、草稿等创作数据</text>
+            <text class="privacy-text">3. 使用数据：您在使用本小程序时产生的操作记录、访问日志等</text>
+            <text class="privacy-text">4. 设备信息：设备型号、操作系统版本、网络状态等技术信息</text>
+          </view>
+
+          <view class="privacy-section">
+            <text class="privacy-subtitle">二、信息的使用</text>
+            <text class="privacy-text">我们收集的信息将用于以下目的：</text>
+            <text class="privacy-text">1. 为您提供图纸生成、编辑、保存等核心功能服务</text>
+            <text class="privacy-text">2. 改进和优化产品功能，提升用户体验</text>
+            <text class="privacy-text">3. 进行数据分析和统计，了解产品使用情况</text>
+            <text class="privacy-text">4. 保障账号安全，防止欺诈和滥用行为</text>
+            <text class="privacy-text">5. 向您推送重要通知和服务消息</text>
+          </view>
+
+          <view class="privacy-section">
+            <text class="privacy-subtitle">三、信息的存储与保护</text>
+            <text class="privacy-text">1. 您的个人信息将存储在安全的服务器中，我们采用行业标准的安全技术和管理措施保护您的数据</text>
+            <text class="privacy-text">2. 您的创作内容默认存储在云端，以便您在不同设备间同步访问</text>
+            <text class="privacy-text">3. 我们会定期备份数据，防止数据丢失</text>
+            <text class="privacy-text">4. 未经您的明确授权，我们不会向第三方分享、出售或披露您的个人信息</text>
+          </view>
+
+          <view class="privacy-section">
+            <text class="privacy-subtitle">四、您的权利</text>
+            <text class="privacy-text">您对自己的个人信息享有以下权利：</text>
+            <text class="privacy-text">1. 访问权：您可以随时查看和管理您的个人信息</text>
+            <text class="privacy-text">2. 更正权：您可以修改不准确或不完整的个人信息</text>
+            <text class="privacy-text">3. 删除权：您可以通过"清除魔法痕迹"功能删除本地存储的数据</text>
+            <text class="privacy-text">4. 撤回授权：您可以在小程序设置中撤回已授予的权限</text>
+          </view>
+
+          <view class="privacy-section">
+            <text class="privacy-subtitle">五、第三方服务</text>
+            <text class="privacy-text">本小程序可能使用第三方服务来提供部分功能（如AI图像生成、云存储等）。这些第三方服务提供商会按照其自身的隐私政策处理相关数据。我们会要求第三方服务商采取适当的安全措施保护您的信息。</text>
+          </view>
+
+          <view class="privacy-section">
+            <text class="privacy-subtitle">六、未成年人保护</text>
+            <text class="privacy-text">我们非常重视未成年人的个人信息保护。如果您是未成年人，请在监护人的陪同下阅读本政策，并在监护人同意后使用我们的服务。</text>
+          </view>
+
+          <view class="privacy-section">
+            <text class="privacy-subtitle">七、政策更新</text>
+            <text class="privacy-text">我们可能会不定期更新本隐私政策。更新后的政策将在小程序内公布，重大变更我们会通过显著方式通知您。继续使用本小程序即表示您同意更新后的隐私政策。</text>
+          </view>
+
+          <view class="privacy-section">
+            <text class="privacy-subtitle">八、联系我们</text>
+            <text class="privacy-text">如果您对本隐私政策有任何疑问、意见或建议，或需要行使您的个人信息权利，请通过以下方式联系我们：</text>
+            <text class="privacy-text">• 在小程序内通过"帮助中心"联系在线客服</text>
+            <text class="privacy-text">• 我们将在收到您的反馈后尽快处理并回复</text>
+          </view>
+
+          <view class="privacy-footer">
+            <text class="privacy-footer-text">感谢您信任并使用魔法拼豆！</text>
           </view>
         </view>
       </view>
@@ -294,8 +342,8 @@
     <view class="gift-list" wx:if="{{gifts.length > 0}}">
       <view wx:for="{{gifts}}" wx:key="id" class="gift-item">
         <view class="gift-info">
-          <text class="gift-title">{{item.title}}</text>
-          <text class="gift-subtitle">{{item.subtitle}}</text>
+          <text class="gift-title">{{item.giftName || item.title}}</text>
+          <text class="gift-subtitle">{{item.giftCategory || item.subtitle}}</text>
         </view>
         <view class="gift-use-btn" bindtap="onUseGift" data-gift="{{item}}">使用</view>
       </view>

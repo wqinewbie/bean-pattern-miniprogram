@@ -109,6 +109,7 @@ Page({
     this.loadProfile();
     this.loadLocalData();
     this.loadNotifications();
+    this.loadTasksFromServer();
   },
 
   onHide() {
@@ -156,6 +157,23 @@ Page({
     return count;
   },
 
+  calcPendingTaskCountFromServer(taskProgress) {
+    // 从服务器返回的任务进度计算待完成任务数
+    // taskProgress 是 UserTaskProgress 数组，包含 currentCount, targetCount, claimed 等字段
+    let count = 0;
+    if (Array.isArray(taskProgress)) {
+      taskProgress.forEach(progress => {
+        // 如果任务未完成或已完成但未领取奖励，计入待完成数
+        const isCompleted = progress.currentCount >= progress.targetCount;
+        const isClaimed = progress.claimed;
+        if (!isCompleted || (isCompleted && !isClaimed)) {
+          count++;
+        }
+      });
+    }
+    return count;
+  },
+
   getDraftCount() {
     const drafts = wx.getStorageSync('drafts') || wx.getStorageSync('draftPatterns') || [];
     return Array.isArray(drafts) ? drafts.length : 0;
@@ -168,27 +186,84 @@ Page({
     ];
   },
 
-  getDefaultGifts() {
-    return [
-      { id: 1, type: 'vip_coupon', title: '购会员卡优惠券', subtitle: '立减10元' },
-      { id: 2, type: 'vip_trial', title: '会员体验卡', subtitle: '3日至尊体验' },
-      { id: 3, type: 'redeem', title: 'AI魔法兑换券', subtitle: '可兑换3次AI魔法' },
-      { id: 4, type: 'card_coupon', title: '会员专享购次卡优惠券', subtitle: '立享8折' },
-    ];
+  loadTasksFromServer() {
+    const sessionId = wx.getStorageSync('sessionId');
+    if (!sessionId) return;
+
+    Promise.all([
+      request.get('/task/list'),
+      request.get('/task/progress')
+    ])
+      .then(([taskListData, taskProgress]) => {
+        const taskConfigs = (taskListData && taskListData.tasks) || [];
+        const progressMap = {};
+
+        // 构建进度映射
+        if (Array.isArray(taskProgress)) {
+          taskProgress.forEach(p => {
+            progressMap[p.taskCode] = p;
+          });
+        }
+
+        // 合并任务配置和进度
+        const tasks = taskConfigs.map(config => {
+          const progress = progressMap[config.taskCode] || {};
+          const isCompleted = progress.currentCount >= config.targetCount;
+          const isClaimed = progress.claimed;
+
+          return {
+            id: config.taskCode,
+            taskCode: config.taskCode,
+            name: config.taskName,
+            reward: config.rewardDesc || `奖励 ${config.rewardValue} 次 AI魔法`,
+            count: config.rewardValue,
+            done: isCompleted && isClaimed,
+            canClaim: isCompleted && !isClaimed,
+            actionText: isCompleted ? (isClaimed ? '已完成' : '领取奖励') : '去完成',
+            currentCount: progress.currentCount || 0,
+            targetCount: config.targetCount || 1,
+            progressId: progress.id
+          };
+        });
+
+        // 计算待完成任务数（未完成或已完成但未领取）
+        const pendingTaskCount = tasks.filter(t => !t.done).length;
+
+        this.setData({
+          tasks,
+          pendingTaskCount,
+          checkedIn: false // 打卡状态由任务系统管理
+        });
+      })
+      .catch(() => {
+        // 加载失败时使用本地数据
+        console.log('加载任务失败，使用本地数据');
+      });
   },
 
-  getDefaultNotifications() {
-    return [
-      { id: 'gift', title: '礼品包到账提醒', content: '你有新的会员体验卡可领取，记得及时使用。', time: '刚刚', read: false, type: 'gift' },
-      { id: 'magic', title: 'AI魔法次数提醒', content: '完成任务可以继续领取 AI 魔法次数。', time: '今天', read: false, type: 'magic' },
-      { id: 'system', title: '系统通知', content: '欢迎来到拼豆魔法世界，开始创作你的第一张图纸吧。', time: '昨天', read: true, type: 'system' },
-    ];
+  getDefaultGifts() {
+    return [];
   },
 
   loadNotifications() {
-    const notifications = wx.getStorageSync('notifications') || this.getDefaultNotifications();
-    const unreadCount = notifications.filter(item => !item.read).length;
-    this.setData({ notifications, unreadCount });
+    const sessionId = wx.getStorageSync('sessionId');
+    if (!sessionId) {
+      this.setData({ notifications: [], unreadCount: 0 });
+      return;
+    }
+
+    // 从后端获取通知列表
+    request.get('/notification/list', { limit: 50 })
+      .then(notifications => {
+        if (Array.isArray(notifications)) {
+          const unreadCount = notifications.filter(item => !item.read).length;
+          this.setData({ notifications, unreadCount });
+        }
+      })
+      .catch(err => {
+        console.error('加载通知失败:', err);
+        this.setData({ notifications: [], unreadCount: 0 });
+      });
   },
 
   loadHelpFaqs() {
@@ -214,9 +289,18 @@ Page({
   },
 
   markNotificationsRead() {
-    const notifications = (this.data.notifications || []).map(item => ({ ...item, read: true }));
-    wx.setStorageSync('notifications', notifications);
-    this.setData({ notifications, unreadCount: 0 });
+    const sessionId = wx.getStorageSync('sessionId');
+    if (!sessionId) return;
+
+    // 调用后端接口标记所有通知为已读
+    request.post('/notification/mark-all-read')
+      .then(() => {
+        const notifications = (this.data.notifications || []).map(item => ({ ...item, read: true }));
+        this.setData({ notifications, unreadCount: 0 });
+      })
+      .catch(err => {
+        console.error('标记已读失败:', err);
+      });
   },
 
   loadProfile() {
@@ -225,7 +309,7 @@ Page({
     const phone = wx.getStorageSync('phone') || '';
     const vipExpire = wx.getStorageSync('vipExpire') || '';
     const isVip = vipExpire && new Date(vipExpire) > new Date();
-    
+
     this.setData({
       userInfo: { nickName: nickName || DEFAULT_NICKNAME, avatarUrl },
       phone,
@@ -238,14 +322,20 @@ Page({
     this.setData({ loading: true });
     Promise.all([
       request.get('/user/profile'),
-      request.get('/user/stats')
+      request.get('/user/stats'),
+      request.get('/gift/available'),
+      request.get('/task/progress')
     ])
-      .then(([profile, stats]) => {
+      .then(([profile, stats, gifts, taskProgress]) => {
         if (profile && profile.nickName) {
           wx.setStorageSync('nickName', profile.nickName);
           wx.setStorageSync('avatarUrl', profile.avatarUrl || '');
           wx.setStorageSync('phone', profile.phone || '');
         }
+
+        // 计算待完成任务数
+        const pendingTaskCount = this.calcPendingTaskCountFromServer(taskProgress || []);
+
         this.setData({
           userInfo: {
             nickName: (profile && profile.nickName) || nickName || DEFAULT_NICKNAME,
@@ -253,7 +343,10 @@ Page({
           },
           stats: stats || EMPTY_STATS,
           phone: (profile && profile.phone) || phone || '',
-          isVip: (profile && profile.vipExpire && new Date(profile.vipExpire) > new Date()) || isVip,
+          isVip: (profile && profile.vipExpireAt && new Date(profile.vipExpireAt) > new Date()) || isVip,
+          magicCount: (profile && profile.aiQuota) || 0,
+          gifts: Array.isArray(gifts) ? gifts : [],
+          pendingTaskCount: pendingTaskCount,
           loading: false
         });
       })
@@ -319,26 +412,16 @@ Page({
     const gift = e.currentTarget.dataset.gift;
     if (!gift) return;
 
-    if (gift.type === 'vip_coupon' || gift.type === 'card_coupon') {
-      this.onCloseAllPanels();
-      this.navigateToVipTab(gift.type === 'vip_coupon' ? 'vip' : 'cards');
-    } else if (gift.type === 'vip_trial') {
-      wx.showModal({
-        title: '开通体验',
-        content: '立即开启3日至尊体验？',
-        success: (res) => {
-          if (res.confirm) {
-            this.activateVipTrial();
-            this.removeGift(gift.id);
-            wx.showToast({ title: '已发放权益', icon: 'success' });
-          }
-        }
+    // 调用后端接口使用礼品
+    request.post('/gift/use', { giftId: gift.id })
+      .then(() => {
+        wx.showToast({ title: '使用成功', icon: 'success' });
+        // 重新加载礼品列表和用户信息
+        this.loadProfile();
+      })
+      .catch((err) => {
+        wx.showToast({ title: err.message || '使用失败', icon: 'none' });
       });
-    } else if (gift.type === 'redeem') {
-      this.addMagicCount(3);
-      this.removeGift(gift.id);
-      wx.showToast({ title: '已发放权益', icon: 'success' });
-    }
   },
 
   activateVipTrial() {
@@ -356,30 +439,68 @@ Page({
 
   // ─── 任务中心操作 ───
   onCheckIn() {
-    const checkedIn = true;
-    const pendingTaskCount = this.calcPendingTaskCount(checkedIn, this.data.tasks);
-    this.setData({ checkedIn, pendingTaskCount });
-    wx.setStorageSync('checkedIn', true);
-    this.addMagicCount(3);
-    wx.showToast({ title: '打卡成功！获得 3次 AI魔法', icon: 'success' });
+    // 调用后端接口完成打卡任务
+    request.post('/task/complete', { taskCode: 'daily_checkin' })
+      .then(() => {
+        wx.showToast({ title: '打卡成功！', icon: 'success' });
+        // 重新加载任务进度和用户信息
+        this.loadProfile();
+        this.loadTasksFromServer();
+      })
+      .catch((err) => {
+        wx.showToast({ title: err.message || '打卡失败', icon: 'none' });
+      });
   },
 
   onDoTask(e) {
     const task = e.currentTarget.dataset.task;
     if (!task) return;
 
-    // 模拟完成任务
-    const tasks = this.data.tasks.map(t => {
-      if (t.id === task.id) {
-        return { ...t, done: true };
-      }
-      return t;
-    });
-    const pendingTaskCount = this.calcPendingTaskCount(this.data.checkedIn, tasks);
-    wx.setStorageSync('tasks', tasks);
-    this.setData({ tasks, pendingTaskCount });
-    this.addMagicCount(task.count);
-    wx.showToast({ title: `完成任务，获得 ${task.count} 次 AI魔法！`, icon: 'success' });
+    // 如果任务已完成但未领取，调用领取奖励接口
+    if (task.canClaim && task.progressId) {
+      request.post('/task/claim', { progressId: task.progressId })
+        .then(() => {
+          wx.showToast({ title: '领取成功！', icon: 'success' });
+          this.loadProfile();
+          this.loadTasksFromServer();
+        })
+        .catch((err) => {
+          wx.showToast({ title: err.message || '领取失败', icon: 'none' });
+        });
+      return;
+    }
+
+    // 根据任务类型执行不同操作
+    if (task.taskCode === 'daily_share') {
+      // 触发分享
+      wx.showShareMenu({
+        withShareTicket: true,
+        success: () => {
+          // 分享成功后调用完成接口
+          request.post('/task/complete', { taskCode: 'daily_share' })
+            .then(() => {
+              wx.showToast({ title: '分享成功！', icon: 'success' });
+              this.loadProfile();
+              this.loadTasksFromServer();
+            })
+            .catch(() => {});
+        }
+      });
+    } else if (task.taskCode === 'invite_friend') {
+      // 邀请好友逻辑
+      wx.showToast({ title: '邀请功能开发中', icon: 'none' });
+    } else {
+      // 其他任务
+      request.post('/task/complete', { taskCode: task.taskCode })
+        .then(() => {
+          wx.showToast({ title: '任务完成！', icon: 'success' });
+          this.loadProfile();
+          this.loadTasksFromServer();
+        })
+        .catch((err) => {
+          wx.showToast({ title: err.message || '操作失败', icon: 'none' });
+        });
+    }
   },
 
   addMagicCount(count) {
