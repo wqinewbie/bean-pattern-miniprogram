@@ -306,6 +306,13 @@
   z-index: 2;
 }
 
+.magic-style-icon-img {
+  width: 80rpx;
+  height: 80rpx;
+  position: relative;
+  z-index: 2;
+}
+
 .magic-style-tag {
   position: absolute;
   bottom: 0;

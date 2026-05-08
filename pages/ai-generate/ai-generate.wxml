@@ -65,7 +65,8 @@
             class="magic-style-item {{selectedStyle===item.name?'magic-style-item--active':''}}"
             bindtap="onStyleTap" data-style="{{item.name}}">
             <view class="magic-style-icon-box">
-              <text class="magic-style-icon">{{item.icon}}</text>
+              <image wx:if="{{item.icon}}" class="magic-style-icon-img" src="{{item.icon}}" mode="aspectFit" />
+              <text wx:else class="magic-style-icon">✨</text>
               <view class="magic-style-tag">{{item.tag}}</view>
             </view>
             <text class="magic-style-name">{{item.name}}</text>

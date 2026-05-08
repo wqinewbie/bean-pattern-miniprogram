@@ -16,19 +16,9 @@ Page({
     aiInstruction: '',
     isGenerating: false,
 
-    // 魔法风格
-    magicStyles: [
-      { name: '人物特化', icon: '👤', category: '题材', tag: '适用人物' },
-      { name: '宠物毛发', icon: '🐱', category: '题材', tag: '适用宠物' },
-      { name: '风景写意', icon: '🏞️', category: '题材', tag: '适用风景' },
-      { name: '卡通二次元', icon: '🎨', category: '题材', tag: '适用二次元' },
-      { name: '细节保留', icon: '✨', category: '用途', tag: '通用' },
-      { name: '特征提取', icon: '🎯', category: '用途', tag: '抓重点' },
-      { name: '大头照', icon: '🖼️', category: '用途', tag: '无身体' },
-      { name: '飞天小女警', icon: '💫', category: '高阶', tag: '画风融入' },
-      { name: '迪士尼风', icon: '🏰', category: '高阶', tag: '画风融入' },
-    ],
-    selectedStyle: '人物特化',
+    // 魔法风格（从后台获取）
+    magicStyles: [],
+    selectedStyle: '',
 
     // 图纸参数
     sizeMode: 'default',
@@ -66,6 +56,7 @@ Page({
     const scrollHeight = Math.max(windowHeight - sbh - tabBarH, 300);
     this.setData({ statusBarHeight: sbh, scrollHeight });
     this.loadBrandsFromServer();
+    this.loadMagicStyles();
   },
 
   onShow() {
@@ -93,6 +84,29 @@ Page({
         brandIndex: 0,
         colorSets: ['全部色号', '24色', '48色', '72色', '96色'],
         colorSetIndex: 0
+      });
+    });
+  },
+
+  /**
+   * 加载魔法风格列表
+   */
+  loadMagicStyles() {
+    request.get('/ai/magic-styles').then((data) => {
+      if (data && Array.isArray(data) && data.length > 0) {
+        this.setData({
+          magicStyles: data,
+          selectedStyle: data[0].name
+        });
+      }
+    }).catch((err) => {
+      console.error('加载魔法风格失败', err);
+      // 使用默认风格（兜底）
+      this.setData({
+        magicStyles: [
+          { name: '人物特化', icon: null, category: '题材', tag: '适用人物' }
+        ],
+        selectedStyle: '人物特化'
       });
     });
   },
