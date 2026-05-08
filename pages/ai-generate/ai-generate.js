@@ -104,7 +104,7 @@ Page({
       // 使用默认风格（兜底）
       this.setData({
         magicStyles: [
-          { name: '人物特化', icon: null, category: '题材', tag: '适用人物' }
+          { name: '人物特化', icon: null, tag: '适用人物' }
         ],
         selectedStyle: '人物特化'
       });
