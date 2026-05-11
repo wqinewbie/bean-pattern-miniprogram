@@ -146,15 +146,21 @@ Page({
 
         const patterns = reset ? newItems : [...this.data.patterns, ...newItems];
 
+        // 立即计算 filteredPatterns，避免显示空状态闪烁
+        const kw = (this.data.keyword || '').trim().toLowerCase();
+        const filteredPatterns = kw
+          ? patterns.filter(p => (p.name || '').toLowerCase().includes(kw))
+          : [...patterns];
+
         this.setData({
           patterns,
+          filteredPatterns,
           page: this.data.page + 1,
           hasMore: res.hasMore || false,
           total: res.total || 0,
           loading: false,
           loadingMore: false
         }, () => {
-          this.applyFilter();
           setTimeout(() => this.renderThumbnails(), 60);
         });
       })

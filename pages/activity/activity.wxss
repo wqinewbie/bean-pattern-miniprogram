@@ -1,0 +1,258 @@
+/* 活动详情页样式 */
+.activity-page {
+  min-height: 100vh;
+  background: #FFF9ED;
+  padding-bottom: 120rpx;
+}
+
+/* 顶部导航栏 */
+.nav-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 88rpx;
+  background: #FFEBB5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32rpx;
+  z-index: 100;
+  border-bottom: 2rpx solid #FFD54F;
+}
+
+.nav-back {
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-back {
+  font-size: 48rpx;
+  color: #5D4037;
+  font-weight: bold;
+}
+
+.nav-title {
+  flex: 1;
+  text-align: center;
+  font-size: 32rpx;
+  font-weight: 800;
+  color: #5D4037;
+}
+
+.nav-placeholder {
+  width: 72rpx;
+}
+
+/* 加载中 */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 200rpx 0;
+}
+
+.loading-spinner {
+  width: 80rpx;
+  height: 80rpx;
+  border: 6rpx solid #FFD54F;
+  border-top-color: #FF9800;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  margin-top: 32rpx;
+  font-size: 28rpx;
+  color: #8C6B4B;
+}
+
+/* 错误提示 */
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 200rpx 0;
+}
+
+.error-icon {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 50%;
+  background: #FFE0E0;
+  color: #FF6B6B;
+  font-size: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 32rpx;
+}
+
+.error-text {
+  font-size: 28rpx;
+  color: #8C6B4B;
+  margin-bottom: 48rpx;
+}
+
+.retry-button {
+  background: #FF9800;
+  color: white;
+  font-size: 28rpx;
+  font-weight: 800;
+  padding: 24rpx 64rpx;
+  border-radius: 48rpx;
+  border: none;
+}
+
+/* 活动内容 */
+.activity-content {
+  padding-top: 132rpx;
+}
+
+.cover-image {
+  width: 100%;
+  height: 400rpx;
+  display: block;
+}
+
+.activity-header {
+  padding: 32rpx;
+  background: white;
+  border-bottom: 2rpx solid #FFEBB5;
+}
+
+.activity-title {
+  font-size: 40rpx;
+  font-weight: 800;
+  color: #5D4037;
+  display: block;
+  margin-bottom: 16rpx;
+}
+
+.quota-info {
+  display: flex;
+  align-items: center;
+  padding: 16rpx 24rpx;
+  background: linear-gradient(135deg, #FFF9ED 0%, #FFEBB5 100%);
+  border-radius: 16rpx;
+  border: 2rpx solid #FFD54F;
+}
+
+.quota-text {
+  font-size: 24rpx;
+  color: #8C6B4B;
+  font-weight: 600;
+}
+
+.quota-number {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: #FF9800;
+}
+
+/* 富文本内容 */
+.rich-content {
+  padding: 32rpx;
+  background: white;
+  min-height: 400rpx;
+}
+
+.rich-content p {
+  margin: 16rpx 0;
+  line-height: 1.8;
+  color: #5D4037;
+  font-size: 28rpx;
+}
+
+.rich-content h1,
+.rich-content h2,
+.rich-content h3 {
+  margin: 24rpx 0 16rpx;
+  font-weight: 800;
+  color: #5D4037;
+}
+
+.rich-content h1 {
+  font-size: 40rpx;
+}
+
+.rich-content h2 {
+  font-size: 36rpx;
+}
+
+.rich-content h3 {
+  font-size: 32rpx;
+}
+
+.rich-content ul,
+.rich-content ol {
+  padding-left: 40rpx;
+  margin: 16rpx 0;
+}
+
+.rich-content li {
+  margin: 8rpx 0;
+  line-height: 1.8;
+  color: #5D4037;
+  font-size: 28rpx;
+}
+
+.rich-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 24rpx 0;
+  border-radius: 16rpx;
+}
+
+/* 底部操作栏 */
+.action-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24rpx 32rpx;
+  background: white;
+  border-top: 2rpx solid #FFEBB5;
+  box-shadow: 0 -4rpx 16rpx rgba(0, 0, 0, 0.05);
+}
+
+.action-button {
+  width: 100%;
+  height: 96rpx;
+  border-radius: 48rpx;
+  font-size: 32rpx;
+  font-weight: 800;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-button.active {
+  background: linear-gradient(135deg, #FF9800 0%, #FF6B00 100%);
+  color: white;
+  box-shadow: 0 8rpx 24rpx rgba(255, 152, 0, 0.4);
+}
+
+.action-button.active::after {
+  border: none;
+}
+
+.action-button.disabled {
+  background: #E0E0E0;
+  color: #9E9E9E;
+}
+
+.action-button.disabled::after {
+  border: none;
+}

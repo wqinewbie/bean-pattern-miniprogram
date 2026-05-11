@@ -106,15 +106,21 @@ Page({
 
         const drafts = reset ? newItems : [...this.data.drafts, ...newItems];
 
+        // 立即计算 filteredDrafts，避免显示空状态闪烁
+        const kw = (this.data.keyword || '').trim().toLowerCase();
+        const filteredDrafts = kw
+          ? drafts.filter(d => (d.name || '').toLowerCase().includes(kw))
+          : [...drafts];
+
         this.setData({
           drafts,
+          filteredDrafts,
           page: this.data.page + 1,
           hasMore: res.hasMore || false,
           total: res.total || 0,
           loading: false,
           loadingMore: false
         }, () => {
-          this.applyFilter();
           setTimeout(() => this.renderVisibleThumbnails(), 150);
         });
       })

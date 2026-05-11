@@ -132,14 +132,14 @@
     </view>
   </view>
 
-  <!-- 临时高分辨率保存用 Canvas（隐藏） -->
-  <canvas canvas-id="tempSaveCanvas" style="position:fixed;left:-9999px;top:-9999px;width:2048px;height:2048px" />
+  <!-- 临时高分辨率保存用 Canvas（隐藏） - Canvas 2D -->
+  <canvas type="2d" id="tempSaveCanvas" style="position:fixed;left:-9999px;top:-9999px;width:2048px;height:2048px" />
   <!-- 色号图 2D 导出专用 Canvas（隐藏） -->
   <bead-canvas2d id="patternExport2dComp" canvasId="patternExport2d" width="2048" height="2048" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
   <!-- 效果图 2D 导出专用 Canvas（隐藏） -->
   <bead-canvas2d id="resultExport2dComp" canvasId="resultExport2d" width="2048" height="2048" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
-  <!-- 原图镜像预览专用 Canvas（隐藏） -->
-  <canvas canvas-id="mirrorPreviewCanvas" style="position:fixed;left:-9999px;top:-9999px;width:2048px;height:2048px" />
+  <!-- 原图镜像预览专用 Canvas（隐藏） - Canvas 2D -->
+  <canvas type="2d" id="mirrorPreviewCanvas" style="position:fixed;left:-9999px;top:-9999px;width:2048px;height:2048px" />
 
   <!-- 命名弹框 -->
   <view wx:if="{{showNameModal}}" class="name-mask" bindtap="onCloseNameModal"></view>
@@ -185,9 +185,9 @@
     </view>
   </view>
 
-  <!-- 隐藏的生成流程 Canvas -->
-  <canvas canvas-id="bead-mirror-canvas" style="width:640px;height:640px;position:fixed;left:-9999px;top:-9999px;"></canvas>
-  <canvas canvas-id="bead-sample-canvas" style="width:512px;height:512px;position:fixed;left:-9999px;top:-9999px;"></canvas>
+  <!-- 隐藏的生成流程 Canvas - Canvas 2D -->
+  <canvas type="2d" id="beadMirrorCanvas" style="width:640px;height:640px;position:fixed;left:-9999px;top:-9999px;"></canvas>
+  <canvas type="2d" id="beadSampleCanvas" style="width:512px;height:512px;position:fixed;left:-9999px;top:-9999px;"></canvas>
 
   <!-- 结果页内置生成遮罩 -->
   <view wx:if="{{showGeneratingOverlay}}" class="generating-overlay">

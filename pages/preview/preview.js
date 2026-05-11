@@ -275,10 +275,23 @@ Page({
   },
 
   handleToggleEditMode() {
-    const { mappedPixelData, currentSize, brandName, colorCount } = this.data;
+    const { mappedPixelData, gridData, colorPalette, currentSize, brandName, colorCount } = this.data;
     if (!mappedPixelData || !mappedPixelData.length) { wx.showToast({ title: '暂无可编辑图纸', icon: 'none' }); return; }
+
+    // 确保 gridData 和 colorPalette 存在
+    if (!gridData || !gridData.length || !colorPalette || !colorPalette.length) {
+      wx.showToast({ title: '图纸数据不完整', icon: 'none' });
+      return;
+    }
+
     const storageKey = 'draw_edit_' + Date.now();
-    wx.setStorageSync(storageKey, { gridSize: currentSize, mappedPixelData, brand: brandName || 'MARD', colorCount: colorCount || 0 });
+    wx.setStorageSync(storageKey, {
+      gridSize: currentSize,
+      gridData,
+      colorPalette,
+      brand: brandName || 'MARD',
+      colorCount: colorCount || 0
+    });
     wx.navigateTo({ url: '/pages/draw/draw?source=result&storageKey=' + storageKey });
   },
 

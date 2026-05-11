@@ -7,7 +7,7 @@ Page({
     history: [],
     filteredHistory: [],
     keyword: '',
-    loading: false,
+    loading: true,
     loadingMore: false,
     hasMore: true,
     page: 1,
@@ -84,15 +84,20 @@ Page({
 
           const history = reset ? newItems : [...this.data.history, ...newItems];
 
+          // 立即计算 filteredHistory，避免显示空状态闪烁
+          const kw = (this.data.keyword || '').trim().toLowerCase();
+          const filteredHistory = kw
+            ? history.filter(h => (h.name || '').toLowerCase().includes(kw))
+            : [...history];
+
           this.setData({
             history,
+            filteredHistory,
             page: this.data.page + 1,
             hasMore: res.hasMore || false,
             total: res.total || 0,
             loading: false,
             loadingMore: false
-          }, () => {
-            this.applyFilter();
           });
         })
         .catch(() => {

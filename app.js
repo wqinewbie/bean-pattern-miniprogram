@@ -2,6 +2,17 @@ const request = require('./utils/request');
 
 App({
   globalData: {
+    appName: '拼豆精灵',
+    watermarkConfig: {
+      enabled: true,
+      text: '拼豆精灵',
+      fontSize: 36,
+      color: 'rgba(100,100,100,0.15)',
+      angle: -30,
+      spacingXRatio: 0.22,
+      spacingYRatio: 0.18
+    },
+    watermarkConfigLoaded: false, // 标记是否已加载水印配置
     prefetch: {
       profile: null,
       stats: null,
@@ -21,6 +32,7 @@ App({
     this.preloadTabPages();
     if (sessionId) {
       this.prefetchProfileData();
+      this.fetchWatermarkConfig();
     }
   },
 
@@ -99,6 +111,40 @@ App({
   silentLogin() {
     this.ensureSession().catch(() => {
       console.warn('silentLogin failed');
+    });
+  },
+
+  // 获取水印配置（包含用户个人配置）
+  fetchWatermarkConfig() {
+    request.get('/watermark/user-config')
+      .then((config) => {
+        this.updateWatermarkConfig(config);
+      })
+      .catch((err) => {
+        console.warn('[app] 获取水印配置失败', err);
+      });
+  },
+
+  // 更新水印配置到 globalData
+  updateWatermarkConfig(config) {
+    if (!config) return;
+
+    this.globalData.appName = config.appName || this.globalData.appName;
+    this.globalData.watermarkConfig = {
+      enabled: config.watermark?.enabled ?? true,
+      text: config.watermark?.text || config.appName || this.globalData.appName,
+      fontSize: config.watermark?.fontSize || 36,
+      color: config.watermark?.color || 'rgba(100,100,100,0.15)',
+      angle: config.watermark?.angle || -30,
+      spacingXRatio: config.watermark?.spacingXRatio || 0.22,
+      spacingYRatio: config.watermark?.spacingYRatio || 0.18
+    };
+    this.globalData.watermarkConfigLoaded = true;
+
+    console.log('[app] 水印配置已更新', {
+      appName: this.globalData.appName,
+      watermarkEnabled: this.globalData.watermarkConfig.enabled,
+      watermarkText: this.globalData.watermarkConfig.text
     });
   }
 });

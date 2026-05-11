@@ -158,7 +158,7 @@
       <text class="orders-footnote">仅展示近半年的订单记录</text>
     </view>
 
-    <view style="height:180rpx"></view>
+    <view style="height:200rpx"></view>
   </scroll-view>
 
   <!-- 底部操作栏（会员卡和次卡 Tab） -->

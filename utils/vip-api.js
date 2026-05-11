@@ -4,6 +4,17 @@ const request = require('./request');
  * 会员系统 API 封装
  */
 
+// 构建查询字符串的辅助函数（替代 URLSearchParams）
+function buildQueryString(params) {
+  if (!params || Object.keys(params).length === 0) {
+    return '';
+  }
+  return Object.keys(params)
+    .filter(key => params[key] !== undefined && params[key] !== null)
+    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
+    .join('&');
+}
+
 // ==================== 套餐查询 ====================
 
 /**
@@ -24,7 +35,7 @@ function getCardPackages() {
  * 获取权益对比表
  */
 function getPrivileges() {
-  return request.get('/privileges');
+  return request.get('/vip/privileges');
 }
 
 // ==================== 会员相关 ====================
@@ -71,7 +82,7 @@ function purchaseCard(packageCode) {
  * @param {number} params.pageSize - 每页数量（可选，默认20）
  */
 function getOrderList(params = {}) {
-  const query = new URLSearchParams(params).toString();
+  const query = buildQueryString(params);
   return request.get(`/orders/list${query ? '?' + query : ''}`);
 }
 
@@ -134,7 +145,7 @@ function useAiQuota(bizType, bizId) {
  * @param {number} params.pageSize - 每页数量（可选，默认20）
  */
 function getAiQuotaLogs(params = {}) {
-  const query = new URLSearchParams(params).toString();
+  const query = buildQueryString(params);
   return request.get(`/ai-count/logs${query ? '?' + query : ''}`);
 }
 
@@ -147,7 +158,7 @@ function getAiQuotaLogs(params = {}) {
  * @param {number} params.pageSize - 每页数量（可选，默认20）
  */
 function getNotifications(params = {}) {
-  const query = new URLSearchParams(params).toString();
+  const query = buildQueryString(params);
   return request.get(`/notifications/list${query ? '?' + query : ''}`);
 }
 
@@ -246,7 +257,7 @@ function getTaskLogs() {
  * @param {string} params.status - 状态：UNUSED/USED/EXPIRED（可选）
  */
 function getMyGifts(params = {}) {
-  const query = new URLSearchParams(params).toString();
+  const query = buildQueryString(params);
   return request.get(`/gift/my-gifts${query ? '?' + query : ''}`);
 }
 

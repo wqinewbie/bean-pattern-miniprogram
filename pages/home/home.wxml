@@ -136,11 +136,6 @@
   <!-- 全局弹窗 -->
   <global-popup id="globalPopup" config="{{currentPopup}}" bind:confirm="onPopupConfirm" bind:close="onPopupClose"/>
 
-  <!-- 离屏 Canvas -->
-  <canvas canvas-id="bead-sample-canvas" style="position:fixed;left:-9999px;top:0;width:512px;height:512px;"/>
-  <canvas canvas-id="bead-result-canvas" style="position:fixed;left:-9999px;top:0;width:2048px;height:2048px;"/>
-  <canvas canvas-id="bead-pattern-canvas" style="position:fixed;left:-9999px;top:0;width:2048px;height:2048px;"/>
-
   <!-- 加载蒙层 -->
   <view wx:if="{{loading}}" class="loading-mask">
     <view class="loading-box">

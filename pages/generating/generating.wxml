@@ -1,38 +1,61 @@
 <view class="container">
 
-  <!-- 隐藏的 Canvas 用于像素级镜像处理 -->
-  <canvas canvas-id="bead-mirror-canvas" style="width:640px;height:640px;position:fixed;left:-9999px;top:-9999px;"></canvas>
-  <!-- 隐藏的 Canvas 用于采样 -->
-  <canvas canvas-id="bead-sample-canvas" style="width:512px;height:512px;position:fixed;left:-9999px;top:-9999px;"></canvas>
-  <!-- 隐藏的 Canvas 用于渲染（600px 高分辨率以显示色号） -->
-  <canvas canvas-id="patternCanvas" style="width:600px;height:600px;position:fixed;left:-9999px;top:-9999px;"></canvas>
-  <canvas canvas-id="resultCanvas" style="width:600px;height:600px;position:fixed;left:-9999px;top:-9999px;"></canvas>
+  <!-- 背景装饰 -->
+  <view class="bg-decoration bg-glow-1"></view>
+  <view class="bg-decoration bg-glow-2"></view>
 
   <view wx:if="{{!isTimeout}}" class="main">
-    <view class="anim-wrap">
-      <view class="ring ring1"></view>
-      <view class="ring ring2"></view>
-      <view class="center-box">
-        <view class="spinner"></view>
+    <!-- 魔法阵动画 -->
+    <view class="magic-circle">
+      <view class="magic-ring magic-ring-1"></view>
+      <view class="magic-ring magic-ring-2"></view>
+      <view class="magic-ring magic-ring-3"></view>
+
+      <view class="magic-center">
+        <text class="magic-icon">✨</text>
       </view>
+
+      <!-- 周围闪烁的星星 -->
+      <text class="sparkle sparkle-1">✦</text>
+      <text class="sparkle sparkle-2">✦</text>
+      <text class="sparkle sparkle-3">✦</text>
     </view>
-    <text class="title">{{loadingText}}</text>
-    <text class="sub">请稍候，马上就好...</text>
+
+    <text class="title">魔法阵列启动中...</text>
+
+    <view class="status-badge">
+      <view class="spinner-small"></view>
+      <text class="status-text">正在注入魔法能量</text>
+    </view>
+
+    <text class="sub">AI正在为您精心绘制像素图纸\n请耐心等待，见证奇迹时刻✨</text>
   </view>
 
   <view wx:else class="main">
-    <view class="anim-wrap">
-      <view class="ring ring1"></view>
-      <view class="ring ring2"></view>
-      <view class="center-box">
-        <view class="spinner"></view>
+    <!-- 魔法阵动画 -->
+    <view class="magic-circle">
+      <view class="magic-ring magic-ring-1"></view>
+      <view class="magic-ring magic-ring-2"></view>
+      <view class="magic-ring magic-ring-3"></view>
+
+      <view class="magic-center">
+        <text class="magic-icon">✨</text>
       </view>
+
+      <text class="sparkle sparkle-1">✦</text>
+      <text class="sparkle sparkle-2">✦</text>
+      <text class="sparkle sparkle-3">✦</text>
     </view>
-    <text class="title">仍在生成中</text>
-    <text class="sub">图片较为复杂，可稍后在「我的图纸」查看</text>
+
+    <text class="title">魔法仍在凝结</text>
+    <text class="sub">图片细节较为丰富，魔法师正在全力施法。\n您可先去别处逛逛，稍后在时光机查看生成结果。</text>
+
     <view class="btn-row">
-      <view class="btn-outline" bindtap="onGoMyPatterns">去我的图纸</view>
-      <view class="btn-primary" bindtap="onKeepWaiting">继续等待</view>
+      <view class="btn-outline" bindtap="onKeepWaiting">继续守护</view>
+      <view class="btn-primary" bindtap="onGoHistory">
+        <text class="btn-icon">✨</text>
+        <text>去时光机</text>
+      </view>
     </view>
   </view>
 

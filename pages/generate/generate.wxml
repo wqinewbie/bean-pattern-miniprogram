@@ -166,7 +166,7 @@
   </view>
 
   <!-- 离屏 Canvas -->
-  <canvas canvas-id="gen-crop-canvas" class="offscreen-canvas" style="width:640px;height:640px;"/>
+  <canvas type="2d" id="genCropCanvas" class="offscreen-canvas" style="width:640px;height:640px;"/>
 
   <!-- 加载蒙层 -->
   <view wx:if="{{loading}}" class="loading-mask">

@@ -1,7 +1,7 @@
 <view class="container">
   <view class="status-bar" style="height:{{statusBarHeight}}px"></view>
 
-  <scroll-view scroll-y style="height:{{scrollHeight}}px" class="scroll-body">
+  <scroll-view scroll-y style="height:{{scrollHeight}}px" class="scroll-body" scroll-top="{{scrollTop}}" scroll-with-animation="{{true}}">
     <!-- 标题区 -->
     <view class="header">
       <view class="header-icon-card">
@@ -15,10 +15,6 @@
 
     <!-- 图片上传卡片 -->
     <view class="upload-section">
-      <view class="zoom-hint">
-        <text class="zoom-hint-icon">✦</text>
-        <text>支持双指缩放调整图片</text>
-      </view>
       <view class="upload-card" bindtap="onChooseImage">
         <view wx:if="{{uploadedImage}}" class="preview-interact" catchtouchstart="onPreviewTouchStart" catchtouchmove="onPreviewTouchMove" catchtouchend="onPreviewTouchEnd" catchtouchcancel="onPreviewTouchEnd">
           <view class="preview-image-layer" style="left:{{previewLeft}}px;top:{{previewTop}}px;width:{{previewBaseW}}px;height:{{previewBaseH}}px;transform:translate3d({{previewX}}px,{{previewY}}px,0) scale({{previewScale}});">
@@ -46,7 +42,7 @@
     <view class="ai-instruction-card">
       <textarea
         class="ai-instruction-input"
-        placeholder="AI指令（可选）例如：去除背景、修改帽子颜色..."
+        placeholder="AI指令（可选）例如：去除背景..."
         value="{{aiInstruction}}"
         bindinput="onAiInstructionInput"
         maxlength="100"
@@ -124,8 +120,66 @@
       </view>
     </view>
 
-    <view style="height: 200rpx;"></view>
+    <view style="height: 40rpx;"></view>
   </scroll-view>
+
+  <!-- 图片调整浮层 -->
+  <view wx:if="{{showAdjustModal}}" class="adjust-modal">
+    <!-- 状态栏占位 -->
+    <view class="adjust-status-bar" style="height:{{statusBarHeight}}px"></view>
+
+    <!-- 顶部导航栏（与胶囊按钮对齐） -->
+    <view class="adjust-header" style="height:40px">
+      <view class="adjust-back-btn" bindtap="onCancelAdjust">
+        <image class="header-icon" src="/assets/icons/lucide-arrow-left-brown.svg" mode="aspectFit"/>
+      </view>
+      <text class="adjust-title">照片尺寸调整</text>
+      <view class="adjust-placeholder"></view>
+    </view>
+
+    <!-- 中间调整区域 -->
+    <view class="adjust-body">
+      <view class="adjust-hint">
+        <text class="adjust-hint-icon">✦</text>
+        <text class="adjust-hint-text">双指缩放、拖动以调整主体位置</text>
+      </view>
+      
+      <view class="adjust-preview-box">
+        <!-- 预览区域 -->
+        <view class="adjust-preview-area"
+          catchtouchstart="onAdjustTouchStart"
+          catchtouchmove="onAdjustTouchMove"
+          catchtouchend="onAdjustTouchEnd">
+          <view class="adjust-image-layer"
+            style="width:{{adjustBaseW}}px;height:{{adjustBaseH}}px;left:{{adjustLeft}}px;top:{{adjustTop}}px;transform:translate3d({{adjustX}}px,{{adjustY}}px,0) scale({{adjustScale}});">
+            <image class="adjust-image" src="{{tempImage}}" mode="scaleToFill"/>
+          </view>
+        </view>
+
+        <!-- 九宫格辅助线 -->
+        <view class="adjust-grid-overlay">
+          <view class="adjust-grid-line adjust-grid-h" style="top:33.3%"></view>
+          <view class="adjust-grid-line adjust-grid-h" style="top:66.6%"></view>
+          <view class="adjust-grid-line adjust-grid-v" style="left:33.3%"></view>
+          <view class="adjust-grid-line adjust-grid-v" style="left:66.6%"></view>
+        </view>
+      </view>
+
+      <!-- 底部占位，平衡布局 -->
+      <view class="adjust-spacer"></view>
+    </view>
+
+    <!-- 底部固定按钮区（在tabbar上方） -->
+    <view class="adjust-footer-fixed">
+      <view class="adjust-confirm-btn" bindtap="onConfirmAdjust">
+        <text class="adjust-confirm-icon">✓</text>
+        <text>完成调整</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 隐藏的Canvas用于裁剪 -->
+  <canvas type="2d" id="cropCanvas" style="width:{{previewBoxPx}}px;height:{{previewBoxPx}}px;position:fixed;left:-9999px;top:-9999px;"></canvas>
 
   <!-- 品牌底部弹窗 -->
   <view wx:if="{{showBrandSheet}}" class="sheet-mask" bindtap="onHideBrandSheet"></view>
@@ -159,17 +213,15 @@
 
   <!-- 底部固定按钮区 -->
   <view class="bottom-action" wx:if="{{!showBrandSheet && !showColorSheet}}">
-    <view class="generate-btn {{(!uploadedImage||isGenerating)?'generate-btn--disabled':''}}" bindtap="onGenerate">
-      <view wx:if="{{isGenerating}}" class="btn-loading">
-        <view class="spinner"></view>
-        <text>施法中...</text>
-      </view>
-      <view wx:else class="btn-content">
-        <text class="btn-icon">✨</text>
-        <text>立即施展魔法</text>
+    <view class="generate-btn {{!uploadedImage?'generate-btn--disabled':''}}" bindtap="onGenerate">
+      <view class="btn-content">
+        <view class="btn-main">
+          <text class="btn-icon">✨</text>
+          <text>立即施展魔法</text>
+        </view>
+        <text class="btn-sub">剩余魔法 {{magicCount}} 次</text>
       </view>
     </view>
-    <text class="btn-sub">剩余魔法 {{magicCount}} 次</text>
     <view class="ad-btn">
       <text class="ad-icon">📹</text>
       <text>看广告领取免费魔法次数</text>

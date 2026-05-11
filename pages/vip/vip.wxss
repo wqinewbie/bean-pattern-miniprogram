@@ -1,10 +1,11 @@
 /* vip.wxss - VIP页面样式 */
 
 .vip-page {
-  min-height: 100vh;
+  height: 100vh;
   background: #1C1A1A;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* ─── 导航栏 ─── */
@@ -56,6 +57,7 @@
 .scroll-body {
   flex: 1;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tab-content {
@@ -450,6 +452,7 @@
 
 /* ─── 底部支付栏 ─── */
 .pay-bar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -458,6 +461,7 @@
   border-top: 1rpx solid rgba(255,255,255,0.05);
   flex-shrink: 0;
   padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
+  box-shadow: 0 -8rpx 24rpx rgba(0,0,0,0.3);
 }
 
 .pay-price-info {

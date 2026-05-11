@@ -1,0 +1,157 @@
+<view class="container">
+  <!-- 状态栏占位 -->
+  <view class="status-bar" style="height: {{statusBarHeight}}px;"></view>
+
+  <!-- 顶部导航 -->
+  <view class="header" style="height: {{navBarHeight - statusBarHeight}}px;">
+    <view class="header-back" style="top: {{(menuButtonInfo.top - statusBarHeight)}}px; height: {{menuButtonInfo.height}}px;" bindtap="onBack">
+      <image class="back-icon-svg" src="/assets/icons/lucide-arrow-left-gold.svg" mode="aspectFit"/>
+    </view>
+    <view class="header-center" style="top: {{(menuButtonInfo.top - statusBarHeight)}}px; height: {{menuButtonInfo.height}}px;">
+      <text class="header-title">AI 典藏</text>
+      <text class="header-subtitle">{{brand}} · {{gridSize}}×{{gridSize}}</text>
+    </view>
+  </view>
+
+  <!-- 主内容区 -->
+  <scroll-view class="scroll-body" scroll-y enhanced show-scrollbar="{{false}}">
+
+    <!-- 图纸预览卡片 -->
+    <view class="preview-card">
+      <view class="preview-wrap">
+        <!-- 加载占位 -->
+        <view wx:if="{{isGenerating}}" class="preview-placeholder">
+          <view class="preview-placeholder-dot"></view>
+          <text class="preview-placeholder-text">AI 重构晶格中...</text>
+        </view>
+
+        <!-- 效果图 tab -->
+        <image wx:if="{{!isGenerating && resultImageUrl}}" class="preview-img {{activeImageTab === 0 ? '' : 'preview-img--hidden'}}" src="{{resultImageUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+
+        <!-- 色号图 tab -->
+        <image wx:if="{{!isGenerating && colorNumberImageUrl}}" class="preview-img {{activeImageTab === 1 ? '' : 'preview-img--hidden'}}" src="{{colorNumberImageUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+
+        <!-- 无图片占位 -->
+        <view wx:if="{{!isGenerating && activeImageTab === 0 && !resultImageUrl}}" class="image-placeholder">
+          <text class="ph-icon">🖼️</text>
+          <text class="ph-text">暂无效果图</text>
+        </view>
+        <view wx:if="{{!isGenerating && activeImageTab === 1 && !colorNumberImageUrl}}" class="image-placeholder">
+          <text class="ph-icon">🖼️</text>
+          <text class="ph-text">暂无色号图</text>
+        </view>
+      </view>
+
+      <!-- Tab 切换栏 -->
+      <view class="tab-bar">
+        <view class="tab {{activeImageTab === 0 ? 'tab--active' : ''}}" data-index="{{0}}" bindtap="onImageTabChange">
+          效果图
+        </view>
+        <view class="tab {{activeImageTab === 1 ? 'tab--active' : ''}}" data-index="{{1}}" bindtap="onImageTabChange">
+          色号图
+        </view>
+      </view>
+
+      <!-- VIP 标签 -->
+      <view class="vip-ribbon">
+        <text class="vip-icon">✨</text>
+        <text class="vip-text">AI</text>
+        <view class="vip-dot"></view>
+      </view>
+
+      <!-- 操作按钮 -->
+      <view class="action-stack">
+        <view class="action-btn action-btn--edit" bindtap="onEnterEditMode">
+          <text>进入图纸编辑模式</text>
+        </view>
+        <view class="action-btn action-btn--primary {{!isSaved?'action-btn--disabled':''}}" bindtap="onEnterImmersive">
+          <text>沉浸拼豆模式</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 色号清单卡片 -->
+    <view class="stats-card">
+      <view class="stats-header">
+        <view class="stats-title-row">
+          <view class="stats-bar"></view>
+          <text class="stats-title">所需色号清单</text>
+        </view>
+        <text class="stats-count">共 {{colorList.length}} 色 / {{totalBeads}} 颗</text>
+      </view>
+
+      <view wx:if="{{colorList.length > 0}}" class="stats-grid">
+        <view wx:for="{{colorList}}" wx:key="id" class="stat-item">
+          <view class="stat-left">
+            <text class="stat-idx">{{index + 1}}.</text>
+            <view class="stat-dot" style="background-color: rgb({{item.r}},{{item.g}},{{item.b}})"></view>
+            <view class="stat-info">
+              <text class="stat-id">{{item.id}}</text>
+              <text wx:if="{{item.name && item.name !== item.id}}" class="stat-name">{{item.name}}</text>
+            </view>
+          </view>
+          <text class="stat-count">x{{item.count}}</text>
+        </view>
+      </view>
+
+      <view wx:else class="image-placeholder">
+        <text class="ph-icon">📊</text>
+        <text class="ph-text">暂无色彩数据</text>
+      </view>
+    </view>
+
+  </scroll-view>
+
+  <!-- 底部操作按钮 -->
+  <view class="footer">
+    <view class="footer-btn-slot footer-btn-slot--album {{isSaved ? 'footer-btn-slot--album-expanded' : ''}} {{isSavingToBox ? 'footer-btn-slot--album-expanded' : ''}}">
+      <view class="footer-btn footer-btn-secondary {{savingToAlbum ? 'footer-btn--loading' : ''}}" bindtap="onSaveToAlbum">
+        <text wx:if="{{!savingToAlbum}}" class="footer-btn-icon">↓</text>
+        <text wx:if="{{!savingToAlbum}}" class="footer-btn-text">保存画册</text>
+        <view wx:else class="btn-loading">
+          <view class="btn-spinner"></view>
+          <text class="btn-loading-text">处理中...</text>
+        </view>
+      </view>
+    </view>
+    <view class="footer-btn-slot footer-btn-slot--box {{isSaved ? 'footer-btn-slot--box-hidden' : ''}} {{isSavingToBox ? 'footer-btn-slot--box-hidden' : ''}}">
+      <view class="footer-btn footer-btn-primary" bindtap="onSaveToBox">
+        <text class="footer-btn-text">保存到图纸箱</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 命名弹窗 -->
+  <view wx:if="{{showNamingModal}}" class="modal-overlay" bindtap="onCloseModal">
+    <view class="modal-backdrop"></view>
+    <view class="modal-content" catchtap="onModalContentTap">
+      <view class="modal-glow"></view>
+
+      <view class="modal-header">
+        <view class="modal-icon-wrap">
+          <text class="modal-icon">✨</text>
+        </view>
+        <text class="modal-title">赐名典藏</text>
+        <text class="modal-desc">为您的AI灵感作品赋予一个独一无二的名字</text>
+      </view>
+
+      <input class="modal-input" placeholder="输入作品名称" value="{{patternName}}" bindinput="onNameInput" />
+
+      <view class="modal-actions">
+        <view class="modal-btn modal-btn-cancel" bindtap="onCloseModal">
+          <text>稍后</text>
+        </view>
+        <view class="modal-btn modal-btn-confirm" bindtap="onConfirmSave">
+          <text>封存入库</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 隐藏的 Canvas 2D 组件用于图片处理和渲染 -->
+  <view wx:if="{{showCanvas}}" style="position: fixed; left: -10000px; top: -10000px; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;">
+    <bead-canvas2d id="sampleCanvas2dComp" canvasId="sampleCanvas2d" width="512" height="512" />
+    <bead-canvas2d id="resultCanvas2dComp" canvasId="resultCanvas2d" width="1024" height="1024" />
+    <bead-canvas2d id="patternCanvas2dComp" canvasId="patternCanvas2d" width="2048" height="2048" />
+  </view>
+</view>

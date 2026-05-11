@@ -38,7 +38,7 @@ function adaptCtx(ctx) {
 
 /**
  * 在给定的 canvas context 上绘制色号图
- * @param {Object} ctx - wx.createCanvasContext 返回的 context
+ * @param {Object} ctx - canvas.getContext('2d') 返回的 context
  * @param {Array}  gridData - 二维索引数组（每格存 colorPalette 下标，-1 为透明）
  * @param {Array}  colorPalette - 颜色列表，每项 { id, name, r, g, b, count }
  * @param {number} gridSize - 网格边长（格数）
@@ -53,10 +53,18 @@ function adaptCtx(ctx) {
  */
 function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, options = {}) {
   ctx = adaptCtx(ctx);
-  
+
   // 提取配置
   const appName = options.appName || '小程序名称待定';
   const watermark = options.watermark || null;
+
+  console.log('[pattern-canvas] 开始绘制', {
+    gridDataLength: gridData ? gridData.length : 0,
+    colorPaletteLength: colorPalette ? colorPalette.length : 0,
+    gridSize: gridSize,
+    boardSize: boardSize
+  });
+
   // 统计各色用量（优先从 gridData 计算，避免后端 count 缺失）
   const countById = new Map();
   const paletteByIndex = colorPalette || [];
@@ -82,6 +90,12 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
       .map((c) => ({ id: String(c.id || c.name).trim(), count: Number(c.count) }))
       .sort((a, b) => b.count - a.count);
   }
+
+  console.log('[pattern-canvas] 色号汇总统计', {
+    countByIdSize: countById.size,
+    summaryItemsLength: summaryItems.length,
+    summaryItemsSample: summaryItems.slice(0, 5)
+  });
 
   const maxCanvasSize = Math.max(512, Number(options.maxCanvasSize) || 2048);
   let workingBoardSize = boardSize;

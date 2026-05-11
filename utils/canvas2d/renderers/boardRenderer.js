@@ -145,35 +145,31 @@ function getCodeTextColor(hexColor) {
   return luminance > 0.62 ? '#222222' : '#FFFFFF';
 }
 
-function drawCellCode(ctx, color, code, cx, cy, fontSize) {
+function drawCellCode(ctx, color, code, cx, cy, fontSize, opts = {}) {
   if (!code) return;
-  
-  // 问题4修复：提高色码文字清晰度
-  // 1. 使用更清晰的字体渲染设置
+
+  const textColor = getCodeTextColor(color);
+
+  // 小缩放/小格子时跳过描边，仅用 fillText（strokeText 成本极高）
+  const skipStroke = opts.skipStroke || false;
+
   ctx.imageSmoothingEnabled = false;
   ctx.imageSmoothingQuality = 'high';
-  
-  // 2. 使用更粗的字重和更清晰的字体
-  ctx.fillStyle = getCodeTextColor(color);
+  ctx.fillStyle = textColor;
   ctx.font = `800 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  
-  // 3. 添加文字描边增强对比度
-  const textColor = getCodeTextColor(color);
-  if (textColor === '#FFFFFF') {
-    // 白色文字添加黑色描边
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.lineWidth = Math.max(0.5, fontSize * 0.08);
-    ctx.strokeText(code, cx, cy);
-  } else {
-    // 黑色文字添加白色描边
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+
+  if (!skipStroke) {
+    if (textColor === '#FFFFFF') {
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+    } else {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    }
     ctx.lineWidth = Math.max(0.5, fontSize * 0.08);
     ctx.strokeText(code, cx, cy);
   }
-  
-  // 4. 绘制填充文字
+
   ctx.fillText(code, cx, cy);
 }
 
@@ -239,7 +235,9 @@ function drawBoard(ctx, options) {
       if (codeCfg.show && colorCodeMap && color !== '#FFFFFF') {
         const code = colorCodeMap[String(color).toUpperCase()];
         if (code) {
-          drawCellCode(ctx, color, code, px + cellSize / 2, py + cellSize / 2, codeCfg.fontSize);
+          // visualCell < 45 时跳过描边，减少 50% draw calls
+          const visualCell = cellSize * Math.max(Number(viewScale) || 1, 1);
+          drawCellCode(ctx, color, code, px + cellSize / 2, py + cellSize / 2, codeCfg.fontSize, { skipStroke: visualCell < 45 });
         }
       }
     }
@@ -288,7 +286,8 @@ function drawPixel(ctx, options) {
 
       if (codeCfg.show && colorCodeMap && color !== '#FFFFFF') {
         const code = colorCodeMap[String(color).toUpperCase()];
-        drawCellCode(ctx, color, code, x + cellSize / 2, y + cellSize / 2, codeCfg.fontSize);
+        const visualCell = cellSize * Math.max(Number(viewScale) || 1, 1);
+        drawCellCode(ctx, color, code, x + cellSize / 2, y + cellSize / 2, codeCfg.fontSize, { skipStroke: visualCell < 45 });
       }
     }
   }

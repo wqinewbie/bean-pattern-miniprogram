@@ -42,7 +42,7 @@
     <view wx:elif="{{viewMode === 'thumb'}}" class="patterns-grid">
       <view wx:for="{{filteredPatterns}}" wx:key="id" class="pattern-card">
         <view class="pattern-thumb" bindtap="onItemTap" data-item="{{item}}">
-          <canvas wx:if="{{item.hasCanvasCover}}" id="boxThumbCanvas{{item.id}}" canvas-id="boxThumbCanvas{{item.id}}" class="thumb-canvas" type="2d"/>
+          <canvas wx:if="{{item.hasCanvasCover}}" id="boxThumbCanvas{{item.id}}" class="thumb-canvas" type="2d"/>
           <image wx:elif="{{item.sourceUrl || item.coverUrl}}" class="thumb-img" src="{{item.sourceUrl || item.coverUrl}}" mode="aspectFill" />
           <view wx:else class="thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
           <view wx:if="{{item.sourceLabel}}" class="source-badge source-badge--{{item.sourceClass}}">

@@ -1,3 +1,5 @@
+<wxs module="gestureWxs" src="./gesture.wxs" />
+
 <view class="page">
   <!-- 顶部导航栏 - Figma 固定高度 -->
   <view class="top-bar" style="padding-top: {{statusBarHeight}}px;">
@@ -244,9 +246,10 @@
     <!-- 画布区域 - 标准多层架构 -->
     <view class="canvas-area"
       bindtap="onCanvasAreaTap"
-      bindtouchstart="handleTouchStart" 
-      bindtouchmove="handleTouchMove" 
-      bindtouchend="handleTouchEnd"
+      bindtouchstart="{{gestureWxs.handleTouchStart}}"
+      bindtouchmove="{{gestureWxs.handleTouchMove}}"
+      bindtouchend="{{gestureWxs.handleTouchEnd}}"
+      data-tool="{{tool}}"
     >
       <!-- 背景图层 -->
       <view 
@@ -278,49 +281,6 @@
             bind:ready="onCanvasReady"
             bind:error="onCanvasError"
           />
-          
-          <!-- 网格层（在 wrapper 内部，自动对齐） -->
-          <view 
-            wx:if="{{showGrid}}"
-            class="grid-layer-inner"
-            style="position: absolute; left: 0; top: 0; width: {{canvasWidth * overlayScale}}px; height: {{canvasHeight * overlayScale}}px; pointer-events: none; transform: scale({{1 / overlayScale}}); transform-origin: 0 0;"
-          >
-            <grid-overlay
-              id="gridOverlay"
-              width="{{canvasWidth * overlayScale}}"
-              height="{{canvasHeight * overlayScale}}"
-              gridSize="{{gridSize}}"
-              scale="{{overlayScale}}"
-              show="{{showGrid}}"
-              canvasOffsetX="{{canvasOffsetX}}"
-              canvasOffsetY="{{canvasOffsetY}}"
-              areaWidth="{{canvasAreaWidth}}"
-              areaHeight="{{canvasAreaHeight}}"
-              gesturing="{{isPinching}}"
-            />
-          </view>
-          
-          <!-- 色号层（在 wrapper 内部，自动对齐） -->
-          <view 
-            class="code-layer-inner"
-            style="position: absolute; left: 0; top: 0; width: {{canvasWidth * overlayScale}}px; height: {{canvasHeight * overlayScale}}px; pointer-events: none; transform: scale({{1 / overlayScale}}); transform-origin: 0 0;"
-          >
-            <code-overlay
-              id="codeOverlay"
-              width="{{canvasWidth * overlayScale}}"
-              height="{{canvasHeight * overlayScale}}"
-              gridSize="{{gridSize}}"
-              scale="{{overlayScale}}"
-              gridData="{{overlayGridData}}"
-              colorCodeMap="{{overlayColorCodeMap}}"
-              show="{{true}}"
-              canvasOffsetX="{{canvasOffsetX}}"
-              canvasOffsetY="{{canvasOffsetY}}"
-              areaWidth="{{canvasAreaWidth}}"
-              areaHeight="{{canvasAreaHeight}}"
-              gesturing="{{isPinching}}"
-            />
-          </view>
           
           <!-- 触摸层 -->
           <view 
@@ -445,23 +405,26 @@
         </scroll-view>
       </view>
       
-      <!-- 展开模式：所有颜色上下滑动 -->
+      <!-- 展开模式：所有颜色上下滑动（虚拟列表） -->
       <scroll-view 
         wx:else
         class="colors-scroll-expanded" 
         scroll-y
+        bindscroll="onExpandedColorsScroll"
       >
-        <view class="colors-grid-expanded">
-          <view 
-            wx:for="{{colorsWithCode}}" 
-            wx:key="hex"
-            class="color-item-expanded {{currentColor===item.hex?'active':''}}"
-            bindtap="onSelectColor"
-            bindlongpress="onLongPressColor"
-            data-color="{{item.hex}}"
-          >
-            <view class="color-bead-expanded" style="background:{{item.hex}};">
-              <text class="bead-code-expanded">{{item.code}}</text>
+        <view class="colors-grid-expanded" style="height: {{virtualColorsTotalHeight}}rpx; position: relative;">
+          <view style="position: absolute; left: 0; right: 0; top: {{virtualColorsOffsetTop}}rpx;">
+            <view 
+              wx:for="{{virtualColorsWithCode}}" 
+              wx:key="hex"
+              class="color-item-expanded {{currentColor===item.hex?'active':''}}"
+              bindtap="onSelectColor"
+              bindlongpress="onLongPressColor"
+              data-color="{{item.hex}}"
+            >
+              <view class="color-bead-expanded" style="background:{{item.hex}};">
+                <text class="bead-code-expanded">{{item.code}}</text>
+              </view>
             </view>
           </view>
         </view>

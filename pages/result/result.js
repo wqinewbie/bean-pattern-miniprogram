@@ -4,11 +4,31 @@ const { getSafeAreaLayout } = require('../../utils/safe-area');
 const { drawPatternWithAxes } = require('../../utils/pattern-canvas');
 const { renderResult } = require('../../utils/canvas2d/renderers/resultRenderer');
 const { waitCanvas2dReady } = require('../../utils/canvas2d/controller');
+const { init2dCanvas, resize2dCanvas } = require('../../utils/canvas2d/core');
+const { exportCanvasToTempFilePath } = require('../../utils/canvas2d/export');
 const { previewSize, patternBoardSize, resultExportSize, patternExportSize, previewExportSize } = require('../../utils/canvas2d/size-strategies');
 const { isTempPath, isValidRemoteUrl, needsUpload, getPathType } = require('../../utils/path-helper');
 const { generatePatternName } = require('../../utils/name-helper');
+const { getWatermarkConfig } = require('../../utils/watermark-helper');
 
 const PATTERN_EXPORT_MODE = '2d'; // 可选: 'legacy' | '2d'
+
+// Canvas 2D 缓存
+const canvasCache = {};
+
+// 获取 Canvas 2D 实例的辅助函数
+async function getCanvas2d(pageInstance, canvasId, width, height) {
+  if (canvasCache[canvasId]) {
+    return canvasCache[canvasId];
+  }
+
+  const { canvas, ctx, dpr } = await init2dCanvas(pageInstance, '#' + canvasId);
+  resize2dCanvas({ canvas, ctx, width, height, dpr });
+
+  const result = { canvas, ctx, dpr };
+  canvasCache[canvasId] = result;
+  return result;
+}
 
 /**
  * 上传本地临时图片到服务器 COS，返回公开 URL。
@@ -1061,39 +1081,23 @@ Page({
 
   async loadWatermarkConfig() {
     try {
-      const config = await request.get('/watermark/user-config');
-      
-      if (config) {
-        const appName = config.appName || '';
-        const watermark = config.watermark || {};
-        
-        this.setData({ 
-          watermarkConfig: {
-            enabled: watermark.enabled ? 1 : 0,
-            text: watermark.text || '',
-            fontSize: watermark.fontSize || 24,
-            color: watermark.color || 'rgba(100,100,100,0.25)',
-            angle: watermark.angle || -30,
-            spacingXRatio: watermark.spacingXRatio || 0.22,
-            spacingYRatio: watermark.spacingYRatio || 0.18,
-            opacity: watermark.opacity || 0.25
-          },
-          appName: appName,
-          isVip: config.isVip || false,
-          canCustomizeWatermark: config.canCustomize || false
-        });
-        
-        console.log('[result] 水印和小程序名称配置加载成功', {
-          watermarkEnabled: watermark.enabled,
-          watermarkText: watermark.text,
-          watermarkColor: watermark.color,
-          appName: appName,
-          isVip: config.isVip,
-          canCustomize: config.canCustomize
-        });
-      }
+      const { appName, watermarkConfig } = await getWatermarkConfig();
+
+      this.setData({
+        watermarkConfig: watermarkConfig,
+        appName: appName,
+        isVip: watermarkConfig.isVip || false,
+        canCustomizeWatermark: watermarkConfig.canCustomize || false
+      });
+
+      console.log('[result] 水印和小程序名称配置加载成功', {
+        watermarkEnabled: watermarkConfig.enabled,
+        watermarkText: watermarkConfig.text,
+        watermarkColor: watermarkConfig.color,
+        appName: appName
+      });
     } catch (e) {
-      console.error('加载水印配置失败', e);
+      console.error('[result] 加载水印配置失败', e);
       // 使用默认配置
       this.setData({
         watermarkConfig: {
@@ -1611,30 +1615,31 @@ Page({
         const targetH = Math.max(1, Math.floor(height * scale));
         console.log('[result][mirror-preview] draw target', { targetW, targetH, scale });
 
-        const mirrorCanvasId = 'mirrorPreviewCanvas';
-        const ctx = wx.createCanvasContext(mirrorCanvasId);
-        ctx.setFillStyle('#ffffff');
-        ctx.fillRect(0, 0, targetW, targetH);
-        ctx.save();
-        ctx.translate(targetW, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(info.path || url, 0, 0, targetW, targetH);
-        ctx.restore();
+        // 使用 Canvas 2D
+        getCanvas2d(this, 'mirrorPreviewCanvas', targetW, targetH).then(({ canvas, ctx }) => {
+          // 加载并绘制镜像图片
+          const img = canvas.createImage();
+          img.onload = () => {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, targetW, targetH);
+            ctx.save();
+            ctx.translate(targetW, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(img, 0, 0, targetW, targetH);
+            ctx.restore();
 
-        ctx.draw(false, () => {
-          wx.canvasToTempFilePath({
-            canvasId: mirrorCanvasId,
-            x: 0,
-            y: 0,
-            width: targetW,
-            height: targetH,
-            destWidth: targetW,
-            destHeight: targetH,
-            success: (res) => {
+            // 导出
+            exportCanvasToTempFilePath(canvas, {
+              width: targetW,
+              height: targetH,
+              fileType: 'png',
+              quality: 1
+            }, this).then((tempFilePath) => {
+            }, this).then((tempFilePath) => {
               console.log('[result][mirror-preview] canvasToTempFilePath success', {
-                tempFilePath: res.tempFilePath
+                tempFilePath: tempFilePath
               });
-              const mirrored = res.tempFilePath || '';
+              const mirrored = tempFilePath || '';
               this._mirroredOriginalGenerating = false;
               if (mirrored) {
                 this.setData({ mirroredOriginalUrl: mirrored });
@@ -1652,13 +1657,22 @@ Page({
                 });
               }
               if (typeof done === 'function') done(mirrored);
-            },
-            fail: (err) => {
+            }).catch((err) => {
               console.error('[result][mirror-preview] canvasToTempFilePath fail', err);
               this._mirroredOriginalGenerating = false;
               if (typeof done === 'function') done('');
-            }
-          });
+            });
+          };
+          img.onerror = (err) => {
+            console.error('[result][mirror-preview] image load fail', err);
+            this._mirroredOriginalGenerating = false;
+            if (typeof done === 'function') done('');
+          };
+          img.src = info.path || url;
+        }).catch((err) => {
+          console.error('[result][mirror-preview] canvas init fail', err);
+          this._mirroredOriginalGenerating = false;
+          if (typeof done === 'function') done('');
         });
       },
       fail: (err) => {
@@ -1869,34 +1883,30 @@ Page({
     }
 
     const boardSize = patternBoardSize(gridSize);
-    const tempCanvasId = 'tempSaveCanvas';
-    const ctx = wx.createCanvasContext(tempCanvasId);
-    const layout = drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize);
-
-    if (withWatermark) {
-      this.applyWatermark(ctx, layout.totalWidth, layout.totalHeight, this.data.watermarkConfig);
-    }
 
     return new Promise((resolve, reject) => {
-      ctx.draw(false, () => {
-        wx.canvasToTempFilePath({
-          canvasId: tempCanvasId,
-          x: 0,
-          y: 0,
+      // 使用 Canvas 2D
+      getCanvas2d(this, 'tempSaveCanvas', boardSize, boardSize).then(({ canvas, ctx }) => {
+        const layout = drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize);
+
+        if (withWatermark) {
+          this.applyWatermark(ctx, layout.totalWidth, layout.totalHeight, this.data.watermarkConfig);
+        }
+
+        // 导出
+        exportCanvasToTempFilePath(canvas, {
           width: layout.totalWidth,
           height: layout.totalHeight,
-          destWidth: layout.totalWidth,
-          destHeight: layout.totalHeight,
-          success: (res) => {
-            if (res && res.tempFilePath) {
-              resolve(res.tempFilePath);
-              return;
-            }
+          fileType: 'png',
+          quality: 1
+        }, this).then((tempFilePath) => {
+          if (tempFilePath) {
+            resolve(tempFilePath);
+          } else {
             reject(new Error('empty path'));
-          },
-          fail: reject
-        });
-      });
+          }
+        }).catch(reject);
+      }).catch(reject);
     });
   },
 
@@ -1998,16 +2008,23 @@ Page({
   },
 
   handleToggleEditMode() {
-    const { mappedPixelData, gridSize, brandName, colorCount } = this.data;
+    const { mappedPixelData, gridData, colorPalette, gridSize, brandName, colorCount } = this.data;
     if (!mappedPixelData || !mappedPixelData.length) {
       wx.showToast({ title: '暂无可编辑图纸', icon: 'none' });
+      return;
+    }
+
+    // 确保 gridData 和 colorPalette 存在
+    if (!gridData || !gridData.length || !colorPalette || !colorPalette.length) {
+      wx.showToast({ title: '图纸数据不完整', icon: 'none' });
       return;
     }
 
     const storageKey = 'draw_edit_' + Date.now();
     wx.setStorageSync(storageKey, {
       gridSize,
-      mappedPixelData,
+      gridData,
+      colorPalette,
       brand: brandName || 'MARD',
       colorCount: colorCount || 0
     });
@@ -2851,22 +2868,27 @@ Page({
           const ratio = info.width / info.height;
           const sampW = ratio >= 1 ? SAMPLE_PX : Math.max(1, Math.round(SAMPLE_PX * ratio));
           const sampH = ratio >= 1 ? Math.max(1, Math.round(SAMPLE_PX / ratio)) : SAMPLE_PX;
-          const sCtx = wx.createCanvasContext('bead-sample-canvas');
-          sCtx.drawImage(imagePath, 0, 0, sampW, sampH);
-          sCtx.draw(false, () => {
-            wx.canvasGetImageData({
-              canvasId: 'bead-sample-canvas',
-              x: 0, y: 0, width: sampW, height: sampH,
-              success: (pd) => {
-                try {
-                  resolve(this._sampleGrid(pd.data, sampW, sampH, gridSize, mode));
-                } catch (e) {
-                  reject(e);
-                }
-              },
-              fail: reject
-            });
-          });
+
+          // 使用 Canvas 2D
+          getCanvas2d(this, 'beadSampleCanvas', sampW, sampH).then(({ canvas, ctx }) => {
+            // 加载并绘制图片
+            const img = canvas.createImage();
+            img.onload = () => {
+              ctx.drawImage(img, 0, 0, sampW, sampH);
+
+              // 获取像素数据
+              const imgData = ctx.getImageData(0, 0, sampW, sampH);
+              try {
+                resolve(this._sampleGrid(imgData.data, sampW, sampH, gridSize, mode));
+              } catch (e) {
+                reject(e);
+              }
+            };
+            img.onerror = (err) => {
+              reject(err);
+            };
+            img.src = imagePath;
+          }).catch(reject);
         },
         fail: reject
       });

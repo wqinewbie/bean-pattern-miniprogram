@@ -35,6 +35,9 @@ Page({
 
     // 支付状态
     isPaying: false,
+
+    // 当前选中套餐价格
+    currentPrice: 0,
   },
 
   onLoad(options) {
@@ -130,10 +133,12 @@ Page({
 
         // 默认选中第一个
         const selectedVipId = vipPackages.length > 0 ? vipPackages[0].id : null;
+        const currentPrice = vipPackages.length > 0 ? vipPackages[0].price : 0;
 
         this.setData({
           vipPackages,
           selectedVipId,
+          currentPrice,
           vipPackagesLoading: false
         });
       })
@@ -170,10 +175,12 @@ Page({
 
         // 默认选中第一个
         const selectedCardId = cardPackages.length > 0 ? cardPackages[0].id : null;
+        const currentPrice = cardPackages.length > 0 ? (this.data.isVip ? cardPackages[0].isVipPrice : cardPackages[0].price) : 0;
 
         this.setData({
           cardPackages,
           selectedCardId,
+          currentPrice,
           cardPackagesLoading: false
         });
       })
@@ -328,7 +335,9 @@ Page({
    */
   onSelectVipPlan(e) {
     const id = e.currentTarget.dataset.id;
-    this.setData({ selectedVipId: id });
+    const selectedPackage = this.data.vipPackages.find(p => p.id === id);
+    const currentPrice = selectedPackage ? selectedPackage.price : 0;
+    this.setData({ selectedVipId: id, currentPrice });
   },
 
   /**
@@ -336,7 +345,9 @@ Page({
    */
   onSelectCardPlan(e) {
     const id = e.currentTarget.dataset.id;
-    this.setData({ selectedCardId: id });
+    const selectedPackage = this.data.cardPackages.find(p => p.id === id);
+    const currentPrice = selectedPackage ? (this.data.isVip ? selectedPackage.isVipPrice : selectedPackage.price) : 0;
+    this.setData({ selectedCardId: id, currentPrice });
   },
 
   /**

@@ -1,0 +1,160 @@
+var canvasStyle = { left: 0, top: 0, scale: 1 };
+var bgStyle = { left: 0, top: 0, scale: 1 };
+var startX = 0;
+var startY = 0;
+var startDistance = 0;
+var startCanvasX = 0;
+var startCanvasY = 0;
+var startScale = 1;
+var isDragging = false;
+var isPinching = false;
+var hasGestureChanged = false;
+var lastTool = '';
+
+function resetGestureState() {
+  isDragging = false;
+  isPinching = false;
+  hasGestureChanged = false;
+  startDistance = 0;
+}
+
+function syncState(newState) {
+  if (!newState) return;
+  if (newState.canvasOffsetX !== undefined) canvasStyle.left = newState.canvasOffsetX;
+  if (newState.canvasOffsetY !== undefined) canvasStyle.top = newState.canvasOffsetY;
+  if (newState.canvasScale !== undefined) canvasStyle.scale = newState.canvasScale;
+
+  if (newState.backgroundOffsetX !== undefined) bgStyle.left = newState.backgroundOffsetX;
+  if (newState.backgroundOffsetY !== undefined) bgStyle.top = newState.backgroundOffsetY;
+  if (newState.backgroundScale !== undefined) bgStyle.scale = newState.backgroundScale;
+}
+
+function getDistance(t1, t2) {
+  var dx = t1.pageX - t2.pageX;
+  var dy = t1.pageY - t2.pageY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function getScale(v) {
+  if (v < 0.5) return 0.5;
+  if (v > 10) return 10;
+  return v;
+}
+
+function setCanvasPosition(ownerInstance, left, top) {
+  var layer = ownerInstance.selectComponent('.canvas-layer');
+  if (layer) {
+    layer.setStyle({
+      left: left + 'px',
+      top: top + 'px'
+    });
+  }
+}
+
+function setCanvasScale(ownerInstance, scale) {
+  var canvasLayer = ownerInstance.selectComponent('.canvas-layer');
+  if (canvasLayer) {
+    canvasLayer.setStyle({
+      transform: 'scale(' + scale + ')'
+    });
+  }
+}
+
+function handleTouchStart(event, ownerInstance) {
+  if (!event || !event.touches) return false;
+
+  var dataset = event.currentTarget && event.currentTarget.dataset ? event.currentTarget.dataset : {};
+  var tool = dataset.tool || '';
+
+  if (tool !== lastTool) {
+    resetGestureState();
+    lastTool = tool;
+  }
+
+  if (tool === 'picker' || tool === 'pen' || tool === 'eraser' || tool === 'fill') {
+    return false;
+  }
+
+  var touches = event.touches;
+  hasGestureChanged = false;
+
+  if (touches.length === 1) {
+    isDragging = true;
+    isPinching = false;
+    startX = touches[0].pageX;
+    startY = touches[0].pageY;
+    startCanvasX = canvasStyle.left;
+    startCanvasY = canvasStyle.top;
+  } else if (touches.length === 2) {
+    isDragging = false;
+    isPinching = true;
+    startDistance = getDistance(touches[0], touches[1]);
+    startScale = canvasStyle.scale;
+  }
+
+  return false;
+}
+
+function handleTouchMove(event, ownerInstance) {
+  if (!event || !event.touches || !ownerInstance) return false;
+
+  var dataset = event.currentTarget && event.currentTarget.dataset ? event.currentTarget.dataset : {};
+  var tool = dataset.tool || '';
+  if (tool !== 'drag') return false;
+
+  var touches = event.touches;
+
+  if (touches.length === 1 && isDragging) {
+    var dx = touches[0].pageX - startX;
+    var dy = touches[0].pageY - startY;
+
+    var left = startCanvasX + dx;
+    var top = startCanvasY + dy;
+
+    if (left !== canvasStyle.left || top !== canvasStyle.top) {
+      hasGestureChanged = true;
+    }
+
+    canvasStyle.left = left;
+    canvasStyle.top = top;
+    setCanvasPosition(ownerInstance, left, top);
+  } else if (touches.length === 2 && isPinching) {
+    var distance = getDistance(touches[0], touches[1]);
+    if (!startDistance) return false;
+    var scale = getScale(startScale * (distance / startDistance));
+
+    if (scale !== canvasStyle.scale) {
+      hasGestureChanged = true;
+    }
+
+    canvasStyle.scale = scale;
+    setCanvasScale(ownerInstance, scale);
+  }
+
+  return false;
+}
+
+function handleTouchEnd(event, ownerInstance) {
+  var dataset = event && event.currentTarget && event.currentTarget.dataset ? event.currentTarget.dataset : {};
+  var tool = dataset.tool || '';
+
+  if (tool === 'drag' && ownerInstance && ownerInstance.callMethod && hasGestureChanged) {
+    ownerInstance.callMethod('onGestureEnd', {
+      canvasOffsetX: canvasStyle.left,
+      canvasOffsetY: canvasStyle.top,
+      canvasScale: canvasStyle.scale,
+      velocityX: 0,
+      velocityY: 0
+    });
+  }
+
+  resetGestureState();
+  return false;
+}
+
+module.exports = {
+  syncState: syncState,
+  handleTouchStart: handleTouchStart,
+  handleTouchMove: handleTouchMove,
+  handleTouchEnd: handleTouchEnd
+};

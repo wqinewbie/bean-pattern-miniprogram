@@ -175,21 +175,100 @@ Page({
 
   onBannerTap(e) {
     const b = e.currentTarget.dataset.banner || {};
-    const type = (b.linkType || 'NONE').toUpperCase();
-    const value = b.linkValue || '';
-    if (!value || type === 'NONE') return;
+    const actionType = (b.actionType || b.linkType || 'NONE').toUpperCase();
+    const linkValue = b.linkValue || '';
+    const actionConfig = b.actionConfig || '';
 
-    if (type === 'PAGE') {
-      if (value.indexOf('/pages/') === 0) {
-        wx.navigateTo({ url: value });
-      } else {
-        wx.showToast({ title: '页面配置无效', icon: 'none' });
-      }
+    if (!linkValue && !actionConfig) return;
+
+    // 处理不同的动作类型
+    switch (actionType) {
+      case 'NAVIGATE':
+        // 小程序内跳转
+        if (linkValue.indexOf('/pages/') === 0) {
+          wx.navigateTo({ url: linkValue });
+        } else {
+          wx.showToast({ title: '页面配置无效', icon: 'none' });
+        }
+        break;
+
+      case 'ACTIVITY':
+        // 跳转到活动详情页
+        wx.navigateTo({
+          url: `/pages/activity/activity?code=${linkValue}`
+        });
+        break;
+
+      case 'CLAIM_GIFT':
+        // 直接领取礼品包
+        this.claimBannerGift(b.id, actionConfig);
+        break;
+
+      case 'EXTERNAL':
+        // 跳转外部链接（复制链接）
+        wx.setClipboardData({
+          data: linkValue,
+          success: () => wx.showToast({ title: '链接已复制', icon: 'none' })
+        });
+        break;
+
+      // 兼容旧版本
+      case 'PAGE':
+        if (linkValue.indexOf('/pages/') === 0) {
+          wx.navigateTo({ url: linkValue });
+        } else {
+          wx.showToast({ title: '页面配置无效', icon: 'none' });
+        }
+        break;
+
+      case 'URL':
+        wx.setClipboardData({
+          data: linkValue,
+          success: () => wx.showToast({ title: '链接已复制', icon: 'none' })
+        });
+        break;
+
+      default:
+        if (linkValue && actionType === 'NONE') {
+          // 兼容处理
+          if (linkValue.indexOf('/pages/') === 0) {
+            wx.navigateTo({ url: linkValue });
+          }
+        }
+        break;
+    }
+  },
+
+  // 领取Banner礼品
+  async claimBannerGift(bannerId, config) {
+    if (!this.checkLogin()) {
+      this._loginCallback = () => this.claimBannerGift(bannerId, config);
       return;
     }
 
-    if (type === 'URL') {
-      wx.setClipboardData({ data: value, success: () => wx.showToast({ title: '链接已复制', icon: 'none' }) });
+    wx.showLoading({ title: '领取中...', mask: true });
+
+    try {
+      const result = await request.post('/banner/claim', { bannerId });
+      wx.hideLoading();
+
+      if (result && result.success) {
+        wx.showModal({
+          title: '领取成功',
+          content: result.message || '恭喜您成功领取礼品！',
+          showCancel: false,
+          success: () => {
+            // 刷新用户信息
+            this.onShow();
+          }
+        });
+      }
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({
+        title: err.message || '领取失败',
+        icon: 'none'
+      });
     }
   },
 

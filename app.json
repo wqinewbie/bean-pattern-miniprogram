@@ -13,9 +13,12 @@
     "pages/my-patterns/my-patterns",
     "pages/draw/draw",
     "pages/ai-generate/ai-generate",
+    "pages/generating/generating",
+    "pages/ai-result/ai-result",
     "pages/vip/vip",
     "pages/convert/convert",
-    "pages/draft/draft"
+    "pages/draft/draft",
+    "pages/activity/activity"
   ],
   "window": {
     "navigationBarTitleText": "Bean Pattern",

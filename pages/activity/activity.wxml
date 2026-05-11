@@ -1,0 +1,55 @@
+<view class="activity-page">
+  <!-- 顶部导航栏 -->
+  <view class="nav-bar" style="padding-top: {{statusBarHeight}}px;">
+    <view class="nav-back" bindtap="onBack">
+      <text class="icon-back">‹</text>
+    </view>
+    <view class="nav-title">活动详情</view>
+    <view class="nav-placeholder"></view>
+  </view>
+
+  <!-- 加载中 -->
+  <view wx:if="{{loading}}" class="loading-container">
+    <view class="loading-spinner"></view>
+    <text class="loading-text">加载中...</text>
+  </view>
+
+  <!-- 错误提示 -->
+  <view wx:elif="{{error}}" class="error-container">
+    <text class="error-icon">!</text>
+    <text class="error-text">{{errorMessage}}</text>
+    <button class="retry-button" bindtap="loadActivity">重试</button>
+  </view>
+
+  <!-- 活动内容 -->
+  <view wx:else class="activity-content">
+    <!-- 封面图 -->
+    <image wx:if="{{coverImage}}" class="cover-image" src="{{coverImage}}" mode="aspectFill"></image>
+
+    <!-- 活动标题 -->
+    <view class="activity-header">
+      <text class="activity-title">{{title}}</text>
+
+      <!-- 名额信息 -->
+      <view wx:if="{{totalQuota > 0}}" class="quota-info">
+        <text class="quota-text">剩余名额：</text>
+        <text class="quota-number">{{remainQuota}}/{{totalQuota}}</text>
+      </view>
+    </view>
+
+    <!-- 富文本内容 -->
+    <view class="rich-content">
+      <rich-text nodes="{{contentHtml}}"></rich-text>
+    </view>
+
+    <!-- 底部操作栏 -->
+    <view class="action-bar">
+      <button
+        class="action-button {{canParticipate && !participated ? 'active' : 'disabled'}}"
+        bindtap="onActionButton"
+        disabled="{{!canParticipate || participated}}">
+        {{participated ? '已参与' : (canParticipate ? buttonText : errorMessage)}}
+      </button>
+    </view>
+  </view>
+</view>

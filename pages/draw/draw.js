@@ -3,6 +3,11 @@ const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { drawBoard, drawPixel } = require('../../utils/canvas2d/renderers/boardRenderer');
 const { getScheduler } = require('../../utils/canvas2d/renderScheduler');
+const HistoryManager = require('../../utils/canvas2d/HistoryManager');
+const PixelStore = require('./module/pixelStore');
+const CanvasRenderer = require('./module/canvasRenderer');
+const ColorBarManager = require('./module/colorBarManager');
+const Magnifier = require('./module/magnifier');
 
 // 默认颜色
 const DEFAULT_COLORS = [
@@ -72,6 +77,9 @@ Page({
     colorbarExpanded: false,
     colorbarHeight: 340,
     usedColors: [],
+    virtualColorsWithCode: [],
+    virtualColorsOffsetTop: 0,
+    virtualColorsTotalHeight: 0,
     colorsRow1: [],
     colorsRow2: [],
     canvasReady: false,
@@ -110,8 +118,6 @@ Page({
     replaceSourceColor: '',
     replaceSourceCode: '',
     replaceTargetColor: '',
-    overlayGridData: [],
-    overlayColorCodeMap: {},
     isPinching: false
   },
 
@@ -120,8 +126,7 @@ Page({
   _dpr: 1,
   _gridData: null,
   _cellSize: 10,
-  _undoStack: [],
-  _redoStack: [],
+  _history: null,  // 使用 HistoryManager 替代旧 undo/redo 栈
   _isDrawing: false,
   _isDragging: false,
   _lastPos: null,
@@ -135,6 +140,10 @@ Page({
   _colorUsageMap: new Map(),
   _nonWhiteCount: 0,
   _renderScheduler: null, // 完美版：渲染调度器
+  _canvasRenderer: null,
+  _colorBarManager: null,
+  _magnifierModule: null,
+  _rpxToPx: 0.5,
   _pendingDrawPos: null, // 完美版：待绘制位置（防误触）
   _pendingDrawTime: 0, // 完美版：待绘制时间（防误触）
   
@@ -248,6 +257,10 @@ Page({
       overlayScale: this._isPinching ? this.data.overlayScale : nextCanvasScale,
       isPinching: this._isPinching || false,
       ...this._getGridOverlayMetrics(nextCanvasScale)
+    }, () => {
+      if (this._canvasRenderer && !this._isPinching) {
+        this._canvasRenderer.setLowQualityMode(false);
+      }
     });
   },
 
@@ -280,9 +293,16 @@ Page({
   },
 
   _snapshotState() {
-    // 问题2修复：快照中包含 gridSize，支持撤回尺寸变更
+    this._ensurePixelStoreFromGrid();
+    const pixelSnapshot = this._pixelStore ? this._pixelStore.createSnapshot() : null;
+
     return JSON.stringify({
       gridData: this._gridData,
+      pixelSnapshot: pixelSnapshot ? {
+        gridSize: pixelSnapshot.gridSize,
+        palette: pixelSnapshot.palette,
+        indices: Array.from(pixelSnapshot.indices || [])
+      } : null,
       gridSize: this.data.gridSize,
       canvasOffsetX: this.data.canvasOffsetX,
       canvasOffsetY: this.data.canvasOffsetY,
@@ -305,9 +325,21 @@ Page({
     } catch (e) {
       return;
     }
-    if (!snapshot || !Array.isArray(snapshot.gridData)) return;
+    if (!snapshot || (!Array.isArray(snapshot.gridData) && !snapshot.pixelSnapshot)) return;
 
-    this._gridData = snapshot.gridData;
+    if (snapshot.pixelSnapshot && snapshot.pixelSnapshot.gridSize) {
+      const typedSnapshot = {
+        gridSize: snapshot.pixelSnapshot.gridSize,
+        palette: Array.isArray(snapshot.pixelSnapshot.palette) ? snapshot.pixelSnapshot.palette : [''],
+        indices: new Uint16Array(Array.isArray(snapshot.pixelSnapshot.indices) ? snapshot.pixelSnapshot.indices : [])
+      };
+      this._ensurePixelStoreFromGrid();
+      this._pixelStore.restoreSnapshot(typedSnapshot);
+      this._syncGridFromPixelStore();
+    } else {
+      this._gridData = snapshot.gridData;
+      this._pixelStore = PixelStore.fromGridData(this._gridData);
+    }
     this._rebuildColorStatsFromGrid();
 
     // 问题2修复：恢复 gridSize，如果尺寸改变则重新计算画布
@@ -351,9 +383,7 @@ Page({
       });
     }
 
-    // 更新 canvasRect，因为位置和缩放可能改变了
     this._updateCanvasRect();
-    
     this._drawFullGrid();
     this._updateUsedColors();
     this._updateHasPixels();
@@ -363,6 +393,24 @@ Page({
     // 透明仅由 null/undefined/空字符串 表示；白色是有效可绘制颜色
     if (color === null || color === undefined || color === '') return null;
     return String(color).toUpperCase();
+  },
+
+  _ensurePixelStoreFromGrid() {
+    if (this._pixelStore && this._pixelStore.gridSize === this.data.gridSize) return;
+    this._pixelStore = PixelStore.fromGridData(this._gridData || []);
+  },
+
+  _syncGridFromPixelStore() {
+    if (!this._pixelStore) return;
+    this._gridData = this._pixelStore.toGridData();
+  },
+
+  _scheduleUsedColorsUpdate() {
+    if (this._usedColorsTimer) clearTimeout(this._usedColorsTimer);
+    this._usedColorsTimer = setTimeout(() => {
+      this._usedColorsTimer = null;
+      this._updateUsedColors();
+    }, 300);
   },
 
   _bumpColorCount(color, delta) {
@@ -375,21 +423,48 @@ Page({
   },
 
   _rebuildColorStatsFromGrid() {
-    this._colorUsageMap = new Map();
+    this._ensurePixelStoreFromGrid();
+    this._colorUsageMap = this._pixelStore ? this._pixelStore.getColorUsageMap() : new Map();
     this._nonWhiteCount = 0;
-    if (!this._gridData || !Array.isArray(this._gridData) || this._gridData.length === 0) return;
+    this._colorUsageMap.forEach((count) => {
+      this._nonWhiteCount += count;
+    });
+  },
 
-    const gridSize = this._gridData.length; // 使用实际的 gridData 长度
-    for (let y = 0; y < gridSize; y++) {
-      if (!this._gridData[y] || !Array.isArray(this._gridData[y])) continue; // 检查行是否存在
-      for (let x = 0; x < this._gridData[y].length; x++) {
-        const color = this._normalizeColor(this._gridData[y][x]);
-        if (color !== null) { // 完美版：只统计非透明色
-          this._colorUsageMap.set(color, (this._colorUsageMap.get(color) || 0) + 1);
-          this._nonWhiteCount++;
-        }
+  _getOverlayColorCodeMap() {
+    const colorCodeMap = {};
+    (this.data.colorsWithCode || []).forEach((item) => {
+      if (item && item.hex && item.code) {
+        colorCodeMap[item.hex.toUpperCase()] = item.code;
       }
-    }
+    });
+    return colorCodeMap;
+  },
+
+  _getRenderViewport() {
+    if (!this._canvasAreaRect) return null;
+    return {
+      canvasWidth: this.data.canvasWidth,
+      canvasHeight: this.data.canvasHeight,
+      canvasOffsetX: this.data.canvasOffsetX,
+      canvasOffsetY: this.data.canvasOffsetY,
+      canvasScale: this.data.canvasScale,
+      areaWidth: this._canvasAreaRect.width,
+      areaHeight: this._canvasAreaRect.height
+    };
+  },
+
+  _getRenderState() {
+    return {
+      canvasWidth: this.data.canvasWidth,
+      canvasHeight: this.data.canvasHeight,
+      gridSize: this.data.gridSize,
+      showGrid: this.data.showGrid,
+      canvasScale: this.data.canvasScale,
+      backgroundImage: this.data.backgroundImage,
+      dpr: this._dpr,
+      renderDpr: this._renderDpr
+    };
   },
 
   _queueRenderChangedPixels(changedCells) {
@@ -427,6 +502,18 @@ Page({
     
     // 完美版：初始化渲染调度器
     this._renderScheduler = getScheduler();
+    this._canvasRenderer = new CanvasRenderer({
+      renderScheduler: this._renderScheduler,
+      getColorCodeMap: () => this._getOverlayColorCodeMap(),
+      getViewport: () => this._getRenderViewport(),
+      getState: () => this._getRenderState()
+    });
+    this._colorBarManager = new ColorBarManager({
+      getState: () => this.data
+    });
+    this._magnifierModule = new Magnifier({
+      size: 100
+    });
     
     this.setData({
       storageKey: storageKey || '',
@@ -443,7 +530,7 @@ Page({
     // 初始化颜色行
     this._updateColorRows();
     
-    if (source === 'result' && storageKey) {
+    if ((source === 'result' || source === 'ai-result') && storageKey) {
       this._loadDrawData(storageKey);
     } else {
       this._initData();
@@ -477,8 +564,9 @@ Page({
         brand: 'MARD',
         brandIndex: 0,
         colors: DEFAULT_COLORS
+      }, () => {
+        this._updateColorRows();
       });
-      this._updateColorRows();
     });
   },
 
@@ -569,7 +657,9 @@ Page({
     this.setData({ 
       selectedKitId: kitId,
       selectedKitName: kitName,
-      paletteDropdownOpen: false 
+      paletteDropdownOpen: false,
+      virtualColorsWithCode: [],
+      virtualColorsOffsetTop: 0
     });
     
     // 重新加载该套餐的色号
@@ -631,6 +721,10 @@ Page({
       clearTimeout(this._localSaveTimer);
       this._localSaveTimer = null;
     }
+    if (this._usedColorsTimer) {
+      clearTimeout(this._usedColorsTimer);
+      this._usedColorsTimer = null;
+    }
   },
 
   _buildLocalRecoverySnapshot() {
@@ -643,10 +737,19 @@ Page({
 
   _saveLocalRecoveryDraft() {
     if (this._isRestoringLocalDraft) return;
+    // 手势中不保存（已在 _scheduleLocalRecoveryDraft 中过滤）
     try {
       const payload = this._buildLocalRecoverySnapshot();
       if (!payload) return;
-      wx.setStorageSync(LOCAL_RECOVERY_KEY, payload);
+      // 使用异步存储，避免阻塞主线程
+      wx.setStorage({
+        key: LOCAL_RECOVERY_KEY,
+        data: payload,
+        fail: (e) => {
+          // 异步失败时回退到同步
+          try { wx.setStorageSync(LOCAL_RECOVERY_KEY, payload); } catch (e2) {}
+        }
+      });
     } catch (e) {
       console.warn('本地恢复缓存保存失败:', e);
     }
@@ -654,11 +757,24 @@ Page({
 
   _scheduleLocalRecoveryDraft() {
     if (this._isRestoringLocalDraft) return;
+    // 手势缩放/拖拽期间跳过自动保存，避免阻塞主线程
+    if (this._isPinching) return;
     if (this._localSaveTimer) clearTimeout(this._localSaveTimer);
     this._localSaveTimer = setTimeout(() => {
       this._localSaveTimer = null;
       this._saveLocalRecoveryDraft();
     }, 800);
+  },
+
+  /**
+   * 手势结束后补偿一次自动保存
+   */
+  _onGestureEndSave() {
+    if (this._localSaveTimer) clearTimeout(this._localSaveTimer);
+    this._localSaveTimer = setTimeout(() => {
+      this._localSaveTimer = null;
+      if (!this._isPinching) this._saveLocalRecoveryDraft();
+    }, 500);
   },
 
   _flushLocalRecoveryDraft() {
@@ -713,6 +829,10 @@ Page({
     this._canvas = context.canvas;
     this._ctx = context.ctx;
     this._dpr = context.dpr;
+
+    if (this._magnifierModule) {
+      this._magnifierModule.init(this._canvas, this._ctx);
+    }
     
     this.setData({ canvasReady: true, canvas2dComponent: canvas2dComponent });
     this._updateCanvasRect();
@@ -748,6 +868,15 @@ Page({
       const drawData = wx.getStorageSync(storageKey);
       if (!drawData) { wx.showToast({ title: '数据加载失败', icon: 'none' }); this._initData(); return; }
       const { gridSize, gridData, colorPalette, brand, backgroundState } = drawData;
+
+      // 验证 gridData 是否存在且为数组
+      if (!gridData || !Array.isArray(gridData)) {
+        console.error('加载绘图数据失败: gridData 无效', { gridData });
+        wx.showToast({ title: '绘图数据格式错误', icon: 'none' });
+        this._initData();
+        return;
+      }
+
       const canvasSize = this._getAdaptiveCanvasSize();
       const cellSize = canvasSize / gridSize;
       const hexGridData = gridData.map(row => row.map(idx => {
@@ -761,11 +890,24 @@ Page({
       hexGridData.forEach(row => { row.forEach(color => { if (color) usedColors.add(color); }); });
       const colors = Array.from(usedColors);
       if (!colors.includes('#FFFFFF')) colors.unshift('#FFFFFF');
-      this._gridData = hexGridData;
+    this._gridData = hexGridData;
+    this._pixelStore = PixelStore.fromGridData(hexGridData);
       this._rebuildColorStatsFromGrid();
       this._originalGridData = gridData;
       this._originalColorPalette = colorPalette;
       this._cellSize = cellSize;
+      
+      // 构建 hex → 真实色号 映射表（用于展示已使用颜色的真实色号）
+      const hexCodeMap = {};
+      (colorPalette || []).forEach(c => {
+        if (c && c.hex && (c.id || c.name)) {
+          const upperHex = String(c.hex).toUpperCase();
+          if (!hexCodeMap[upperHex]) {
+            hexCodeMap[upperHex] = c.id || c.name;
+          }
+        }
+      });
+      this._hexCodeMap = hexCodeMap;
       
       // 恢复背景图层状态
       const bgState = backgroundState ? (typeof backgroundState === 'string' ? JSON.parse(backgroundState) : backgroundState) : null;
@@ -896,16 +1038,17 @@ Page({
     }
 
     this._gridData = newGridData;
+    this._pixelStore = PixelStore.fromGridData(newGridData);
     this._rebuildColorStatsFromGrid();
     
     // 问题4修复：尺寸变更时保存状态到撤销栈，但不清空撤销栈
+    if (!this._history) this._history = new HistoryManager();
     if (keepContent) {
       // 清空重做栈（因为这是新的操作分支）
-      this._redoStack = [];
+      this._history.clearRedo();
     } else {
       // 全新画布，清空所有历史
-      this._undoStack = [];
-      this._redoStack = [];
+      this._history.clear();
     }
 
     // 完美版：根据是否保持内容，决定缩放和位置
@@ -922,8 +1065,7 @@ Page({
       gridLineWidth: 1,
       majorLineWidth: 2,
       gridLines: this._buildGridLines(newGridSize, canvasSize),
-      canUndo: this._undoStack.length > 0,
-      canRedo: this._redoStack.length > 0,
+      ...(this._history ? this._history.getState() : { canUndo: false, canRedo: false }),
       canvasScale: newScale,
       backgroundScale: newBackgroundScale
     }, () => {
@@ -982,65 +1124,45 @@ Page({
     if (!this._ctx || !this.data.canvasReady) {
       return;
     }
-    
+
+    if (this._canvasRenderer) {
+      this._canvasRenderer.renderFull(this._ctx, this._gridData);
+      return;
+    }
+
     const hasBackground = !!this.data.backgroundImage;
-    
-    // 构建色码映射表
-    const colorCodeMap = {};
-    (this.data.colorsWithCode || []).forEach((item) => {
-      if (item && item.hex && item.code) {
-        colorCodeMap[item.hex.toUpperCase()] = item.code;
-      }
-    });
-    
-    // 完美版：计算可视区域
+    const colorCodeMap = this._getOverlayColorCodeMap();
+
     let visibleRange = null;
     if (this._renderScheduler && this._canvasAreaRect) {
-      const viewport = {
-        canvasWidth: this.data.canvasWidth,
-        canvasHeight: this.data.canvasHeight,
-        canvasOffsetX: this.data.canvasOffsetX,
-        canvasOffsetY: this.data.canvasOffsetY,
-        canvasScale: this.data.canvasScale,
-        areaWidth: this._canvasAreaRect.width,
-        areaHeight: this._canvasAreaRect.height
-      };
+      const viewport = this._getRenderViewport();
       visibleRange = this._renderScheduler.getVisibleRange(viewport, this.data.gridSize);
-      
-      console.log('[主Canvas] 可视区域:', visibleRange);
     }
-    
-    // 更新 data，供色号组件使用
-    this.setData({
-      overlayGridData: this._gridData,
-      overlayColorCodeMap: colorCodeMap
-    }, () => {
-      // 数据更新后，主动触发一次色号层重绘
-      const codeOverlay = this.selectComponent('#codeOverlay');
-      if (codeOverlay) codeOverlay.redraw();
-    });
-    
-    // 方案B：网格由独立的 grid-overlay 组件绘制，主 Canvas 只绘制色块
-    console.log('[主Canvas] 绘制色块（支持可视区域裁剪）');
-    
+
     drawBoard(this._ctx, {
       width: this.data.canvasWidth,
       height: this.data.canvasHeight,
       gridSize: this.data.gridSize,
       gridData: this._gridData,
-      showGrid: false,  // 主 Canvas 不绘制网格
+      showGrid: this.data.showGrid,
       dpr: this._renderDpr || this._dpr,
-      hasBackground: hasBackground,
+      hasBackground,
       viewScale: this.data.canvasScale,
-      colorCodeMap: null,  // 主 Canvas 不绘制色号
-      visibleRange: visibleRange // 完美版：传入可视区域
+      colorCodeMap,
+      visibleRange
     });
-    
-    console.log('[主Canvas] 绘制完成');
   },
 
   _renderChangedPixels(changedCells) {
     if (!this._ctx || !this.data.canvasReady || !changedCells || changedCells.size === 0) return;
+
+    if (this._canvasRenderer) {
+      this._canvasRenderer.markDirtyBatch(changedCells);
+      this._canvasRenderer.renderDirty(this._ctx, this._gridData);
+      return;
+    }
+
+    const colorCodeMap = this._getOverlayColorCodeMap();
 
     changedCells.forEach((key) => {
       const [rowStr, colStr] = key.split(',');
@@ -1053,43 +1175,92 @@ Page({
         row,
         col,
         color: this._gridData[row][col],
-        showGrid: false,
+        showGrid: this.data.showGrid,
         dpr: this._renderDpr || this._dpr,
         hasBackground: !!this.data.backgroundImage,
         viewScale: this.data.canvasScale,
-        colorCodeMap: null
+        colorCodeMap
       });
     });
+  },
 
-    // 更新 overlayGridData，确保色号组件能获取最新数据
-    this.setData({
-      overlayGridData: this._gridData
-    });
+  _beginStrokeUndo() {
+    // 开始一笔画，创建增量撤销记录
+    if (!this._history) this._history = new HistoryManager();
+    this._strokeUndoCells = this._history.beginStroke();
+  },
 
-    // 独立色号层重绘（避免主 canvas 绘制色号导致不稳定/模糊）
-    const codeOverlay = this.selectComponent('#codeOverlay');
-    if (codeOverlay) {
-      codeOverlay.redraw();
-    }
+  _endStrokeUndo() {
+    if (!this._strokeUndoCells || this._strokeUndoCells.size === 0) return;
+    if (!this._history) this._history = new HistoryManager();
+    this._history.endStroke(this._strokeUndoCells);
+    this._strokeUndoCells = null;
+    this.setData(this._history.getState());
+    this._scheduleLocalRecoveryDraft();
   },
 
   _saveState() {
-    const state = this._snapshotState();
-    this._undoStack.push(state);
+    if (!this._gridData || !Array.isArray(this._gridData)) return;
+    if (!this._history) this._history = new HistoryManager();
 
-    // 限制撤回栈大小，防止内存溢出
-    const MAX_UNDO_STACK = 100; // 增加到 100 步，支持更精细的撤回
-    if (this._undoStack.length > MAX_UNDO_STACK) {
-      this._undoStack.shift(); // 移除最旧的
+    this._ensurePixelStoreFromGrid();
+
+    const gridCopy = this._gridData.map(row => [...row]);
+    const pixelSnapshot = this._pixelStore ? this._pixelStore.createSnapshot() : null;
+
+    const meta = {
+      gridSize: this.data.gridSize,
+      canvasOffsetX: this.data.canvasOffsetX,
+      canvasOffsetY: this.data.canvasOffsetY,
+      canvasScale: this.data.canvasScale,
+      backgroundOffsetX: this.data.backgroundOffsetX,
+      backgroundOffsetY: this.data.backgroundOffsetY,
+      backgroundScale: this.data.backgroundScale,
+      backgroundMirror: !!this.data.backgroundMirror,
+      locked: !!this.data.locked,
+      showBackground: !!this.data.showBackground,
+      backgroundImage: this.data.backgroundImage || ''
+    };
+
+    this._history.pushFullState(
+      'full',
+      { fullGridData: gridCopy, pixelSnapshot, meta },
+      { fullGridData: gridCopy, pixelSnapshot, meta }
+    );
+    this.setData(this._history.getState());
+    this._scheduleLocalRecoveryDraft();
+  },
+
+  onGestureEnd(state) {
+    if (!state) return;
+
+    const nextOffsetX = state.canvasOffsetX == null ? this.data.canvasOffsetX : state.canvasOffsetX;
+    const nextOffsetY = state.canvasOffsetY == null ? this.data.canvasOffsetY : state.canvasOffsetY;
+    const nextScale = state.canvasScale == null ? this.data.canvasScale : state.canvasScale;
+
+    const changed =
+      nextOffsetX !== this.data.canvasOffsetX ||
+      nextOffsetY !== this.data.canvasOffsetY ||
+      nextScale !== this.data.canvasScale ||
+      this.data.isPinching;
+
+    if (!changed) {
+      if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(false);
+      return;
     }
 
-    // 清空重做栈（新操作后无法重做）
-    this._redoStack = [];
-
-    this.setData({ canUndo: true, canRedo: false });
-
-    // 保存到本地缓存
-    this._scheduleLocalRecoveryDraft();
+    this.setData({
+      canvasOffsetX: nextOffsetX,
+      canvasOffsetY: nextOffsetY,
+      canvasScale: nextScale,
+      overlayScale: nextScale,
+      isPinching: false
+    }, () => {
+      if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(false);
+      this._drawFullGrid();
+      this._updateAxisLabels();
+      this._scheduleLocalRecoveryDraft();
+    });
   },
 
   handleTouchStart(e) {
@@ -1113,7 +1284,7 @@ Page({
         this._isDrawing = false;
         this._lastPos = null;
         // 撤销刚才的误触绘制
-        if (this._undoStack.length > 0 && (now - this._lastTouchTime) < 200) {
+        if (this._history && this._history.getState().canUndo && (now - this._lastTouchTime) < 200) {
           console.log('[防误触] 撤销误触绘制');
           this.onUndo();
         }
@@ -1122,6 +1293,7 @@ Page({
       this._isPinching = true;
       this._isDrawing = false;
       this._isDragging = false;
+      if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(true);
       console.log('[PINCH_TRACE] start pinch');
 
       // 冻结 overlay 缩放参数，避免双指过程中的异步抖动
@@ -1224,7 +1396,10 @@ Page({
       if (this._pendingDrawPos && this._pendingDrawPos === pos) {
         this._isDrawing = true;
         this._lastPos = pos;
-        this._saveState();
+        // 增量撤销：开始一笔新绘画
+        this._beginStrokeUndo();
+        // 初始化脏矩形
+        this._dirtyRect = { x1: pos.col, y1: pos.row, x2: pos.col, y2: pos.row };
         this._paintPixel(pos.row, pos.col);
         this._pendingDrawPos = null;
       }
@@ -1235,111 +1410,26 @@ Page({
     const touches = e.touches;
     const now = Date.now();
 
-    // 双指缩放/拖拽（同时支持缩放与平移）
+    // 双指缩放/拖拽（同时支持缩放与平移）—— RAF 节流
     if (touches.length === 2 && this._isPinching) {
-      const touch1 = touches[0];
-      const touch2 = touches[1];
-      const currentDistance = this._getDistance(touch1, touch2);
-      const scaleChange = currentDistance / this._touchStartDistance;
-
-      // 当前双指中心（屏幕坐标）
-      const centerClientX = (touch1.clientX + touch2.clientX) / 2;
-      const centerClientY = (touch1.clientY + touch2.clientY) / 2;
-
-      // 转换为 canvas-area 本地坐标
-      const areaLeft = this._canvasAreaRect ? this._canvasAreaRect.left : 0;
-      const areaTop = this._canvasAreaRect ? this._canvasAreaRect.top : 0;
-      const centerX = centerClientX - areaLeft;
-      const centerY = centerClientY - areaTop;
-
-      // 与起始双指中心的平移差（实现双指拖拽）
-      const startCenterX = (this._pinchStartCenterX || centerClientX) - areaLeft;
-      const startCenterY = (this._pinchStartCenterY || centerClientY) - areaTop;
-      const panX = centerX - startCenterX;
-      const panY = centerY - startCenterY;
-
-      const minScale = this._minScale || 0.5;
-      const maxScale = this._getMaxScale(); // 使用动态计算的最大缩放
-
-      // 锁定模式：背景与画布同步
-      if (this.data.locked && this.data.backgroundImage) {
-        const baseScale = this._touchStartScale || this.data.canvasScale;
-        const baseBackgroundScale = this._touchStartBackgroundScale || this.data.backgroundScale;
-        const lockRatio = this._lockScaleRatio || (baseScale > 0 ? (baseBackgroundScale / baseScale) : 1);
-
-        let nextScale = baseScale * scaleChange;
-        nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
-
-        const nextBackgroundScale = Math.max(minScale, Math.min(maxScale, nextScale * lockRatio));
-
-        const canvasScaleRatio = nextScale / baseScale;
-        const bgScaleRatio = nextBackgroundScale / baseBackgroundScale;
-        
-        // 画布变换
-        const baseCanvasOffsetX = this._touchStartCanvasOffsetX == null ? this.data.canvasOffsetX : this._touchStartCanvasOffsetX;
-        const baseCanvasOffsetY = this._touchStartCanvasOffsetY == null ? this.data.canvasOffsetY : this._touchStartCanvasOffsetY;
-        const zoomCanvasOffsetX = centerX - (centerX - baseCanvasOffsetX) * canvasScaleRatio;
-        const zoomCanvasOffsetY = centerY - (centerY - baseCanvasOffsetY) * canvasScaleRatio;
-        
-        // 背景变换（保持锁定时的相对缩放关系）
-        const baseBackgroundOffsetX = this._touchStartBackgroundOffsetX == null ? this.data.backgroundOffsetX : this._touchStartBackgroundOffsetX;
-        const baseBackgroundOffsetY = this._touchStartBackgroundOffsetY == null ? this.data.backgroundOffsetY : this._touchStartBackgroundOffsetY;
-        const zoomBackgroundOffsetX = centerX - (centerX - baseBackgroundOffsetX) * bgScaleRatio;
-        const zoomBackgroundOffsetY = centerY - (centerY - baseBackgroundOffsetY) * bgScaleRatio;
-
-        this.setData({
-          canvasScale: nextScale,
-          canvasOffsetX: zoomCanvasOffsetX + panX,
-          canvasOffsetY: zoomCanvasOffsetY + panY,
-          backgroundScale: nextBackgroundScale,
-          backgroundOffsetX: zoomBackgroundOffsetX + panX,
-          backgroundOffsetY: zoomBackgroundOffsetY + panY,
-          overlayScale: this.data.overlayScale,
-          isPinching: true
-        });
-        console.log('[PINCH_TRACE] move locked setData', { scale: nextScale });
-        return;
+      if (this._canvasRenderer) {
+        this._canvasRenderer.renderFull(this._ctx, this._gridData);
       }
-
-      const target = this._getActiveTransformTarget();
-
-      if (target === 'background') {
-        const baseScale = this._touchStartBackgroundScale || this.data.backgroundScale;
-        let nextScale = baseScale * scaleChange;
-        nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
-
-        const scaleRatio = nextScale / baseScale;
-        const baseOffsetX = this._touchStartBackgroundOffsetX == null ? this.data.backgroundOffsetX : this._touchStartBackgroundOffsetX;
-        const baseOffsetY = this._touchStartBackgroundOffsetY == null ? this.data.backgroundOffsetY : this._touchStartBackgroundOffsetY;
-
-        const zoomOffsetX = centerX - (centerX - baseOffsetX) * scaleRatio;
-        const zoomOffsetY = centerY - (centerY - baseOffsetY) * scaleRatio;
-
-        this.setData({
-          backgroundScale: nextScale,
-          backgroundOffsetX: zoomOffsetX + panX,
-          backgroundOffsetY: zoomOffsetY + panY,
-          isPinching: true
+      // 缓存最新 pinch 参数，下一帧统一执行 setData
+      this._pendingPinch = {
+        touches,
+        scaleChange: this._getDistance(touches[0], touches[1]) / this._touchStartDistance,
+        centerClientX: (touches[0].clientX + touches[1].clientX) / 2,
+        centerClientY: (touches[0].clientY + touches[1].clientY) / 2
+      };
+      if (!this._pinchRafId) {
+        this._pinchRafId = requestAnimationFrame(() => {
+          this._pinchRafId = null;
+          const p = this._pendingPinch;
+          if (!p) return;
+          this._pendingPinch = null;
+          this._applyPinchTransform(p.touches, p.scaleChange, p.centerClientX, p.centerClientY);
         });
-        console.log('[PINCH_TRACE] move background setData', { scale: nextScale });
-      } else {
-        const baseScale = this._touchStartScale || this.data.canvasScale;
-        let nextScale = baseScale * scaleChange;
-        nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
-
-        const scaleRatio = nextScale / baseScale;
-        const baseOffsetX = this._touchStartCanvasOffsetX == null ? this.data.canvasOffsetX : this._touchStartCanvasOffsetX;
-        const baseOffsetY = this._touchStartCanvasOffsetY == null ? this.data.canvasOffsetY : this._touchStartCanvasOffsetY;
-
-        const zoomOffsetX = centerX - (centerX - baseOffsetX) * scaleRatio;
-        const zoomOffsetY = centerY - (centerY - baseOffsetY) * scaleRatio;
-
-        this._setCanvasTransform({
-          canvasScale: nextScale,
-          canvasOffsetX: zoomOffsetX + panX,
-          canvasOffsetY: zoomOffsetY + panY
-        });
-        console.log('[PINCH_TRACE] move canvas setData', { scale: nextScale });
       }
       return;
     }
@@ -1347,43 +1437,54 @@ Page({
     const touch = touches[0];
     const deltaTime = now - this._lastTouchTime;
     
-    // 拖拽工具
+    // 拖拽工具 —— 用 RAF 节流，避免每次 touchmove 都 setData
     if (this.data.tool === 'drag' && this._isDragging) {
-      const deltaX = touch.clientX - this._dragStartX;
-      const deltaY = touch.clientY - this._dragStartY;
-      
-      // 计算速度（用于惯性滚动）
-      if (deltaTime > 0) {
-        this._velocityX = deltaX / deltaTime * 16;
-        this._velocityY = deltaY / deltaTime * 16;
-      }
+      this._dragCurrentX = touch.clientX;
+      this._dragCurrentY = touch.clientY;
+      this._dragDeltaTime = deltaTime;
 
-      // 标准锁定模式：同步背景和画布
-      if (this.data.locked && this.data.backgroundImage) {
-        this.setData({
-          canvasOffsetX: this.data.canvasOffsetX + deltaX,
-          canvasOffsetY: this.data.canvasOffsetY + deltaY,
-          backgroundOffsetX: this.data.backgroundOffsetX + deltaX,
-          backgroundOffsetY: this.data.backgroundOffsetY + deltaY
+      if (!this._dragRafId) {
+        this._dragRafId = requestAnimationFrame(() => {
+          this._dragRafId = null;
+          const curX = this._dragCurrentX;
+          const curY = this._dragCurrentY;
+          if (curX == null || curY == null) return;
+          const deltaX = curX - this._dragStartX;
+          const deltaY = curY - this._dragStartY;
+          const dt = this._dragDeltaTime || 16;
+
+          if (dt > 0) {
+            this._velocityX = deltaX / dt * 16;
+            this._velocityY = deltaY / dt * 16;
+          }
+
+          if (this.data.locked && this.data.backgroundImage) {
+            this.setData({
+              canvasOffsetX: this.data.canvasOffsetX + deltaX,
+              canvasOffsetY: this.data.canvasOffsetY + deltaY,
+              backgroundOffsetX: this.data.backgroundOffsetX + deltaX,
+              backgroundOffsetY: this.data.backgroundOffsetY + deltaY
+            });
+          } else {
+            const target = this._getActiveTransformTarget();
+            if (target === 'background') {
+              this.setData({
+                backgroundOffsetX: this.data.backgroundOffsetX + deltaX,
+                backgroundOffsetY: this.data.backgroundOffsetY + deltaY
+              });
+            } else {
+              this.setData({
+                canvasOffsetX: this.data.canvasOffsetX + deltaX,
+                canvasOffsetY: this.data.canvasOffsetY + deltaY
+              });
+            }
+          }
+
+          this._dragStartX = curX;
+          this._dragStartY = curY;
+          this._lastTouchTime = now;
         });
-      } else {
-        const target = this._getActiveTransformTarget();
-        if (target === 'background') {
-          this.setData({
-            backgroundOffsetX: this.data.backgroundOffsetX + deltaX,
-            backgroundOffsetY: this.data.backgroundOffsetY + deltaY
-          });
-        } else {
-          this.setData({
-            canvasOffsetX: this.data.canvasOffsetX + deltaX,
-            canvasOffsetY: this.data.canvasOffsetY + deltaY
-          });
-        }
       }
-      
-      this._dragStartX = touch.clientX;
-      this._dragStartY = touch.clientY;
-      this._lastTouchTime = now;
       return;
     }
     
@@ -1409,18 +1510,112 @@ Page({
     this._lastPos = pos;
   },
 
+  /**
+   * 将双指变换计算抽成独立方法（由 RAF 节流触发）
+   */
+  _applyPinchTransform(touches, scaleChange, centerClientX, centerClientY) {
+    const areaLeft = this._canvasAreaRect ? this._canvasAreaRect.left : 0;
+    const areaTop = this._canvasAreaRect ? this._canvasAreaRect.top : 0;
+    const centerX = centerClientX - areaLeft;
+    const centerY = centerClientY - areaTop;
+
+    const startCenterX = (this._pinchStartCenterX || centerClientX) - areaLeft;
+    const startCenterY = (this._pinchStartCenterY || centerClientY) - areaTop;
+    const panX = centerX - startCenterX;
+    const panY = centerY - startCenterY;
+
+    const minScale = this._minScale || 0.5;
+    const maxScale = this._getMaxScale();
+
+    // 锁定模式：背景与画布同步
+    if (this.data.locked && this.data.backgroundImage) {
+      const baseScale = this._touchStartScale || this.data.canvasScale;
+      const baseBackgroundScale = this._touchStartBackgroundScale || this.data.backgroundScale;
+      const lockRatio = this._lockScaleRatio || (baseScale > 0 ? (baseBackgroundScale / baseScale) : 1);
+
+      let nextScale = baseScale * scaleChange;
+      nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
+
+      const nextBackgroundScale = Math.max(minScale, Math.min(maxScale, nextScale * lockRatio));
+
+      const canvasScaleRatio = nextScale / baseScale;
+      const bgScaleRatio = nextBackgroundScale / baseBackgroundScale;
+      
+      const baseCanvasOffsetX = this._touchStartCanvasOffsetX != null ? this._touchStartCanvasOffsetX : this.data.canvasOffsetX;
+      const baseCanvasOffsetY = this._touchStartCanvasOffsetY != null ? this._touchStartCanvasOffsetY : this.data.canvasOffsetY;
+      const zoomCanvasOffsetX = centerX - (centerX - baseCanvasOffsetX) * canvasScaleRatio;
+      const zoomCanvasOffsetY = centerY - (centerY - baseCanvasOffsetY) * canvasScaleRatio;
+      
+      const baseBackgroundOffsetX = this._touchStartBackgroundOffsetX != null ? this._touchStartBackgroundOffsetX : this.data.backgroundOffsetX;
+      const baseBackgroundOffsetY = this._touchStartBackgroundOffsetY != null ? this._touchStartBackgroundOffsetY : this.data.backgroundOffsetY;
+      const zoomBackgroundOffsetX = centerX - (centerX - baseBackgroundOffsetX) * bgScaleRatio;
+      const zoomBackgroundOffsetY = centerY - (centerY - baseBackgroundOffsetY) * bgScaleRatio;
+
+      this.setData({
+        canvasScale: nextScale,
+        canvasOffsetX: zoomCanvasOffsetX + panX,
+        canvasOffsetY: zoomCanvasOffsetY + panY,
+        backgroundScale: nextBackgroundScale,
+        backgroundOffsetX: zoomBackgroundOffsetX + panX,
+        backgroundOffsetY: zoomBackgroundOffsetY + panY,
+        overlayScale: this.data.overlayScale,
+        isPinching: true
+      });
+      return;
+    }
+
+    const target = this._getActiveTransformTarget();
+
+    if (target === 'background') {
+      const baseScale = this._touchStartBackgroundScale || this.data.backgroundScale;
+      let nextScale = baseScale * scaleChange;
+      nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
+
+      const scaleRatio = nextScale / baseScale;
+      const baseOffsetX = this._touchStartBackgroundOffsetX != null ? this._touchStartBackgroundOffsetX : this.data.backgroundOffsetX;
+      const baseOffsetY = this._touchStartBackgroundOffsetY != null ? this._touchStartBackgroundOffsetY : this.data.backgroundOffsetY;
+
+      const zoomOffsetX = centerX - (centerX - baseOffsetX) * scaleRatio;
+      const zoomOffsetY = centerY - (centerY - baseOffsetY) * scaleRatio;
+
+      this.setData({
+        backgroundScale: nextScale,
+        backgroundOffsetX: zoomOffsetX + panX,
+        backgroundOffsetY: zoomOffsetY + panY,
+        isPinching: true
+      });
+    } else {
+      const baseScale = this._touchStartScale || this.data.canvasScale;
+      let nextScale = baseScale * scaleChange;
+      nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
+
+      const scaleRatio = nextScale / baseScale;
+      const baseOffsetX = this._touchStartCanvasOffsetX != null ? this._touchStartCanvasOffsetX : this.data.canvasOffsetX;
+      const baseOffsetY = this._touchStartCanvasOffsetY != null ? this._touchStartCanvasOffsetY : this.data.canvasOffsetY;
+
+      const zoomOffsetX = centerX - (centerX - baseOffsetX) * scaleRatio;
+      const zoomOffsetY = centerY - (centerY - baseOffsetY) * scaleRatio;
+
+      this._setCanvasTransform({
+        canvasScale: nextScale,
+        canvasOffsetX: zoomOffsetX + panX,
+        canvasOffsetY: zoomOffsetY + panY
+      });
+    }
+  },
+
   handleTouchEnd(e) {
     // 如果是双指缩放结束
     if (this._isPinching) {
       console.log('[PINCH_TRACE] end pinch');
       this._isPinching = false;
+      if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(false);
       this._updateCanvasAreaRect();
 
       // 缩放结束后，重新绘制以提高清晰度
       this._redrawCanvasAtCurrentScale();
       
-      // setData({ isPinching: false }) 会触发 gesturing observer，自动重绘网格和色号
-      // 所以这里不需要手动调用 redraw()
+      // setData({ isPinching: false }) 后回到高精度渲染
       this.setData({ isPinching: false, overlayScale: this.data.canvasScale }, () => {
         this._drawFullGrid();
       });
@@ -1508,6 +1703,7 @@ Page({
       return;
     }
     
+    this._endStrokeUndo();
     this._isDrawing = false;
     this._lastPos = null;
   },
@@ -1687,6 +1883,10 @@ Page({
   },
 
   _showMagnifier(touchX, touchY, pos) {
+    if (this._magnifierModule) {
+      this._magnifierModule.update();
+    }
+
     const offsetY = -120;
     this.setData({
       showMagnifier: true,
@@ -2383,7 +2583,7 @@ Page({
       this._floodFill(row, col, currentColor);
       this._rebuildColorStatsFromGrid();
       this._drawFullGrid();
-      this._updateUsedColors();
+      this._scheduleUsedColorsUpdate();
       this._updateHasPixels();
       return;
     }
@@ -2391,15 +2591,28 @@ Page({
     const changed = changedCells || new Set();
     const isEraser = tool === 'eraser';
 
-    // 增量更新颜色统计
+    // 增量更新颜色统计 + 记录到撤销栈
     const updateCell = (r, c) => {
-      const oldColor = this._normalizeColor(this._gridData[r][c]);
+      const oldValue = this._gridData[r][c]; // 原始值（可能为 null）
+      const oldColor = this._normalizeColor(oldValue);
       const newColor = this._normalizeColor(color);
       if (oldColor !== newColor) {
         this._bumpColorCount(oldColor, -1);
         this._bumpColorCount(newColor, 1);
         this._gridData[r][c] = color;
+        this._ensurePixelStoreFromGrid();
+        this._pixelStore.setPixelHex(r, c, color);
         changed.add(`${r},${c}`);
+        // 记录到笔画撤销集合（old 保持原始值，new 为新值）
+        if (this._strokeUndoCells) {
+          const key = `${r},${c}`;
+          if (this._strokeUndoCells.has(key)) {
+            // 同一笔再次画到同一格，保留最早的 old
+            this._strokeUndoCells.set(key, { old: this._strokeUndoCells.get(key).old, new: color });
+          } else {
+            this._strokeUndoCells.set(key, { old: oldValue, new: color });
+          }
+        }
       }
     };
 
@@ -2435,7 +2648,7 @@ Page({
       this._queueRenderChangedPixels(changed);
     }
     if (!skipStats) {
-      this._updateUsedColors();
+      this._scheduleUsedColorsUpdate();
       this._updateHasPixels();
     }
   },
@@ -2457,7 +2670,7 @@ Page({
     }
 
     this._queueRenderChangedPixels(changedCells);
-    this._updateUsedColors();
+    this._scheduleUsedColorsUpdate();
     this._updateHasPixels();
   },
 
@@ -2492,40 +2705,67 @@ Page({
 
       visited.add(key);
       this._gridData[r][c] = newColor;
+      this._ensurePixelStoreFromGrid();
+      this._pixelStore.setPixelHex(r, c, newColor);
       stack.push([r + 1, c], [r - 1, c], [r, c + 1], [r, c - 1]);
     }
   },
 
   onUndo() {
-    if (this._undoStack.length === 0) return;
+    if (!this._history) this._history = new HistoryManager();
+    const record = this._history.undo();
+    if (!record) return;
 
-    // 修复 P0：避免重复序列化，先保存当前状态再恢复
-    const prevState = this._undoStack.pop();
-    const currentState = this._snapshotState();
+    this._applyHistoryRecord(record);
+    this._rebuildColorStatsFromGrid();
+    this._drawFullGrid();
+    this._updateUsedColors();
+    this._updateHasPixels();
 
-    this._redoStack.push(currentState);
-    this._restoreState(prevState);
-
-    this.setData({
-      canUndo: this._undoStack.length > 0,
-      canRedo: true
-    });
+    this.setData(this._history.getState());
+    this._scheduleLocalRecoveryDraft();
   },
 
   onRedo() {
-    if (this._redoStack.length === 0) return;
+    if (!this._history) this._history = new HistoryManager();
+    const record = this._history.redo();
+    if (!record) return;
 
-    // 修复 P0：避免重复序列化，先保存当前状态再恢复
-    const nextState = this._redoStack.pop();
-    const currentState = this._snapshotState();
+    this._applyHistoryRecord(record);
+    this._rebuildColorStatsFromGrid();
+    this._drawFullGrid();
+    this._updateUsedColors();
+    this._updateHasPixels();
 
-    this._undoStack.push(currentState);
-    this._restoreState(nextState);
+    this.setData(this._history.getState());
+    this._scheduleLocalRecoveryDraft();
+  },
 
-    this.setData({
-      canUndo: true,
-      canRedo: this._redoStack.length > 0
-    });
+  /**
+   * 应用历史记录到 gridData
+   */
+  _applyHistoryRecord(record) {
+    if (!record) return;
+
+    if (record.pixelSnapshot && record.pixelSnapshot.gridSize) {
+      this._ensurePixelStoreFromGrid();
+      this._pixelStore.restoreSnapshot(record.pixelSnapshot);
+      this._syncGridFromPixelStore();
+    } else if (record.fullGridData) {
+      this._gridData = record.fullGridData.map(row => [...row]);
+      this._pixelStore = PixelStore.fromGridData(this._gridData);
+    }
+
+    if (record._cells) {
+      this._ensurePixelStoreFromGrid();
+      for (const [key, val] of Object.entries(record._cells)) {
+        const [r, c] = key.split(',').map(Number);
+        if (this._gridData[r] != null && this._gridData[r][c] != null) {
+          this._gridData[r][c] = val.new;
+          this._pixelStore.setPixelHex(r, c, val.new);
+        }
+      }
+    }
   },
 
   onGridSizeInput(e) {
@@ -2601,6 +2841,15 @@ Page({
   },
 
   _getColorCode(hex) {
+    // 优先使用真实色号映射表（AI结果传入的色号或API加载的色号）
+    if (this._hexCodeMap && this._hexCodeMap[String(hex).toUpperCase()]) {
+      return this._hexCodeMap[String(hex).toUpperCase()];
+    }
+    // 回退：从 colorsWithCode 中查找（API加载的品牌色卡）
+    const colorsWithCode = this.data.colorsWithCode || [];
+    const match = colorsWithCode.find(c => String(c.hex).toUpperCase() === String(hex).toUpperCase());
+    if (match && match.code) return match.code;
+    // 最终回退：使用索引合成色号
     const index = this.data.colors.indexOf(hex);
     if (index >= 0) {
       const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -2818,35 +3067,24 @@ Page({
   },
 
   _hasDrawableContent() {
-    if (!this._gridData || !Array.isArray(this._gridData)) return false;
-    for (let y = 0; y < this._gridData.length; y++) {
-      const row = this._gridData[y];
-      if (!Array.isArray(row)) continue;
-      for (let x = 0; x < row.length; x++) {
-        const cell = row[x];
-        if (cell !== null && cell !== undefined && cell !== '') return true;
-      }
-    }
-    return false;
+    this._ensurePixelStoreFromGrid();
+    if (!this._pixelStore) return false;
+    const usage = this._pixelStore.getColorUsageMap();
+    return usage.size > 0;
   },
 
   _buildColorStats() {
-    const map = new Map();
-    for (let y = 0; y < this.data.gridSize; y++) {
-      for (let x = 0; x < this.data.gridSize; x++) {
-        const hex = this._gridData[y] ? this._gridData[y][x] : null;
-        if (hex === null || hex === undefined || hex === '') continue;
-        const hexUpper = String(hex).toUpperCase();
-        map.set(hexUpper, (map.get(hexUpper) || 0) + 1);
-      }
-    }
+    this._ensurePixelStoreFromGrid();
+    const map = this._pixelStore ? this._pixelStore.getColorUsageMap() : new Map();
     const stats = [];
+
     map.forEach((count, hex) => {
       const r = parseInt(hex.slice(1, 3), 16);
       const g = parseInt(hex.slice(3, 5), 16);
       const b = parseInt(hex.slice(5, 7), 16);
       stats.push({ id: hex.replace('#', ''), name: hex, count, r, g, b });
     });
+
     return stats.sort((a, b) => b.count - a.count);
   },
 
@@ -2870,7 +3108,17 @@ Page({
   },
 
   _updateUsedColors() {
-    const usedColors = Array.from(this._colorUsageMap.entries()).map(([hex, count]) => ({
+    let usageMap = this._colorUsageMap;
+    if (this._pixelStore) {
+      usageMap = this._pixelStore.getColorUsageMap();
+      this._colorUsageMap = usageMap;
+      this._nonWhiteCount = 0;
+      usageMap.forEach((count) => {
+        this._nonWhiteCount += count;
+      });
+    }
+
+    const usedColors = Array.from(usageMap.entries()).map(([hex, count]) => ({
       hex,
       count,
       code: this._getColorCode(hex)
@@ -2904,7 +3152,12 @@ Page({
     this.setData({
       colorsRow1: colorsWithCode.slice(0, mid),
       colorsRow2: colorsWithCode.slice(mid),
-      colorsWithCode: colorsWithCode
+      colorsWithCode
+    }, () => {
+      const hasUsedColors = this.data.usedColors && this.data.usedColors.length > 0;
+      const compactHeight = hasUsedColors ? 400 : 340;
+      const targetHeight = this.data.colorbarExpanded ? 700 : compactHeight;
+      this._refreshVirtualColors(0, targetHeight);
     });
   },
 
@@ -2960,6 +3213,22 @@ Page({
     });
   },
 
+  _refreshVirtualColors(scrollTopPx, containerHeightRpx) {
+    if (!this._colorBarManager) return;
+    const itemHeightPx = 80 * this._rpxToPx;
+    const virtualResult = this._colorBarManager.getVisibleColors(
+      this.data.colorsWithCode || [],
+      Math.max(0, scrollTopPx || 0),
+      Math.max(0, (containerHeightRpx || 0) * this._rpxToPx),
+      itemHeightPx
+    );
+    this.setData({
+      virtualColorsWithCode: virtualResult.visibleColors,
+      virtualColorsOffsetTop: virtualResult.offsetTop / this._rpxToPx,
+      virtualColorsTotalHeight: virtualResult.totalHeight / this._rpxToPx
+    });
+  },
+
   onToggleSettings() {
     this.setData({ showSettings: !this.data.showSettings });
   },
@@ -2977,6 +3246,8 @@ Page({
         colorbarExpanded: false,
         colorbarHeight: compactHeight,
         showSettings: false
+      }, () => {
+        this._refreshVirtualColors(0, compactHeight);
       });
       return false;
     }
@@ -2987,7 +3258,16 @@ Page({
   onCloseLeftToolbar() {},
 
   onToggleColorbar() {
-    this.setData({ colorbarExpanded: !this.data.colorbarExpanded });
+    const nextExpanded = !this.data.colorbarExpanded;
+    const hasUsedColors = this.data.usedColors && this.data.usedColors.length > 0;
+    const compactHeight = hasUsedColors ? 400 : 340;
+    const nextHeight = nextExpanded ? 700 : compactHeight;
+    this.setData({
+      colorbarExpanded: nextExpanded,
+      colorbarHeight: nextHeight
+    }, () => {
+      this._refreshVirtualColors(0, nextHeight);
+    });
   },
 
   // 颜色栏滑动手势
@@ -3002,16 +3282,23 @@ Page({
     if (!this._colorbarTouchStartY) return;
     
     const currentY = e.touches[0].clientY;
-    const deltaY = this._colorbarTouchStartY - currentY; // 向上为正
+    const deltaY = this._colorbarTouchStartY - currentY; // 向上为正（px）
     
-    // 计算新的高度
-    let newHeight = this._colorbarStartHeight + deltaY * 2; // 2 是 rpx 到 px 的转换系数
+    // 计算新的高度（rpx）
+    let newHeight = this._colorbarStartHeight + deltaY / this._rpxToPx;
     
     // 限制高度范围
     const hasUsedColors = this.data.usedColors && this.data.usedColors.length > 0;
     const minHeight = hasUsedColors ? 400 : 340;
     const maxHeight = 700;
     newHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
+
+    if (this._colorBarManager) {
+      this._refreshVirtualColors(
+        Math.max(0, newHeight - minHeight) * this._rpxToPx,
+        newHeight
+      );
+    }
     
     // 实时更新高度
     this.setData({ 
@@ -3028,10 +3315,20 @@ Page({
     this.setData({ 
       colorbarExpanded: finalExpanded,
       colorbarHeight: finalExpanded ? 700 : compactHeight
+    }, () => {
+      this._refreshVirtualColors(0, finalExpanded ? 700 : compactHeight);
     });
     
     this._colorbarTouchStartY = null;
     this._colorbarStartHeight = null;
+  },
+
+  onExpandedColorsScroll(e) {
+    if (!this._colorBarManager) return;
+
+    const scrollTop = e && e.detail ? (e.detail.scrollTop || 0) : 0;
+    const containerHeightRpx = this.data.colorbarExpanded ? 700 : this.data.colorbarHeight;
+    this._refreshVirtualColors(scrollTop, containerHeightRpx);
   },
 
   onCloseColorbar() {
@@ -3382,6 +3679,7 @@ Page({
       }
       
       this._gridData = newGridData;
+      this._pixelStore = PixelStore.fromGridData(newGridData);
       this._drawFullGrid();
       this._updateUsedColors();
       
@@ -3421,6 +3719,7 @@ Page({
       }
       
       this._gridData = newGridData;
+      this._pixelStore = PixelStore.fromGridData(newGridData);
       this._drawFullGrid();
       this._updateUsedColors();
       

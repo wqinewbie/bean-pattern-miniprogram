@@ -23,8 +23,18 @@ Page({
     // 礼品包
     gifts: [],
     
+    // 签到
+    checkinStatus: {
+      continuousDays: 0,
+      totalDays: 0,
+      canClaim: false,
+      checkedInToday: false,
+      calendar: {},
+      requiredDays: 3,
+      rewardValue: 1
+    },
+
     // 任务
-    checkedIn: false,
     tasks: [],
     draftCount: 0,
     
@@ -366,6 +376,9 @@ Page({
 
   onShowTaskPanel() {
     this.setData({ showTaskPanel: true }, () => this.updateTabBarVisibility());
+    // 加载签到状态和任务列表
+    this.loadCheckinStatus();
+    this.loadTasksFromServer();
   },
 
   onShowTaskPanelFromMagic() {
@@ -438,6 +451,89 @@ Page({
   },
 
   // ─── 任务中心操作 ───
+
+  // 加载签到状态
+  loadCheckinStatus() {
+    const sessionId = wx.getStorageSync('sessionId');
+    if (!sessionId) return;
+
+    request.get('/checkin/status')
+      .then((data) => {
+        if (data) {
+          // 处理签到日历数据，转换为数组格式方便渲染
+          const calendar = data.calendar || {};
+          const calendarArray = [];
+          const today = new Date();
+
+          // 生成最近7天的日历
+          for (let i = 6; i >= 0; i--) {
+            const date = new Date(today);
+            date.setDate(date.getDate() - i);
+            const dateStr = date.toISOString().split('T')[0];
+            calendarArray.push({
+              date: dateStr,
+              day: date.getDate(),
+              checked: calendar[dateStr] || false
+            });
+          }
+
+          this.setData({
+            checkinStatus: {
+              ...data,
+              calendarArray: calendarArray
+            }
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('加载签到状态失败', err);
+      });
+  },
+
+  // 执行签到
+  onCheckin() {
+    request.post('/checkin/do')
+      .then((result) => {
+        if (result && result.success) {
+          wx.showToast({
+            title: result.message || '签到成功',
+            icon: 'success'
+          });
+          // 刷新签到状态和用户信息
+          this.loadCheckinStatus();
+          this.loadProfile();
+        }
+      })
+      .catch((err) => {
+        wx.showToast({
+          title: err.message || '签到失败',
+          icon: 'none'
+        });
+      });
+  },
+
+  // 领取签到奖励
+  onClaimCheckinReward() {
+    request.post('/checkin/claim')
+      .then((result) => {
+        if (result && result.success) {
+          wx.showToast({
+            title: result.message || '领取成功',
+            icon: 'success'
+          });
+          // 刷新签到状态和用户信息
+          this.loadCheckinStatus();
+          this.loadProfile();
+        }
+      })
+      .catch((err) => {
+        wx.showToast({
+          title: err.message || '领取失败',
+          icon: 'none'
+        });
+      });
+  },
+
   onCheckIn() {
     // 调用后端接口完成打卡任务
     request.post('/task/complete', { taskCode: 'daily_checkin' })
@@ -543,10 +639,43 @@ Page({
     }
   },
 
-  onConfirmSettings() {
-    wx.setStorageSync('watermarkText', this.data.watermarkText);
-    this.onCloseAllPanels();
-    wx.showToast({ title: '设置已保存', icon: 'success' });
+  async onConfirmSettings() {
+    const { watermarkEnabled, watermarkText, isVip } = this.data;
+
+    // 保存到本地存储（用于离线场景）
+    wx.setStorageSync('watermarkEnabled', watermarkEnabled);
+    wx.setStorageSync('watermarkText', watermarkText);
+
+    // 如果是VIP，同步到服务器
+    if (isVip) {
+      try {
+        wx.showLoading({ title: '保存中...', mask: true });
+
+        await request.post('/watermark/user-config', {
+          enabled: watermarkEnabled ? 1 : 0,
+          customText: watermarkText
+        });
+
+        // 保存成功后，立即更新 app.globalData
+        const app = getApp();
+        if (app && app.globalData && app.globalData.watermarkConfig) {
+          app.globalData.watermarkConfig.enabled = watermarkEnabled;
+          app.globalData.watermarkConfig.text = watermarkText || app.globalData.appName;
+          console.log('[profile] 已更新 globalData 水印配置');
+        }
+
+        wx.hideLoading();
+        this.onCloseAllPanels();
+        wx.showToast({ title: '设置已保存', icon: 'success' });
+      } catch (e) {
+        wx.hideLoading();
+        console.error('[profile] 保存水印配置失败', e);
+        wx.showToast({ title: '保存失败，请重试', icon: 'error' });
+      }
+    } else {
+      this.onCloseAllPanels();
+      wx.showToast({ title: '设置已保存', icon: 'success' });
+    }
   },
 
   loadWatermarkSetting() {

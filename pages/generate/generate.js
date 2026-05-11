@@ -1,6 +1,8 @@
 const { API_BASE_URL } = require('../../utils/config');
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
+const { init2dCanvas, resize2dCanvas } = require('../../utils/canvas2d/core');
+const { exportCanvasToTempFilePath } = require('../../utils/canvas2d/export');
 
 Page({
   data: {
@@ -463,33 +465,42 @@ Page({
           const sourcePath = info.path || imageUrl;
           console.log('[generate][export] crop', { sx, sy, sw, sh, scale, srcWidth: info.width, srcHeight: info.height });
 
-          const ctx = wx.createCanvasContext('gen-crop-canvas');
-          ctx.setFillStyle('#ffffff');
-          ctx.fillRect(0, 0, canvasSize, canvasSize);
+          // 使用 Canvas 2D
+          init2dCanvas(this, '#genCropCanvas').then(({ canvas, ctx, dpr }) => {
+            // 设置 canvas 尺寸
+            resize2dCanvas({ canvas, ctx, width: canvasSize, height: canvasSize, dpr });
 
-          // 裁剪（源图矩形 -> 640x640）
-          ctx.drawImage(sourcePath, sx, sy, sw, sh, 0, 0, canvasSize, canvasSize);
+            // 绘制白色背景
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvasSize, canvasSize);
 
-          ctx.draw(false, () => {
-            setTimeout(() => {
-              wx.canvasToTempFilePath({
-                canvasId: 'gen-crop-canvas',
-                x: 0,
-                y: 0,
+            // 加载图片并绘制
+            const img = canvas.createImage();
+            img.onload = () => {
+              // 裁剪（源图矩形 -> 640x640）
+              ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvasSize, canvasSize);
+
+              // 导出为临时文件
+              exportCanvasToTempFilePath(canvas, {
                 width: canvasSize,
                 height: canvasSize,
-                destWidth: canvasSize,
-                destHeight: canvasSize,
-                success: (cropRes) => {
-                  const croppedPath = cropRes.tempFilePath || imageUrl;
-                  resolve(croppedPath);
-                },
-                fail: (err) => {
-                  console.error('[generate][export] crop fail', err);
-                  resolve(imageUrl);
-                }
+                fileType: 'png',
+                quality: 1
+              }, this).then((tempFilePath) => {
+                resolve(tempFilePath);
+              }).catch((err) => {
+                console.error('[generate][export] crop fail', err);
+                resolve(imageUrl);
               });
-            }, 100);
+            };
+            img.onerror = (err) => {
+              console.error('[generate][export] image load fail', err);
+              resolve(imageUrl);
+            };
+            img.src = sourcePath;
+          }).catch((err) => {
+            console.error('[generate][export] canvas init fail', err);
+            resolve(imageUrl);
           });
         },
         fail: () => resolve(imageUrl)
