@@ -338,19 +338,38 @@
   <view class="bottom-sheet {{showGiftPanel ? 'bottom-sheet--show' : ''}}">
     <view class="sheet-handle"></view>
     <text class="sheet-title">我的礼品包</text>
+
+    <view class="gift-tabs">
+      <view
+        wx:for="{{giftTabs}}"
+        wx:key="key"
+        class="gift-tab {{giftTab === item.key ? 'gift-tab--active' : ''}}"
+        bindtap="onGiftTabChange"
+        data-tab="{{item.key}}"
+      >
+        <text class="gift-tab-text">{{item.label}}</text>
+        <text class="gift-tab-count">{{item.count}}</text>
+      </view>
+    </view>
     
-    <view class="gift-list" wx:if="{{gifts.length > 0}}">
-      <view wx:for="{{gifts}}" wx:key="id" class="gift-item">
+    <view class="gift-list" wx:if="{{visibleGifts.length > 0}}">
+      <view wx:for="{{visibleGifts}}" wx:key="id" class="gift-item {{item.itemClass}}">
         <view class="gift-info">
-          <text class="gift-title">{{item.giftName || item.title}}</text>
+          <view class="gift-title-row">
+            <text class="gift-title">{{item.giftName || item.title}}</text>
+            <text class="gift-status gift-status--{{item.statusClass}}">{{item.statusText}}</text>
+            <text wx:if="{{item.expiringSoon}}" class="gift-soon-tag">即将过期</text>
+          </view>
           <text class="gift-subtitle">{{item.giftCategory || item.subtitle}}</text>
+          <text wx:if="{{item.expireText}}" class="gift-expire">有效期至：{{item.expireText}}</text>
+          <text wx:if="{{item.giftCode === 'GIFT_PACKAGE'}}" class="gift-tip">礼包已入包，可稍后在此兑换</text>
         </view>
-        <view class="gift-use-btn" bindtap="onUseGift" data-gift="{{item}}">使用</view>
+        <view wx:if="{{item.canUse}}" class="gift-use-btn" bindtap="onUseGift" data-gift="{{item}}">{{item.giftCode === 'GIFT_PACKAGE' ? '立即兑换' : '使用'}}</view>
       </view>
     </view>
     <view wx:else class="gift-empty">
       <text class="gift-empty-icon">🎁</text>
-      <text class="gift-empty-text">暂未获得礼品</text>
+      <text class="gift-empty-text">当前分类下暂无礼品</text>
     </view>
 
     <view class="sheet-close-btn" bindtap="onCloseAllPanels">关闭</view>
@@ -368,17 +387,25 @@
         <text class="checkin-desc">连续签到{{checkinStatus.requiredDays}}天可领取奖励</text>
       </view>
 
-      <!-- 签到日历 -->
-      <view class="checkin-calendar">
-        <view wx:for="{{checkinStatus.calendarArray}}" wx:key="date" class="calendar-day">
-          <view class="day-dot {{item.checked ? 'day-dot--checked' : ''}}"></view>
-          <text class="day-label">{{item.day}}</text>
+      <view class="checkin-summary-card">
+        <view class="checkin-main-row">
+          <view class="checkin-main-block">
+            <text class="checkin-main-value">{{checkinStatus.continuousDays || 0}}</text>
+            <text class="checkin-main-label">已连续签到（天）</text>
+          </view>
+          <view class="checkin-main-divider"></view>
+          <view class="checkin-main-block">
+            <text class="checkin-main-value">{{checkinStatus.canClaim ? 0 : ((checkinStatus.requiredDays || 3) - (checkinStatus.continuousDays || 0))}}</text>
+            <text class="checkin-main-label">距离领奖还差（天）</text>
+          </view>
         </view>
-      </view>
 
-      <view class="checkin-status">
-        <text class="status-text">连续签到 {{checkinStatus.continuousDays}} 天</text>
-        <text class="status-total">累计签到 {{checkinStatus.totalDays}} 天</text>
+        <view class="checkin-tips-row">
+          <text class="checkin-tip-text">累计签到 {{checkinStatus.totalDays || 0}} 天</text>
+          <text wx:if="{{checkinStatus.canClaim}}" class="checkin-tip-text checkin-tip-text--highlight">已达标，可领取奖励</text>
+          <text wx:elif="{{checkinStatus.checkedInToday}}" class="checkin-tip-text">今天已签到，继续保持</text>
+          <text wx:else class="checkin-tip-text">今天还没签到，记得打卡</text>
+        </view>
       </view>
 
       <view class="checkin-actions">
@@ -408,12 +435,11 @@
     <view class="task-list">
       <view class="task-section-title">🎯 每日任务</view>
 
-      <!-- 其他任务 -->
       <view wx:for="{{tasks}}" wx:key="id" class="task-item">
         <view class="task-info">
           <text class="task-name">{{item.taskName}}</text>
           <text class="task-desc">{{item.description}}</text>
-          <text class="task-reward">奖励: {{item.rewardValue}}次AI</text>
+          <text class="task-reward">{{item.rewardText}}</text>
         </view>
         <view class="task-progress">
           <text class="progress-text">{{item.currentCount || 0}}/{{item.targetCount || 1}}</text>
@@ -421,15 +447,6 @@
         <view wx:if="{{item.status === 2}}" class="task-done-btn">已领取</view>
         <view wx:elif="{{item.status === 1}}" class="task-claim-btn" bindtap="onDoTask" data-task="{{item}}">领取</view>
         <view wx:else class="task-do-btn" bindtap="onDoTask" data-task="{{item}}">去完成</view>
-      </view>
-
-      <!-- 首次开通会员 -->
-      <view class="task-item">
-        <view class="task-info">
-          <text class="task-name">首次开通会员</text>
-          <text class="task-reward">奖励 10次 AI魔法</text>
-        </view>
-        <view class="task-do-btn" bindtap="onVip">去开通</view>
       </view>
     </view>
 

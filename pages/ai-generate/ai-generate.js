@@ -114,9 +114,12 @@ Page({
    */
   loadAiQuota() {
     vipApi.getAiQuotaInfo().then(data => {
-      if (data && typeof data.remainQuota === 'number') {
+      const quota = data && typeof data.aiQuota === 'number'
+        ? data.aiQuota
+        : (data && typeof data.remainQuota === 'number' ? data.remainQuota : null);
+      if (typeof quota === 'number') {
         this.setData({
-          magicCount: data.remainQuota
+          magicCount: quota
         });
       }
     }).catch(err => {

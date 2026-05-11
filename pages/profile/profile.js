@@ -22,6 +22,9 @@ Page({
     
     // 礼品包
     gifts: [],
+    giftTab: 'available',
+    giftTabs: [],
+    visibleGifts: [],
     
     // 签到
     checkinStatus: {
@@ -140,20 +143,15 @@ Page({
     // 加载本地存储的数据
     const checkedIn = wx.getStorageSync('checkedIn') || false;
     const magicCount = wx.getStorageSync('magicCount') || 0;
-    const tasks = wx.getStorageSync('tasks') || this.getDefaultTasks();
     const gifts = wx.getStorageSync('gifts') || this.getDefaultGifts();
     const watermarkText = wx.getStorageSync('watermarkText') || '';
     const draftCount = this.getDraftCount();
     
-    const pendingTaskCount = this.calcPendingTaskCount(checkedIn, tasks);
-    
     this.setData({
       checkedIn,
       magicCount,
-      tasks,
       gifts,
       watermarkText,
-      pendingTaskCount,
       draftCount,
     });
   },
@@ -167,17 +165,12 @@ Page({
     return count;
   },
 
-  calcPendingTaskCountFromServer(taskProgress) {
-    // 从服务器返回的任务进度计算待完成任务数
-    // taskProgress 是 UserTaskProgress 数组，包含 currentCount, targetCount, claimed 等字段
+  calcPendingTaskCountFromServer(tasks) {
     let count = 0;
-    if (Array.isArray(taskProgress)) {
-      taskProgress.forEach(progress => {
-        // 如果任务未完成或已完成但未领取奖励，计入待完成数
-        const isCompleted = progress.currentCount >= progress.targetCount;
-        const isClaimed = progress.claimed;
-        if (!isCompleted || (isCompleted && !isClaimed)) {
-          count++;
+    if (Array.isArray(tasks)) {
+      tasks.forEach((task) => {
+        if ((task.status || 0) !== 2) {
+          count += 1;
         }
       });
     }
@@ -198,9 +191,9 @@ Page({
 
   loadTasksFromServer() {
     const sessionId = wx.getStorageSync('sessionId');
-    if (!sessionId) return;
+    if (!sessionId) return Promise.resolve([]);
 
-    Promise.all([
+    return Promise.all([
       request.get('/task/list'),
       request.get('/task/progress')
     ])
@@ -208,46 +201,48 @@ Page({
         const taskConfigs = (taskListData && taskListData.tasks) || [];
         const progressMap = {};
 
-        // 构建进度映射
         if (Array.isArray(taskProgress)) {
-          taskProgress.forEach(p => {
+          taskProgress.forEach((p) => {
             progressMap[p.taskCode] = p;
           });
         }
 
-        // 合并任务配置和进度
-        const tasks = taskConfigs.map(config => {
-          const progress = progressMap[config.taskCode] || {};
-          const isCompleted = progress.currentCount >= config.targetCount;
-          const isClaimed = progress.claimed;
+        const tasks = taskConfigs.map((config) => {
+          const progress = progressMap[config.taskCode] || null;
+          const status = progress ? Number(progress.status || 0) : 0;
+          const currentCount = progress ? Number(progress.currentCount || 0) : 0;
+          const targetCount = progress ? Number(progress.targetCount || config.targetCount || 1) : Number(config.targetCount || 1);
 
           return {
             id: config.taskCode,
             taskCode: config.taskCode,
-            name: config.taskName,
-            reward: config.rewardDesc || `奖励 ${config.rewardValue} 次 AI魔法`,
-            count: config.rewardValue,
-            done: isCompleted && isClaimed,
-            canClaim: isCompleted && !isClaimed,
-            actionText: isCompleted ? (isClaimed ? '已完成' : '领取奖励') : '去完成',
-            currentCount: progress.currentCount || 0,
-            targetCount: config.targetCount || 1,
-            progressId: progress.id
+            taskName: config.taskName,
+            description: config.description || '',
+            rewardType: config.rewardType,
+            rewardValue: Number(config.rewardValue || 0),
+            rewardText: `奖励 ${config.rewardValue || 0} 次AI`,
+            status,
+            currentCount,
+            targetCount,
+            progressId: progress && progress.id ? progress.id : null,
+            done: status === 2,
+            canClaim: status === 1
           };
         });
 
-        // 计算待完成任务数（未完成或已完成但未领取）
-        const pendingTaskCount = tasks.filter(t => !t.done).length;
+        const pendingTaskCount = this.calcPendingTaskCountFromServer(tasks);
 
         this.setData({
           tasks,
           pendingTaskCount,
-          checkedIn: false // 打卡状态由任务系统管理
+          checkedIn: false
         });
+
+        return tasks;
       })
-      .catch(() => {
-        // 加载失败时使用本地数据
-        console.log('加载任务失败，使用本地数据');
+      .catch((err) => {
+        console.log('加载任务失败', err);
+        return [];
       });
   },
 
@@ -333,18 +328,21 @@ Page({
     Promise.all([
       request.get('/user/profile'),
       request.get('/user/stats'),
-      request.get('/gift/available'),
-      request.get('/task/progress')
+      request.get('/gift/my'),
+      this.loadTasksFromServer()
     ])
-      .then(([profile, stats, gifts, taskProgress]) => {
+      .then(([profile, stats, gifts, tasks]) => {
         if (profile && profile.nickName) {
           wx.setStorageSync('nickName', profile.nickName);
           wx.setStorageSync('avatarUrl', profile.avatarUrl || '');
           wx.setStorageSync('phone', profile.phone || '');
         }
 
-        // 计算待完成任务数
-        const pendingTaskCount = this.calcPendingTaskCountFromServer(taskProgress || []);
+        const pendingTaskCount = this.calcPendingTaskCountFromServer(tasks || []);
+
+        const normalizedGifts = Array.isArray(gifts) ? this.normalizeGifts(gifts) : [];
+        const giftTabs = this.buildGiftTabs(normalizedGifts);
+        const visibleGifts = this.filterGiftsByTab(normalizedGifts, this.data.giftTab);
 
         this.setData({
           userInfo: {
@@ -355,7 +353,9 @@ Page({
           phone: (profile && profile.phone) || phone || '',
           isVip: (profile && profile.vipExpireAt && new Date(profile.vipExpireAt) > new Date()) || isVip,
           magicCount: (profile && profile.aiQuota) || 0,
-          gifts: Array.isArray(gifts) ? gifts : [],
+          gifts: normalizedGifts,
+          giftTabs,
+          visibleGifts,
           pendingTaskCount: pendingTaskCount,
           loading: false
         });
@@ -371,7 +371,12 @@ Page({
   },
 
   onShowGiftPanel() {
-    this.setData({ showGiftPanel: true }, () => this.updateTabBarVisibility());
+    const normalizedGifts = this.data.gifts || [];
+    this.setData({
+      showGiftPanel: true,
+      giftTabs: this.buildGiftTabs(normalizedGifts),
+      visibleGifts: this.filterGiftsByTab(normalizedGifts, this.data.giftTab)
+    }, () => this.updateTabBarVisibility());
   },
 
   onShowTaskPanel() {
@@ -420,20 +425,70 @@ Page({
     wx.navigateTo({ url: '/pages/vip/vip?tab=' + tab });
   },
 
+  normalizeGifts(gifts) {
+    const now = Date.now();
+    return (gifts || []).map((gift) => {
+      const expireTime = gift.expireAt ? new Date(gift.expireAt).getTime() : 0;
+      const expired = gift.status === 2 || (expireTime && expireTime <= now);
+      const used = gift.status === 1;
+      const expiringSoon = !expired && !used && expireTime && expireTime - now <= 3 * 24 * 60 * 60 * 1000;
+      const tabStatus = expired ? 'expired' : used ? 'used' : 'available';
+      return {
+        ...gift,
+        expireText: this.formatGiftExpire(gift.expireAt),
+        isPackageGift: gift.giftCode === 'GIFT_PACKAGE',
+        expiringSoon,
+        tabStatus,
+        statusText: expired ? '已过期' : used ? '已使用' : '可使用',
+        statusClass: expired ? 'expired' : used ? 'used' : 'available',
+        itemClass: expired ? 'gift-item--expired' : used ? 'gift-item--used' : '',
+        canUse: tabStatus === 'available'
+      };
+    });
+  },
+
+  buildGiftTabs(gifts) {
+    const count = (status) => gifts.filter((gift) => gift.tabStatus === status).length;
+    return [
+      { key: 'available', label: '可使用', count: count('available') },
+      { key: 'used', label: '已使用', count: count('used') },
+      { key: 'expired', label: '已过期', count: count('expired') }
+    ];
+  },
+
+  filterGiftsByTab(gifts, tab) {
+    return (gifts || []).filter((gift) => gift.tabStatus === tab);
+  },
+
+  onGiftTabChange(e) {
+    const tab = e.currentTarget.dataset.tab || 'available';
+    this.setData({
+      giftTab: tab,
+      visibleGifts: this.filterGiftsByTab(this.data.gifts, tab)
+    });
+  },
+
   // ─── 礼品包操作 ───
+  formatGiftExpire(expireAt) {
+    if (!expireAt) return '';
+    const d = new Date(expireAt);
+    if (Number.isNaN(d.getTime())) return expireAt;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  },
+
   onUseGift(e) {
     const gift = e.currentTarget.dataset.gift;
     if (!gift) return;
 
-    // 调用后端接口使用礼品
-    request.post('/gift/use', { giftId: gift.id })
+    const redeemNow = gift.giftCode === 'GIFT_PACKAGE';
+    request.post('/gift/use', { giftId: gift.id, redeemNow })
       .then(() => {
-        wx.showToast({ title: '使用成功', icon: 'success' });
-        // 重新加载礼品列表和用户信息
+        wx.showToast({ title: redeemNow ? '兑换成功' : '使用成功', icon: 'success' });
         this.loadProfile();
       })
       .catch((err) => {
-        wx.showToast({ title: err.message || '使用失败', icon: 'none' });
+        wx.showToast({ title: err.message || (redeemNow ? '兑换失败' : '使用失败'), icon: 'none' });
       });
   },
 

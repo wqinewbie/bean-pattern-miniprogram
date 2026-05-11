@@ -3,7 +3,6 @@
  * 功能：轮询 AI 任务状态，成功后跳转到 ai-result 页面
  */
 const request = require('../../utils/request');
-const vipApi = require('../../utils/vip-api');
 
 Page({
   data: {
@@ -101,14 +100,6 @@ Page({
         // 生成成功，跳转到结果页
         clearTimeout(this._timeoutTimer);
         clearTimeout(this._pollingTimer);
-
-        // 调用后端扣减AI次数
-        vipApi.useAiQuota('AI_GENERATE', taskId).then(() => {
-          console.log('AI次数扣减成功');
-        }).catch(err => {
-          console.error('AI次数扣减失败', err);
-          // 扣减失败不影响跳转，只记录日志
-        });
 
         // 从 globalData 获取生成参数
         const app = getApp();

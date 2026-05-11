@@ -253,12 +253,24 @@ Page({
       wx.hideLoading();
 
       if (result && result.success) {
+        const giftId = result.giftId;
         wx.showModal({
           title: '领取成功',
-          content: result.message || '恭喜您成功领取礼品！',
-          showCancel: false,
-          success: () => {
-            // 刷新用户信息
+          content: result.message || '礼品已放入我的礼品包，是否立即兑换？',
+          confirmText: '立即兑换',
+          cancelText: '稍后再说',
+          success: async (modalRes) => {
+            if (modalRes.confirm && giftId) {
+              wx.showLoading({ title: '兑换中...', mask: true });
+              try {
+                await request.post('/gift/use', { giftId, redeemNow: true });
+                wx.hideLoading();
+                wx.showToast({ title: '兑换成功', icon: 'success' });
+              } catch (redeemErr) {
+                wx.hideLoading();
+                wx.showToast({ title: redeemErr.message || '兑换失败', icon: 'none' });
+              }
+            }
             this.onShow();
           }
         });
