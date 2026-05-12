@@ -1,0 +1,29 @@
+<view class="page">
+  <view class="hero-card">
+    <text class="hero-title">邀请好友一起玩拼豆</text>
+    <text class="hero-desc">好友使用你的邀请码登录后，可参与邀请注册与邀请充值任务。</text>
+  </view>
+
+  <view class="code-card">
+    <text class="label">我的邀请码</text>
+    <text class="code">{{inviteCode || '加载中...'}}</text>
+    <view class="btn-row">
+      <button class="ghost-btn" bindtap="onCopyCode">复制邀请码</button>
+      <button class="primary-btn" bindtap="onShareInvite">立即邀请</button>
+    </view>
+    <button class="ghost-btn full" bindtap="onOpenRecords">查看邀请记录</button>
+  </view>
+
+  <view class="manual-card">
+    <text class="label">手动填写邀请码</text>
+    <input class="input" placeholder="请输入好友邀请码" value="{{inputCode}}" bindinput="onInputCode" />
+    <button class="ghost-btn full" bindtap="onSaveInputCode">保存并下次登录生效</button>
+  </view>
+
+  <view class="tips-card">
+    <text class="tips-title">邀请说明</text>
+    <text class="tip">1. 好友首次登录前填写邀请码才会绑定邀请关系。</text>
+    <text class="tip">2. 邀请注册任务统计成功注册的好友人数。</text>
+    <text class="tip">3. 邀请充值任务统计好友首次支付成功人数。</text>
+  </view>
+</view>

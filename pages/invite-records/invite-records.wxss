@@ -1,0 +1,99 @@
+.page {
+  min-height: 100vh;
+  background: #f7f8fa;
+  padding: 28rpx;
+  box-sizing: border-box;
+}
+.summary-card,
+.record-card {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 28rpx;
+  margin-bottom: 24rpx;
+}
+.summary-card {
+  display: flex;
+  align-items: center;
+}
+.summary-item {
+  flex: 1;
+  text-align: center;
+}
+.summary-value {
+  display: block;
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #ff9800;
+}
+.summary-label {
+  display: block;
+  font-size: 24rpx;
+  color: #86909c;
+  margin-top: 8rpx;
+}
+.summary-divider {
+  width: 2rpx;
+  height: 72rpx;
+  background: #f0f0f0;
+}
+.record-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+.record-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1f2329;
+}
+.record-sub,
+.time,
+.empty-desc {
+  font-size: 22rpx;
+  color: #86909c;
+}
+.record-item {
+  display: flex;
+  align-items: center;
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid #f2f3f5;
+}
+.avatar {
+  width: 84rpx;
+  height: 84rpx;
+  border-radius: 50%;
+  margin-right: 18rpx;
+  background: #ffe9c2;
+}
+.avatar-ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8b5e3c;
+}
+.record-main {
+  flex: 1;
+}
+.name {
+  display: block;
+  font-size: 28rpx;
+  color: #1f2329;
+  margin-bottom: 6rpx;
+}
+.status {
+  font-size: 24rpx;
+  font-weight: 600;
+}
+.status-registered { color: #409eff; }
+.status-paid { color: #67c23a; }
+.empty {
+  padding: 80rpx 0;
+  text-align: center;
+}
+.empty-title {
+  display: block;
+  font-size: 28rpx;
+  color: #1f2329;
+  margin-bottom: 12rpx;
+}

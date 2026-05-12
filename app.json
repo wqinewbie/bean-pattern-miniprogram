@@ -18,7 +18,10 @@
     "pages/vip/vip",
     "pages/convert/convert",
     "pages/draft/draft",
-    "pages/activity/activity"
+    "pages/activity/activity",
+    "pages/review-task-submit/review-task-submit",
+    "pages/invite/invite",
+    "pages/invite-records/invite-records"
   ],
   "window": {
     "navigationBarTitleText": "Bean Pattern",

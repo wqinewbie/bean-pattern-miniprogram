@@ -1,4 +1,5 @@
 const request = require('../../utils/request');
+const { API_BASE_URL } = require('../../utils/config');
 const { cacheProfile } = require('../../utils/profile-guard');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 
@@ -61,6 +62,7 @@ Page({
     
     // 用户信息
     phone: '',
+    inviteCode: '',
     
     // 安全区域
     statusBarHeight: 44,
@@ -146,6 +148,7 @@ Page({
     const gifts = wx.getStorageSync('gifts') || this.getDefaultGifts();
     const watermarkText = wx.getStorageSync('watermarkText') || '';
     const draftCount = this.getDraftCount();
+    const inviteCode = wx.getStorageSync('myInviteCode') || '';
     
     this.setData({
       checkedIn,
@@ -153,6 +156,7 @@ Page({
       gifts,
       watermarkText,
       draftCount,
+      inviteCode,
     });
   },
 
@@ -193,57 +197,89 @@ Page({
     const sessionId = wx.getStorageSync('sessionId');
     if (!sessionId) return Promise.resolve([]);
 
-    return Promise.all([
-      request.get('/task/list'),
-      request.get('/task/progress')
-    ])
-      .then(([taskListData, taskProgress]) => {
+    return request.get('/task/list')
+      .then((taskListData) => {
         const taskConfigs = (taskListData && taskListData.tasks) || [];
-        const progressMap = {};
+        const needsLegacyProgress = taskConfigs.some((task) => task.status === undefined && task.progressId === undefined);
 
-        if (Array.isArray(taskProgress)) {
-          taskProgress.forEach((p) => {
-            progressMap[p.taskCode] = p;
+        if (!needsLegacyProgress) {
+          const tasks = taskConfigs.map((task) => this.normalizeTaskCenterItem(task));
+          this.setData({
+            tasks,
+            pendingTaskCount: this.calcPendingTaskCountFromServer(tasks),
+            checkedIn: false
           });
+          return tasks;
         }
 
-        const tasks = taskConfigs.map((config) => {
-          const progress = progressMap[config.taskCode] || null;
-          const status = progress ? Number(progress.status || 0) : 0;
-          const currentCount = progress ? Number(progress.currentCount || 0) : 0;
-          const targetCount = progress ? Number(progress.targetCount || config.targetCount || 1) : Number(config.targetCount || 1);
+        return request.get('/task/progress').then((taskProgress) => {
+          const progressMap = {};
 
-          return {
-            id: config.taskCode,
-            taskCode: config.taskCode,
-            taskName: config.taskName,
-            description: config.description || '',
-            rewardType: config.rewardType,
-            rewardValue: Number(config.rewardValue || 0),
-            rewardText: `奖励 ${config.rewardValue || 0} 次AI`,
-            status,
-            currentCount,
-            targetCount,
-            progressId: progress && progress.id ? progress.id : null,
-            done: status === 2,
-            canClaim: status === 1
-          };
+          if (Array.isArray(taskProgress)) {
+            taskProgress.forEach((p) => {
+              progressMap[p.taskCode] = p;
+            });
+          }
+
+          const tasks = taskConfigs.map((config) => {
+            const progress = progressMap[config.taskCode] || null;
+            return this.normalizeTaskCenterItem(config, progress);
+          });
+
+          this.setData({
+            tasks,
+            pendingTaskCount: this.calcPendingTaskCountFromServer(tasks),
+            checkedIn: false
+          });
+
+          return tasks;
         });
-
-        const pendingTaskCount = this.calcPendingTaskCountFromServer(tasks);
-
-        this.setData({
-          tasks,
-          pendingTaskCount,
-          checkedIn: false
-        });
-
-        return tasks;
       })
       .catch((err) => {
         console.log('加载任务失败', err);
         return [];
       });
+  },
+
+  normalizeTaskCenterItem(config, progress) {
+    const status = Number((config.status !== undefined ? config.status : progress && progress.status) || 0);
+    const currentCount = Number((config.currentCount !== undefined ? config.currentCount : progress && progress.currentCount) || 0);
+    const targetCount = Number((config.targetCount !== undefined ? config.targetCount : progress && progress.targetCount) || 1);
+    const rewardValue = Number(config.rewardValue || 0);
+    const rewardText = config.rewardType === 'VIP_DAYS'
+      ? `奖励 ${rewardValue} 天会员`
+      : `奖励 ${rewardValue} 次AI`;
+    const actionText = config.handlerType === 'CHECKIN'
+      ? (status === 1 ? '领取奖励' : '去签到')
+      : (config.handlerType === 'FIRST_RECHARGE_GIFT' || config.handlerType === 'REGISTER_GIFT')
+        ? (status === 1 ? '领取礼包' : (config.handlerType === 'FIRST_RECHARGE_GIFT' ? '去充值' : '待领取'))
+        : (config.handlerType === 'INVITE_REGISTER' || config.handlerType === 'INVITE_RECHARGE')
+          ? (status === 1 ? '领取礼包' : '去邀请')
+          : config.handlerType === 'REVIEW_TASK'
+            ? (status === 2 ? '已完成' : '去提交')
+            : (status === 1 ? '领取奖励' : '去完成');
+    const progressDisplay = config.progressText || (config.handlerType === 'REVIEW_TASK' ? '' : `${currentCount}/${targetCount}`);
+
+    return {
+      id: config.taskCode,
+      taskCode: config.taskCode,
+      taskName: config.taskName,
+      description: config.description || '',
+      rewardType: config.rewardType,
+      rewardValue,
+      rewardText,
+      actionText,
+      progressDisplay,
+      handlerType: config.handlerType || 'GENERIC_PROGRESS',
+      bizCategory: config.bizCategory || 'EVENT_TASK',
+      progressText: config.progressText || `${currentCount}/${targetCount}`,
+      status,
+      currentCount,
+      targetCount,
+      progressId: config.progressId || (progress && progress.id ? progress.id : null),
+      done: config.done !== undefined ? !!config.done : status === 2,
+      canClaim: config.canClaim !== undefined ? !!config.canClaim : status === 1
+    };
   },
 
   getDefaultGifts() {
@@ -400,6 +436,10 @@ Page({
 
   onShowPrivacy() {
     this.setData({ subPage: 'privacy' }, () => this.updateTabBarVisibility());
+  },
+
+  onOpenInvitePage() {
+    wx.navigateTo({ url: '/pages/invite/invite' });
   },
 
   onGoTutorial() {
@@ -590,24 +630,65 @@ Page({
   },
 
   onCheckIn() {
-    // 调用后端接口完成打卡任务
-    request.post('/task/complete', { taskCode: 'daily_checkin' })
-      .then(() => {
-        wx.showToast({ title: '打卡成功！', icon: 'success' });
-        // 重新加载任务进度和用户信息
-        this.loadProfile();
-        this.loadTasksFromServer();
-      })
-      .catch((err) => {
-        wx.showToast({ title: err.message || '打卡失败', icon: 'none' });
-      });
+    this.onCheckin();
   },
 
   onDoTask(e) {
     const task = e.currentTarget.dataset.task;
     if (!task) return;
 
-    // 如果任务已完成但未领取，调用领取奖励接口
+    if (task.handlerType === 'CHECKIN') {
+      if (task.canClaim) {
+        this.onClaimCheckinReward();
+      } else {
+        this.onCheckin();
+      }
+      return;
+    }
+
+    if (task.handlerType === 'FIRST_RECHARGE_GIFT' || task.handlerType === 'REGISTER_GIFT') {
+      if (task.canClaim) {
+        request.post('/task/claim-benefit', { taskCode: task.taskCode })
+          .then(() => {
+            wx.showToast({ title: '领取成功！', icon: 'success' });
+            this.loadProfile();
+            this.loadTasksFromServer();
+          })
+          .catch((err) => {
+            wx.showToast({ title: err.message || '领取失败', icon: 'none' });
+          });
+      } else if (task.handlerType === 'FIRST_RECHARGE_GIFT') {
+        wx.navigateTo({ url: '/pages/vip/vip' });
+      } else {
+        wx.showToast({ title: '注册成功后即可领取', icon: 'none' });
+      }
+      return;
+    }
+
+    if (task.handlerType === 'INVITE_REGISTER' || task.handlerType === 'INVITE_RECHARGE') {
+      if (task.canClaim) {
+        request.post('/task/claim-benefit', { taskCode: task.taskCode })
+          .then(() => {
+            wx.showToast({ title: '礼包已入包', icon: 'success' });
+            this.loadProfile();
+            this.loadTasksFromServer();
+          })
+          .catch((err) => {
+            wx.showToast({ title: err.message || '领取失败', icon: 'none' });
+          });
+      } else {
+        wx.navigateTo({ url: '/pages/invite/invite' })
+      }
+      return;
+    }
+
+    if (task.handlerType === 'REVIEW_TASK') {
+      wx.navigateTo({
+        url: `/pages/review-task-submit/review-task-submit?taskCode=${encodeURIComponent(task.taskCode)}&taskName=${encodeURIComponent(task.taskName || '')}`
+      })
+      return;
+    }
+
     if (task.canClaim && task.progressId) {
       request.post('/task/claim', { progressId: task.progressId })
         .then(() => {
@@ -621,13 +702,10 @@ Page({
       return;
     }
 
-    // 根据任务类型执行不同操作
     if (task.taskCode === 'daily_share') {
-      // 触发分享
       wx.showShareMenu({
         withShareTicket: true,
         success: () => {
-          // 分享成功后调用完成接口
           request.post('/task/complete', { taskCode: 'daily_share' })
             .then(() => {
               wx.showToast({ title: '分享成功！', icon: 'success' });
@@ -637,21 +715,23 @@ Page({
             .catch(() => {});
         }
       });
-    } else if (task.taskCode === 'invite_friend') {
-      // 邀请好友逻辑
-      wx.showToast({ title: '邀请功能开发中', icon: 'none' });
-    } else {
-      // 其他任务
-      request.post('/task/complete', { taskCode: task.taskCode })
-        .then(() => {
-          wx.showToast({ title: '任务完成！', icon: 'success' });
-          this.loadProfile();
-          this.loadTasksFromServer();
-        })
-        .catch((err) => {
-          wx.showToast({ title: err.message || '操作失败', icon: 'none' });
-        });
+      return;
     }
+
+    if (task.taskCode === 'invite_friend') {
+      wx.showToast({ title: '邀请功能开发中', icon: 'none' });
+      return;
+    }
+
+    request.post('/task/complete', { taskCode: task.taskCode })
+      .then(() => {
+        wx.showToast({ title: '任务完成！', icon: 'success' });
+        this.loadProfile();
+        this.loadTasksFromServer();
+      })
+      .catch((err) => {
+        wx.showToast({ title: err.message || '操作失败', icon: 'none' });
+      });
   },
 
   addMagicCount(count) {

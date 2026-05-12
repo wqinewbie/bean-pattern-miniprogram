@@ -24,7 +24,8 @@ App({
 
   _silentLoginPromise: null,
 
-  onLaunch() {
+  onLaunch(options) {
+    this.captureInviteCode(options);
     const sessionId = wx.getStorageSync('sessionId');
     if (!sessionId) {
       this.silentLogin();
@@ -36,7 +37,8 @@ App({
     }
   },
 
-  onShow() {
+  onShow(options) {
+    this.captureInviteCode(options);
     const sessionId = wx.getStorageSync('sessionId');
     if (!sessionId) {
       this.silentLogin();
@@ -69,6 +71,14 @@ App({
       .catch(() => {});
   },
 
+  captureInviteCode(options) {
+    const query = (options && options.query) || {};
+    const inviteCode = query.inviteCode || query.invite_code || '';
+    if (inviteCode) {
+      wx.setStorageSync('pendingInviteCode', inviteCode);
+    }
+  },
+
   ensureSession() {
     const cached = wx.getStorageSync('sessionId');
     if (cached) return Promise.resolve(cached);
@@ -81,7 +91,8 @@ App({
             reject(new Error('wx.login no code'));
             return;
           }
-          request.post('/auth/login', { code: res.code })
+          const inviteCode = wx.getStorageSync('pendingInviteCode') || '';
+          request.post('/auth/login', { code: res.code, inviteCode })
             .then((data) => {
               const sessionId = data.sessionId || data.token;
               if (!sessionId) {
@@ -89,6 +100,8 @@ App({
                 return;
               }
               wx.setStorageSync('sessionId', sessionId);
+              if (data.inviteCode) wx.setStorageSync('myInviteCode', data.inviteCode);
+              wx.removeStorageSync('pendingInviteCode');
               this.prefetchProfileData();
               resolve(sessionId);
             })

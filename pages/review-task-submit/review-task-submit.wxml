@@ -1,0 +1,30 @@
+<view class="page">
+  <view class="header">
+    <text class="title">任务提交</text>
+    <text class="desc">请上传两张截图作为审核凭证</text>
+  </view>
+
+  <view class="card">
+    <view class="field">
+      <text class="label">任务名称</text>
+      <text class="value">{{taskName}}</text>
+    </view>
+
+    <view class="field">
+      <text class="label">补充说明</text>
+      <textarea class="textarea" placeholder="可填写平台、帖子标题、发布时间等信息" value="{{submissionText}}" bindinput="onInputText" />
+    </view>
+
+    <view class="field">
+      <text class="label">截图凭证（2张）</text>
+      <view class="upload-list">
+        <view class="upload-box" wx:for="{{proofImages}}" wx:key="index" bindtap="onChooseImage" data-index="{{index}}">
+          <image wx:if="{{item}}" class="preview" src="{{item}}" mode="aspectFill" />
+          <text wx:else class="upload-placeholder">点击上传</text>
+        </view>
+      </view>
+    </view>
+
+    <button class="submit-btn" bindtap="onSubmit" loading="{{submitting}}">提交审核</button>
+  </view>
+</view>

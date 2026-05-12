@@ -1,0 +1,38 @@
+<view class="page">
+  <view class="summary-card">
+    <view class="summary-item">
+      <text class="summary-value">{{registeredCount}}</text>
+      <text class="summary-label">已邀请注册</text>
+    </view>
+    <view class="summary-divider"></view>
+    <view class="summary-item">
+      <text class="summary-value">{{paidCount}}</text>
+      <text class="summary-label">已邀请首充</text>
+    </view>
+  </view>
+
+  <view class="record-card">
+    <view class="record-title-row">
+      <text class="record-title">邀请记录</text>
+      <text class="record-sub">邀请码：{{inviteCode}}</text>
+    </view>
+
+    <view wx:if="{{records.length}}" class="record-list">
+      <view wx:for="{{records}}" wx:key="id" class="record-item">
+        <image wx:if="{{item.avatarUrl}}" class="avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+        <view wx:else class="avatar avatar-ph">友</view>
+        <view class="record-main">
+          <text class="name">{{item.nickName}}</text>
+          <text class="time">注册时间：{{item.createdAt}}</text>
+          <text wx:if="{{item.firstPaidAt}}" class="time">首充时间：{{item.firstPaidAt}}</text>
+        </view>
+        <text class="status {{item.status === 2 ? 'status-paid' : 'status-registered'}}">{{item.status === 2 ? '已首充' : '已注册'}}</text>
+      </view>
+    </view>
+
+    <view wx:else class="empty">
+      <text class="empty-title">还没有邀请记录</text>
+      <text class="empty-desc">快去分享邀请码，邀请好友一起加入吧</text>
+    </view>
+  </view>
+</view>
