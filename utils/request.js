@@ -109,8 +109,18 @@ function request(url, method, data, headers) {
   });
 }
 
-function get(url, headers) {
-  return request(url, 'GET', undefined, headers);
+function appendQuery(url, params) {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return url;
+  const query = Object.keys(params)
+    .filter((key) => params[key] !== undefined && params[key] !== null)
+    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
+    .join('&');
+  if (!query) return url;
+  return url + (url.indexOf('?') >= 0 ? '&' : '?') + query;
+}
+
+function get(url, data, headers) {
+  return request(appendQuery(url, data), 'GET', undefined, headers);
 }
 
 function post(url, data, headers) {
