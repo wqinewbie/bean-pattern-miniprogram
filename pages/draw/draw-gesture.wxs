@@ -18,7 +18,18 @@ var state = {
   finalCanvasScale: 1,
   finalBackgroundOffsetX: 0,
   finalBackgroundOffsetY: 0,
-  finalBackgroundScale: 1
+  finalBackgroundScale: 1,
+  dragging: false,
+  dragStartX: 0,
+  dragStartY: 0,
+  dragBaseCanvasOffsetX: 0,
+  dragBaseCanvasOffsetY: 0,
+  dragBaseBackgroundOffsetX: 0,
+  dragBaseBackgroundOffsetY: 0,
+  dragCanvasOffsetX: 0,
+  dragCanvasOffsetY: 0,
+  dragBackgroundOffsetX: 0,
+  dragBackgroundOffsetY: 0
 };
 
 var SCALE_DEADZONE = 0.018;
@@ -109,17 +120,122 @@ function beginPinch(event, owner) {
   return true;
 }
 
+function beginDrag(event, owner) {
+  var touches = event.touches || [];
+  if (touches.length !== 1) return false;
+
+  var ds = event.currentTarget.dataset || {};
+  if (ds.tool !== 'drag') return false;
+
+  var touch = touches[0];
+  state.dragging = true;
+  state.dragStartX = touch.clientX;
+  state.dragStartY = touch.clientY;
+  state.dragBaseCanvasOffsetX = toNumber(ds.canvasOffsetX, 0);
+  state.dragBaseCanvasOffsetY = toNumber(ds.canvasOffsetY, 0);
+  state.dragBaseBackgroundOffsetX = toNumber(ds.backgroundOffsetX, 0);
+  state.dragBaseBackgroundOffsetY = toNumber(ds.backgroundOffsetY, 0);
+  state.dragCanvasOffsetX = state.dragBaseCanvasOffsetX;
+  state.dragCanvasOffsetY = state.dragBaseCanvasOffsetY;
+  state.dragBackgroundOffsetX = state.dragBaseBackgroundOffsetX;
+  state.dragBackgroundOffsetY = state.dragBaseBackgroundOffsetY;
+  owner.callMethod('onWxsDragStart', {});
+  return true;
+}
+
+function applyDrag(event, owner) {
+  var touches = event.touches || [];
+  if (!state.dragging || touches.length !== 1) return false;
+
+  var ds = event.currentTarget.dataset || {};
+  var touch = touches[0];
+  var dx = touch.clientX - state.dragStartX;
+  var dy = touch.clientY - state.dragStartY;
+  var boardInset = toNumber(ds.boardInset, 0);
+  var canvasScale = toNumber(ds.canvasScale, 1);
+  var backgroundScale = toNumber(ds.backgroundScale, 1);
+  var locked = toBool(ds.locked);
+  var hasBackground = toBool(ds.hasBackground);
+  var activeLayer = ds.activeLayer || 'canvas';
+
+  if (locked && hasBackground) {
+    state.dragCanvasOffsetX = state.dragBaseCanvasOffsetX + dx;
+    state.dragCanvasOffsetY = state.dragBaseCanvasOffsetY + dy;
+    state.dragBackgroundOffsetX = state.dragBaseBackgroundOffsetX + dx;
+    state.dragBackgroundOffsetY = state.dragBaseBackgroundOffsetY + dy;
+    applyCanvasStyle(owner, state.dragCanvasOffsetX, state.dragCanvasOffsetY, canvasScale, boardInset);
+    applyBackgroundStyle(owner, state.dragBackgroundOffsetX, state.dragBackgroundOffsetY, backgroundScale);
+    return true;
+  }
+
+  if (activeLayer === 'background' && hasBackground) {
+    state.dragBackgroundOffsetX = state.dragBaseBackgroundOffsetX + dx;
+    state.dragBackgroundOffsetY = state.dragBaseBackgroundOffsetY + dy;
+    applyBackgroundStyle(owner, state.dragBackgroundOffsetX, state.dragBackgroundOffsetY, backgroundScale);
+    return true;
+  }
+
+  state.dragCanvasOffsetX = state.dragBaseCanvasOffsetX + dx;
+  state.dragCanvasOffsetY = state.dragBaseCanvasOffsetY + dy;
+  applyCanvasStyle(owner, state.dragCanvasOffsetX, state.dragCanvasOffsetY, canvasScale, boardInset);
+  return true;
+}
+
+function cloneTouch(touch) {
+  return {
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+    pageX: touch.pageX,
+    pageY: touch.pageY,
+    x: touch.x,
+    y: touch.y,
+    identifier: touch.identifier
+  };
+}
+
+function forwardEvent(method, event, owner) {
+  var touches = event.touches || [];
+  var changedTouches = event.changedTouches || [];
+  var nextTouches = [];
+  var nextChangedTouches = [];
+  var i;
+
+  for (i = 0; i < touches.length; i++) {
+    nextTouches.push(cloneTouch(touches[i]));
+  }
+  for (i = 0; i < changedTouches.length; i++) {
+    nextChangedTouches.push(cloneTouch(changedTouches[i]));
+  }
+
+  owner.callMethod(method, {
+    type: event.type || '',
+    timeStamp: event.timeStamp || 0,
+    touches: nextTouches,
+    changedTouches: nextChangedTouches,
+    detail: {
+      touches: nextTouches,
+      changedTouches: nextChangedTouches,
+      timeStamp: event.timeStamp || 0
+    }
+  });
+}
+
 function touchstart(event, owner) {
   var touches = event.touches || [];
   if (touches.length === 2 && beginPinch(event, owner)) return;
-  owner.callMethod('handleTouchStart', event);
+  if (beginDrag(event, owner)) return;
+  forwardEvent('handleTouchStart', event, owner);
 }
 
 function touchmove(event, owner) {
   var touches = event.touches || [];
+  if (state.dragging) {
+    if (applyDrag(event, owner)) return;
+  }
+
   if (!state.pinching) {
     if (touches.length === 2 && beginPinch(event, owner)) return;
-    owner.callMethod('handleTouchMove', event);
+    forwardEvent('handleTouchMove', event, owner);
     return;
   }
 
@@ -206,6 +322,17 @@ function touchmove(event, owner) {
 }
 
 function touchend(event, owner) {
+  if (state.dragging) {
+    state.dragging = false;
+    owner.callMethod('onWxsDragEnd', {
+      canvasOffsetX: state.dragCanvasOffsetX,
+      canvasOffsetY: state.dragCanvasOffsetY,
+      backgroundOffsetX: state.dragBackgroundOffsetX,
+      backgroundOffsetY: state.dragBackgroundOffsetY
+    });
+    return;
+  }
+
   if (state.pinching) {
     state.pinching = false;
     owner.callMethod('onWxsPinchEnd', {
@@ -219,7 +346,7 @@ function touchend(event, owner) {
     });
     return;
   }
-  owner.callMethod('handleTouchEnd', event);
+  forwardEvent('handleTouchEnd', event, owner);
 }
 
 module.exports = {

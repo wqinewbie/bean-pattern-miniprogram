@@ -120,6 +120,14 @@ function checkPrivilege(privilegeKey) {
   return request.get(`/privilege/check?key=${privilegeKey}`);
 }
 
+function checkPatternBoxLimit() {
+  return request.get('/privilege/check/pattern-box');
+}
+
+function checkDraftBoxLimit() {
+  return request.get('/privilege/check/draft-box');
+}
+
 // ==================== AI次数相关 ====================
 
 /**
@@ -291,6 +299,8 @@ module.exports = {
 
   // 权益校验
   checkPrivilege,
+  checkPatternBoxLimit,
+  checkDraftBoxLimit,
 
   // AI次数相关
   getAiQuotaInfo,

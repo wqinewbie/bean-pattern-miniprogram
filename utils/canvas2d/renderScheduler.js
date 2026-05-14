@@ -8,7 +8,7 @@
  */
 
 const GESTURE_DEBOUNCE = 120; // 手势结束后延迟重绘时间(ms)
-const MAX_PHYSICAL_SIZE = 4096; // Canvas physical pixel limit
+const MAX_PHYSICAL_SIZE = 3072; // Keep below the hard canvas edge to avoid WeChat webview crashes
 const MIN_DPR = 1;
 const MAX_DPR = 12;
 
@@ -95,7 +95,7 @@ class RenderScheduler {
    * @param {string} mode - 渲染模式 'low' | 'high'
    */
   getAdaptiveDpr(baseWidth, baseHeight, scale, systemDpr, mode = 'high') {
-    const qualityFactor = mode === 'high' ? 1.75 : 1.0;
+    const qualityFactor = mode === 'high' ? 1.5 : 1.0;
     const safeWidth = Math.max(1, Number(baseWidth) || 1);
     const safeHeight = Math.max(1, Number(baseHeight) || 1);
     const safeScale = Math.max(1, Number(scale) || 1);

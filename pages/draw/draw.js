@@ -336,6 +336,50 @@ Page({
     });
   },
 
+  _applyDragDelta(deltaX, deltaY) {
+    if (!deltaX && !deltaY) return;
+
+    if (this.data.locked && this.data.backgroundImage) {
+      this.setData({
+        canvasOffsetX: this.data.canvasOffsetX + deltaX,
+        canvasOffsetY: this.data.canvasOffsetY + deltaY,
+        backgroundOffsetX: this.data.backgroundOffsetX + deltaX,
+        backgroundOffsetY: this.data.backgroundOffsetY + deltaY
+      });
+      return;
+    }
+
+    const target = this._getActiveTransformTarget();
+    if (target === 'background') {
+      this.setData({
+        backgroundOffsetX: this.data.backgroundOffsetX + deltaX,
+        backgroundOffsetY: this.data.backgroundOffsetY + deltaY
+      });
+    } else {
+      this.setData({
+        canvasOffsetX: this.data.canvasOffsetX + deltaX,
+        canvasOffsetY: this.data.canvasOffsetY + deltaY
+      });
+    }
+  },
+
+  _flushPendingDragFrame() {
+    if (this._dragRafId) {
+      this._cancelGestureFrame(this._dragRafId);
+      this._dragRafId = null;
+    }
+
+    const curX = this._dragCurrentX;
+    const curY = this._dragCurrentY;
+    if (curX == null || curY == null) return;
+
+    const deltaX = curX - this._dragStartX;
+    const deltaY = curY - this._dragStartY;
+    this._applyDragDelta(deltaX, deltaY);
+    this._dragStartX = curX;
+    this._dragStartY = curY;
+  },
+
   _beginPinchGesture(touches, now) {
     if (!Array.isArray(touches) || touches.length < 2) return false;
 
@@ -364,10 +408,6 @@ Page({
 
     if (!this._toolBeforePinch) {
       this._toolBeforePinch = this.data.tool;
-    }
-
-    if (this.data.tool !== 'drag') {
-      this.setData({ tool: 'drag' });
     }
 
     const touch1 = touches[0];
@@ -408,7 +448,10 @@ Page({
     }
 
     this._pendingDrawPos = null;
+    this._pendingDrawTime = 0;
+    this._lastPos = null;
     this._pendingPinch = null;
+    this._canvasRect = null;
     if (this._pinchRafId) {
       this._cancelGestureFrame(this._pinchRafId);
       this._pinchRafId = null;
@@ -435,9 +478,6 @@ Page({
       isPinching: true,
       overlayScale: this.data.canvasScale
     };
-    if (this.data.tool !== 'drag') {
-      updates.tool = 'drag';
-    }
     this.setData(updates);
   },
 
@@ -449,6 +489,11 @@ Page({
 
     this._lastCanvasTouchEventAt = Date.now();
     this._isPinching = false;
+    this._isDrawing = false;
+    this._lastPos = null;
+    this._pendingDrawPos = null;
+    this._pendingDrawTime = 0;
+    this._canvasRect = null;
     this._pendingPinch = null;
     if (this._pinchRafId) {
       this._cancelGestureFrame(this._pinchRafId);
@@ -475,21 +520,65 @@ Page({
 
     const remainingTouches = Math.max(0, Math.floor(toFinite(state.remainingTouches, 0)));
 
+    if (remainingTouches === 0 && this._toolBeforePinch) {
+      updates.tool = this._toolBeforePinch;
+      this._toolBeforePinch = null;
+    }
+
     this.setData(updates, () => {
       if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(false);
       this._redrawCanvasAtCurrentScale();
       this._updateAxisLabels();
       this._updateCanvasAreaRect();
+      this._updateCanvasRect();
       this._pushViewportHistory(this._viewportHistoryBefore, 'viewport');
       this._viewportHistoryBefore = null;
       this._scheduleLocalRecoveryDraft();
     });
+  },
 
-    if (remainingTouches === 0 && this._toolBeforePinch) {
-      const restoreTool = this._toolBeforePinch;
-      this._toolBeforePinch = null;
-      this.setData({ tool: restoreTool });
+  onWxsDragStart() {
+    this._lastCanvasTouchEventAt = Date.now();
+    this._isDragging = true;
+    this._pendingDrawPos = null;
+    this._viewportHistoryBefore = this._viewportHistoryBefore || this._createViewportMetaSnapshot();
+
+    if (this._renderScheduler) {
+      this._renderScheduler.startGesture();
     }
+  },
+
+  onWxsDragEnd(state = {}) {
+    const toFinite = (value, fallback) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    };
+
+    this._lastCanvasTouchEventAt = Date.now();
+    this._isDragging = false;
+    this._endRenderGesture();
+
+    const updates = {};
+    if (this.data.locked && this.data.backgroundImage) {
+      updates.canvasOffsetX = toFinite(state.canvasOffsetX, this.data.canvasOffsetX);
+      updates.canvasOffsetY = toFinite(state.canvasOffsetY, this.data.canvasOffsetY);
+      updates.backgroundOffsetX = toFinite(state.backgroundOffsetX, this.data.backgroundOffsetX);
+      updates.backgroundOffsetY = toFinite(state.backgroundOffsetY, this.data.backgroundOffsetY);
+    } else if (this._getActiveTransformTarget() === 'background') {
+      updates.backgroundOffsetX = toFinite(state.backgroundOffsetX, this.data.backgroundOffsetX);
+      updates.backgroundOffsetY = toFinite(state.backgroundOffsetY, this.data.backgroundOffsetY);
+    } else {
+      updates.canvasOffsetX = toFinite(state.canvasOffsetX, this.data.canvasOffsetX);
+      updates.canvasOffsetY = toFinite(state.canvasOffsetY, this.data.canvasOffsetY);
+    }
+
+    this.setData(updates, () => {
+      this._updateCanvasAreaRect();
+      this._updateCanvasRect();
+      this._pushViewportHistory(this._viewportHistoryBefore, 'viewport');
+      this._viewportHistoryBefore = null;
+      this._scheduleLocalRecoveryDraft();
+    });
   },
 
   _getTargetRenderDpr(scale, mode) {
@@ -561,6 +650,35 @@ Page({
           });
           
         }
+      });
+  },
+
+  _resolveCanvasAreaRect(callback) {
+    if (this._canvasAreaRect && this._canvasAreaRect.width && this._canvasAreaRect.height) {
+      callback(this._canvasAreaRect);
+      return;
+    }
+
+    wx.createSelectorQuery()
+      .select('.canvas-area')
+      .boundingClientRect()
+      .exec((res) => {
+        const rect = res && res[0];
+        if (!rect || !rect.width || !rect.height) {
+          callback(null);
+          return;
+        }
+
+        this._canvasAreaRect = rect;
+        this.setData({
+          canvasAreaWidth: rect.width,
+          canvasAreaHeight: rect.height,
+          canvasAreaLeft: rect.left || 0,
+          canvasAreaTop: rect.top || 0,
+          minCanvasScale: this._minScale || 0.5,
+          maxCanvasScale: this._getMaxScale()
+        });
+        callback(rect);
       });
   },
 
@@ -1384,38 +1502,43 @@ Page({
       canvasScale: newScale,
       backgroundScale: newBackgroundScale
     }, () => {
-      // setData 完成后，计算新的偏移量
-      if (this._canvasAreaRect) {
-        let newOffsetX, newOffsetY;
-        
-        if (relativePosition) {
-          // 完美版：按相对位置重新定位
-          const workspace = this._getVisualWorkspaceMetrics(this._canvasAreaRect);
-          const newCanvasCenterX = workspace
-            ? workspace.left + relativePosition.relativeX * workspace.width
-            : relativePosition.relativeX * this._canvasAreaRect.width;
-          const newCanvasCenterY = workspace
-            ? workspace.top + relativePosition.relativeY * workspace.height
-            : relativePosition.relativeY * this._canvasAreaRect.height;
-          newOffsetX = newCanvasCenterX - (canvasSize * newScale) / 2;
-          newOffsetY = newCanvasCenterY - (canvasSize * newScale) / 2;
-          
+      const applyOffset = (areaRect) => {
+        if (areaRect) {
+          let newOffsetX, newOffsetY;
+
+          if (relativePosition) {
+            // 完美版：按相对位置重新定位
+            const workspace = this._getVisualWorkspaceMetrics(areaRect);
+            const newCanvasCenterX = workspace
+              ? workspace.left + relativePosition.relativeX * workspace.width
+              : relativePosition.relativeX * areaRect.width;
+            const newCanvasCenterY = workspace
+              ? workspace.top + relativePosition.relativeY * workspace.height
+              : relativePosition.relativeY * areaRect.height;
+            newOffsetX = newCanvasCenterX - (canvasSize * newScale) / 2;
+            newOffsetY = newCanvasCenterY - (canvasSize * newScale) / 2;
+          } else {
+            const centered = this._getCenteredCanvasOffset(canvasSize, canvasSize, newScale, areaRect);
+            newOffsetX = centered.x;
+            newOffsetY = centered.y;
+          }
+
+          this.setData({
+            canvasOffsetX: newOffsetX,
+            canvasOffsetY: newOffsetY,
+            backgroundOffsetX: newOffsetX,
+            backgroundOffsetY: newOffsetY
+          });
         } else {
-          const centered = this._getCenteredCanvasOffset(canvasSize, canvasSize, newScale, this._canvasAreaRect);
-          newOffsetX = centered.x;
-          newOffsetY = centered.y;
-          
+          setTimeout(() => {
+            this._resolveCanvasAreaRect((retryRect) => {
+              if (retryRect) applyOffset(retryRect);
+            });
+          }, 80);
         }
-        
-        this.setData({
-          canvasOffsetX: newOffsetX,
-          canvasOffsetY: newOffsetY,
-          backgroundOffsetX: newOffsetX,
-          backgroundOffsetY: newOffsetY
-        });
-      } else {
-        console.warn('[_applyGridSize] 容器尺寸未知，无法定位');
-      }
+      };
+
+      this._resolveCanvasAreaRect(applyOffset);
     });
 
     this._updateAxisLabels();
@@ -2000,27 +2123,7 @@ Page({
             this._velocityY = deltaY / dt * 16;
           }
 
-          if (this.data.locked && this.data.backgroundImage) {
-            this.setData({
-              canvasOffsetX: this.data.canvasOffsetX + deltaX,
-              canvasOffsetY: this.data.canvasOffsetY + deltaY,
-              backgroundOffsetX: this.data.backgroundOffsetX + deltaX,
-              backgroundOffsetY: this.data.backgroundOffsetY + deltaY
-            });
-          } else {
-            const target = this._getActiveTransformTarget();
-            if (target === 'background') {
-              this.setData({
-                backgroundOffsetX: this.data.backgroundOffsetX + deltaX,
-                backgroundOffsetY: this.data.backgroundOffsetY + deltaY
-              });
-            } else {
-              this.setData({
-                canvasOffsetX: this.data.canvasOffsetX + deltaX,
-                canvasOffsetY: this.data.canvasOffsetY + deltaY
-              });
-            }
-          }
+          this._applyDragDelta(deltaX, deltaY);
 
           this._dragStartX = curX;
           this._dragStartY = curY;
@@ -2220,6 +2323,7 @@ Page({
     
     // 拖拽工具 - 不启动惯性动画
     if (this._isDragging && this.data.tool === 'drag') {
+      this._flushPendingDragFrame();
       this._isDragging = false;
       this._updateCanvasAreaRect();
       this._pushViewportHistory(this._viewportHistoryBefore, 'viewport');
@@ -2290,6 +2394,18 @@ Page({
 
   _redrawCanvasAtCurrentScale() {
     if (!this._canvas || !this._ctx) return;
+
+    const now = Date.now();
+    if (this._lastHighQualityRedrawAt && now - this._lastHighQualityRedrawAt < 80) {
+      if (this._pendingHighQualityRedrawTimer) return;
+      this._pendingHighQualityRedrawTimer = setTimeout(() => {
+        this._pendingHighQualityRedrawTimer = null;
+        this._redrawCanvasAtCurrentScale();
+      }, 80);
+      return;
+    }
+    this._lastHighQualityRedrawAt = now;
+
     this._syncCanvasResolution(true, { mode: 'high' });
     this._drawFullGrid();
   },
@@ -2366,11 +2482,11 @@ Page({
     }
 
     const scale = this.data.canvasScale || 1;
-    const borderComp = 0;
 
-    // 画布在屏幕上的实时矩形（同步计算，避免快速操作时异步延迟）
-    const screenLeft = areaRect.left + this.data.canvasOffsetX + borderComp;
-    const screenTop = areaRect.top + this.data.canvasOffsetY + borderComp;
+    // canvasOffset 表示内容区左上角，外扩坐标格只影响整体 view 的 left/top，不参与绘制命中。
+    // 双指结束后 WXS 会先把最终 offset/scale 同步回 data，所以这里以 data 为准，避免使用异步旧 rect。
+    const screenLeft = areaRect.left + this.data.canvasOffsetX;
+    const screenTop = areaRect.top + this.data.canvasOffsetY;
     const screenWidth = this.data.canvasWidth * scale;
     const screenHeight = this.data.canvasHeight * scale;
 
@@ -3514,9 +3630,9 @@ Page({
             wx.navigateBack({ delta: 1 });
           }
         }, 1000);
-      }).catch(() => {
+      }).catch((err) => {
         this.setData({ loading: false });
-        wx.showToast({ title: '保存失败', icon: 'none' });
+        wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' });
       });
     } else {
       request.post('/draft/save', {
@@ -3527,9 +3643,9 @@ Page({
       }).then(() => {
         this.setData({ loading: false });
         wx.showToast({ title: '已保存', icon: 'success' });
-      }).catch(() => {
+      }).catch((err) => {
         this.setData({ loading: false });
-        wx.showToast({ title: '保存失败', icon: 'none' });
+        wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' });
       });
     }
   },

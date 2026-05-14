@@ -11,6 +11,10 @@ Page({
     page: 1,
     pageSize: 20,
     total: 0,
+    draftCurrent: 0,
+    draftLimit: 0,
+    draftRuleText: '',
+    draftRuleLoaded: false,
     drafts: [],
     filteredDrafts: [],
     keyword: '',
@@ -36,7 +40,29 @@ Page({
 
   onShow() {
     this.calcNavTop();
+    this.loadDraftRule();
     this.loadDrafts(true);
+  },
+
+  loadDraftRule() {
+    return request.get('/privilege/check/draft-box')
+      .then((rule) => {
+        const current = Number(rule.current || 0);
+        const limit = Number(rule.limit || 0);
+        if (!Number.isFinite(limit) || limit <= 0 || rule.current === undefined) {
+          this.setData({ draftRuleLoaded: false });
+          return;
+        }
+        this.setData({
+          draftCurrent: current,
+          draftLimit: limit,
+          draftRuleText: `${current}/${limit}`,
+          draftRuleLoaded: true
+        });
+      })
+      .catch(() => {
+        this.setData({ draftRuleLoaded: false });
+      });
   },
 
   calcNavTop() {
@@ -118,6 +144,8 @@ Page({
           page: this.data.page + 1,
           hasMore: res.hasMore || false,
           total: res.total || 0,
+          draftCurrent: res.total || 0,
+          draftRuleText: this.data.draftRuleLoaded ? `${Number(res.total || 0)}/${Number(this.data.draftLimit || 0)}` : '',
           loading: false,
           loadingMore: false
         }, () => {
@@ -279,7 +307,11 @@ Page({
         this.setData({ showSaveModal: false, selectedDraft: null, patternName: '' });
         this.loadDrafts();
       })
-      .catch(() => {
+      .catch((err) => {
+        if (err && err.message) {
+          wx.showToast({ title: err.message, icon: 'none' });
+          return;
+        }
         wx.showToast({ title: '保存失败', icon: 'none' });
       });
   },
@@ -328,7 +360,8 @@ Page({
           request.delete('/draft/delete/' + id)
             .then(() => {
               wx.showToast({ title: '已删除', icon: 'success' });
-              this.loadDrafts();
+              this.loadDraftRule();
+              this.loadDrafts(true);
             })
             .catch(() => {
               wx.showToast({ title: '删除失败', icon: 'none' });

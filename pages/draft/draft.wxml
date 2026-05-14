@@ -9,7 +9,7 @@
       <text class="header-title">草稿箱</text>
       <view class="header-badge">
         <image class="header-badge-icon" src="/assets/icons/lucide-file-text-orange.svg" mode="aspectFit"/>
-        <text>{{drafts.length}}</text>
+        <text>{{draftRuleLoaded ? draftRuleText : drafts.length}}</text>
       </view>
     </view>
     <view class="header-right-spacer" style="width: {{capsuleWidth}}px;"></view>

@@ -9,7 +9,7 @@
       <text class="header-title">图纸箱</text>
       <view class="header-badge">
         <image class="header-badge-icon" src="/assets/icons/lucide-folder-blue.svg" mode="aspectFit"/>
-        <text>{{patterns.length}}/{{maxCapacity}}</text>
+        <text>{{patternRuleLoaded ? patternRuleText : patterns.length}}</text>
       </view>
     </view>
     <view class="header-right-spacer" style="width: {{capsuleWidth}}px;"></view>

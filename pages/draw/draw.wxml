@@ -275,6 +275,7 @@
         data-locked="{{locked}}"
         data-has-background="{{backgroundImage ? true : false}}"
         data-active-layer="{{activeLayer}}"
+        data-tool="{{tool}}"
       />
     </view>
   </view>

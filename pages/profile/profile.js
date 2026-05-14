@@ -247,10 +247,10 @@ Page({
     const status = Number((config.status !== undefined ? config.status : progress && progress.status) || 0);
     const currentCount = Number((config.currentCount !== undefined ? config.currentCount : progress && progress.currentCount) || 0);
     const targetCount = Number((config.targetCount !== undefined ? config.targetCount : progress && progress.targetCount) || 1);
-    const rewardValue = Number(config.rewardValue || 0);
-    const rewardText = config.rewardType === 'VIP_DAYS'
-      ? `奖励 ${rewardValue} 天会员`
-      : `奖励 ${rewardValue} 次AI`;
+    const rewardValue = Number(config.rewardValue || 1);
+    const rewardText = config.handlerType === 'CHECKIN'
+      ? '奖励礼品包'
+      : '奖励礼包';
     const actionText = config.handlerType === 'CHECKIN'
       ? (status === 1 ? '领取奖励' : '去签到')
       : (config.handlerType === 'FIRST_RECHARGE_GIFT' || config.handlerType === 'REGISTER_GIFT')
@@ -329,7 +329,7 @@ Page({
       },
       {
         question: '什么是魔法值？如何获取？',
-        answer: '魔法值用于生成AI图纸和使用高级功能。您可以通过每日签到、完成任务或充值会员获得魔法值。',
+        answer: '魔法值用于生成AI图纸和使用高级功能。您可以通过签到、完成任务领取礼品包，兑换后获得魔法值，也可以通过充值会员或购买次卡获得。',
       },
       {
         question: '生成的图纸可以修改吗？',

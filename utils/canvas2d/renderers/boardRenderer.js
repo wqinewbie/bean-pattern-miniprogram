@@ -125,10 +125,10 @@ function drawCoordinateFrame(ctx, options) {
 
   const visualCell = inset * viewScale;
   const digitCount = String(gridSize).length;
-  const maxByCell = visualCell * 0.55;
+  const maxByCell = visualCell * 0.58;
   const maxByLength = visualCell / Math.max(1.15, digitCount * 0.68);
-  const visualFontSize = clamp(Math.min(maxByCell, maxByLength), 9, 14);
-  const fontSize = Math.max(3, Math.round((visualFontSize / viewScale) * 2) / 2);
+  const visualFontSize = Math.max(6, Math.min(12, maxByCell, maxByLength));
+  const fontSize = Math.max(1, Math.round((visualFontSize / viewScale) * 4) / 4);
   ctx.fillStyle = '#A1887F';
   ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif`;
   ctx.textAlign = 'center';
@@ -173,10 +173,11 @@ function getCellCodeConfig(cellSize, viewScale, maxCodeLength = 2) {
   const scale = Math.max(Number(viewScale) || 1, 0.1);
   const visualCell = cellSize * scale;
   const show = visualCell >= 20;
-  const maxByCell = visualCell * 0.42;
+  const targetVisualFontSize = 12;
+  const maxByCell = visualCell * 0.58;
   const maxByLength = visualCell / Math.max(1.2, maxCodeLength * 0.62);
-  const visualFontSize = clamp(Math.min(maxByCell, maxByLength), 9, 15);
-  const fontSize = Math.max(3, Math.round((visualFontSize / scale) * 2) / 2);
+  const visualFontSize = Math.max(8, Math.min(targetVisualFontSize, maxByCell, maxByLength));
+  const fontSize = Math.max(1, Math.round((visualFontSize / scale) * 4) / 4);
   return { show, fontSize, visualFontSize };
 }
 
@@ -193,8 +194,7 @@ function drawCellCode(ctx, color, code, cx, cy, fontSize, opts = {}) {
   if (!code) return;
 
   const textColor = getCodeTextColor(color);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
+  ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = textColor;
   ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
   ctx.textAlign = 'center';

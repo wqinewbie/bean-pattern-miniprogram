@@ -7,10 +7,6 @@
     </view>
     <view class="header-title-wrap">
       <text class="header-title">时光机</text>
-      <view class="header-badge">
-        <image class="header-badge-icon" src="/assets/icons/lucide-clock-orange.svg" mode="aspectFit"/>
-        <text>{{history.length}}</text>
-      </view>
     </view>
     <view class="header-right-spacer" style="width: {{capsuleWidth}}px;"></view>
   </view>
@@ -57,6 +53,7 @@
               </view>
             </view>
           </view>
+          <text wx:if="{{item.expireText}}" class="pattern-meta-text">{{item.expireText}}</text>
         </view>
       </view>
     </view>
@@ -83,6 +80,7 @@
             <view class="list-info">
               <text class="list-name">{{item.name || ('记录#'+item.id)}}</text>
               <text class="list-meta-text">{{item.gridSize || 64}}x{{item.gridSize || 64}} · {{item.brand || 'MARD'}} · {{item.colorCount || 0}}色 · {{item.createdAt}}</text>
+              <text wx:if="{{item.expireText}}" class="list-meta-text list-expire-text">{{item.expireText}}</text>
             </view>
           </view>
         </view>

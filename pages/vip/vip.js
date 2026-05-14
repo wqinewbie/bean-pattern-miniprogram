@@ -206,8 +206,8 @@ Page({
         // 转换数据格式以适配现有UI
         const formattedPrivileges = privileges.map(priv => ({
           name: priv.configName,
-          normal: priv.freeValue,
-          vip: priv.vipValue,
+          normal: this.formatPrivilegeValue(priv.freeValue, priv.valueType),
+          vip: this.formatPrivilegeValue(priv.vipValue, priv.valueType),
         }));
 
         this.setData({
@@ -219,6 +219,17 @@ Page({
         console.error('加载权益对比失败', err);
         this.setData({ privilegesLoading: false });
       });
+  },
+
+  /**
+   * 格式化权益值，避免小程序页面直接展示 true / false
+   */
+  formatPrivilegeValue(value, valueType) {
+    const normalized = String(value).toLowerCase();
+    if (valueType === 'boolean' || normalized === 'true' || normalized === 'false') {
+      return normalized === 'true' ? '是' : '否';
+    }
+    return value;
   },
 
   /**
@@ -346,7 +357,7 @@ Page({
   onSelectCardPlan(e) {
     const id = e.currentTarget.dataset.id;
     const selectedPackage = this.data.cardPackages.find(p => p.id === id);
-    const currentPrice = selectedPackage ? (this.data.isVip ? selectedPackage.isVipPrice : selectedPackage.price) : 0;
+    const currentPrice = this.data.isVip ? selectedPackage.isVipPrice : selectedPackage.price;
     this.setData({ selectedCardId: id, currentPrice });
   },
 

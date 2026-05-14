@@ -48,6 +48,20 @@ class CanvasRenderer {
 
   setLowQualityMode(enabled) {
     this._isLowQualityMode = !!enabled;
+    if (this._isLowQualityMode) {
+      this.clearCaches();
+    }
+  }
+
+  clearCaches() {
+    this._gridCache = null;
+    this._gridCacheKey = '';
+    this._codeCache = null;
+    this._codeCacheKey = '';
+    this._pixelCache = null;
+    this._pixelCacheKey = '';
+    this._pixelLayerDirty = true;
+    this._codeLayerDirty = true;
   }
 
   _createCanvas(width, height) {

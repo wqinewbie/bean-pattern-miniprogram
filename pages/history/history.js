@@ -80,6 +80,8 @@ Page({
             sourceUrl: item.sourceUrl,
             boxId: item.boxId,
             createdAt: this.formatTime(item.createdAt),
+            expiresAt: this.formatTime(item.expiresAt),
+            expireText: item.expiresAt ? ('到期 ' + this.formatTime(item.expiresAt)) : '',
           }));
 
           const history = reset ? newItems : [...this.data.history, ...newItems];
@@ -236,7 +238,11 @@ Page({
           wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
           this.loadHistory();
         })
-        .catch(() => {
+        .catch((err) => {
+          if (err && err.message) {
+            wx.showToast({ title: err.message, icon: 'none' });
+            return;
+          }
           wx.showToast({ title: '保存失败', icon: 'none' });
         });
     });

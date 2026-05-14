@@ -305,6 +305,16 @@
   min-width: 0;
 }
 
+.pattern-meta-text {
+  display: block;
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #A1887F;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .pattern-name-actions {
   display: flex;
   gap: 8rpx;
@@ -438,4 +448,11 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.list-expire-text {
+  display: block;
+  margin-top: 4rpx;
+  color: #FF8C42;
+  font-weight: 700;
 }

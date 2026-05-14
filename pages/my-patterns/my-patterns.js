@@ -26,11 +26,14 @@ Page({
     page: 1,
     pageSize: 20,
     total: 0,
+    patternCurrent: 0,
+    patternLimit: 0,
+    patternRuleText: '',
+    patternRuleLoaded: false,
     navTop: 88,
     statusBarHeight: 44,
     navHeight: 32,
     capsuleWidth: 87,
-    maxCapacity: 10,
     searchFocused: false,
     viewMode: 'thumb',
     swipedOffsets: {},
@@ -46,6 +49,7 @@ Page({
   },
   onShow() {
     this.calcNavTop();
+    this.loadPatternRule();
     this.loadPatterns(true);
     const tab = this.selectComponent('#appTabBar');
     if (tab && tab.setSelected) tab.setSelected(3);
@@ -54,15 +58,33 @@ Page({
   calcNavTop() {
     const layout = getSafeAreaLayout();
     const menuButton = layout.menuButton || {};
-    const vipExpire = wx.getStorageSync('vipExpire') || '';
-    const isVip = vipExpire && new Date(vipExpire) > new Date();
     this.setData({
       navTop: layout.navTop,
       statusBarHeight: menuButton.top || layout.statusBarHeight || 44,
-      maxCapacity: isVip ? 100 : 10,
       navHeight: menuButton.height || 32,
       capsuleWidth: menuButton.width || 87,
     });
+  },
+
+  loadPatternRule() {
+    return request.get('/privilege/check/pattern-box')
+      .then((rule) => {
+        const current = Number(rule.current || 0);
+        const limit = Number(rule.limit || 0);
+        if (!Number.isFinite(limit) || limit <= 0 || rule.current === undefined) {
+          this.setData({ patternRuleLoaded: false });
+          return;
+        }
+        this.setData({
+          patternCurrent: current,
+          patternLimit: limit,
+          patternRuleText: `${current}/${limit}`,
+          patternRuleLoaded: true
+        });
+      })
+      .catch(() => {
+        this.setData({ patternRuleLoaded: false });
+      });
   },
 
   loadPatterns(reset = false) {
@@ -158,6 +180,8 @@ Page({
           page: this.data.page + 1,
           hasMore: res.hasMore || false,
           total: res.total || 0,
+          patternCurrent: res.total || 0,
+          patternRuleText: this.data.patternRuleLoaded ? `${Number(res.total || 0)}/${Number(this.data.patternLimit || 0)}` : '',
           loading: false,
           loadingMore: false
         }, () => {
@@ -212,6 +236,7 @@ Page({
               });
               wx.showToast({ title: '已删除', icon: 'success' });
             })
+            .finally(() => this.loadPatternRule())
             .catch(() => wx.showToast({ title: '操作失败', icon: 'none' }));
         }
       }
