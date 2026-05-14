@@ -36,6 +36,8 @@ Page({
 
     // 保存状态
     isSaved: false,
+    historyId: null,
+    boxId: null,
     savingToAlbum: false,
     isSavingToBox: false,
     isEditMode: false,
@@ -139,6 +141,14 @@ Page({
         colorNumberImageUrl: patternUrl,
         isGenerating: false,
         showCanvas: false // 导出完成后隐藏 canvas
+      });
+
+      this._saveAiHistoryRecord({
+        mappedPixelData,
+        colorStats,
+        gridSize,
+        brand,
+        sourceUrl: imageUrl
       });
 
       console.log('[ai-result] 处理完成，setData 已调用');
@@ -587,6 +597,39 @@ Page({
     });
   },
 
+  _buildHistoryPayload({ name, mappedPixelData, colorStats, gridSize, brand, sourceUrl, boxId }) {
+    return {
+      sourceType: 'AI',
+      brand: brand || this.data.brand || 'MARD',
+      colorCount: Array.isArray(colorStats) ? colorStats.length : Number(this.data.colorCount || 0),
+      name: name || 'AI记录#' + Date.now(),
+      gridSize: Number(gridSize || this.data.gridSize || 64),
+      mappedPixelData: JSON.stringify(mappedPixelData || this.data.mappedPixelData || []),
+      sourceUrl: sourceUrl || this.data.aiImageUrl || '',
+      boxId: boxId || this.data.boxId || null
+    };
+  },
+
+  _saveAiHistoryRecord(payload = {}) {
+    if (this.data.historyId) return Promise.resolve(this.data.historyId);
+
+    const mappedPixelData = payload.mappedPixelData || this.data.mappedPixelData || [];
+    if (!mappedPixelData || !mappedPixelData.length) return Promise.resolve(null);
+
+    return request.post('/history/save', this._buildHistoryPayload(payload))
+      .then((history) => {
+        if (history && history.id) {
+          this.setData({ historyId: history.id });
+          return history.id;
+        }
+        return null;
+      })
+      .catch((err) => {
+        console.warn('[ai-result] 自动保存时光机失败，不影响结果页', err);
+        return null;
+      });
+  },
+
   onBack() {
     wx.navigateBack();
   },
@@ -747,7 +790,7 @@ Page({
     if (!ok) return;
 
     const finalName = this.data.patternName.trim() || 'AI作品-' + Date.now();
-    const { taskId, aiImageUrl, resultImageUrl, colorNumberImageUrl, gridSize, brand, colorList, totalBeads, mappedPixelData } = this.data;
+    const { taskId, aiImageUrl, resultImageUrl, colorNumberImageUrl, gridSize, brand, colorList, totalBeads, mappedPixelData, historyId } = this.data;
 
     wx.showLoading({ title: '保存中...', mask: true });
 
@@ -764,7 +807,8 @@ Page({
         colorCount: colorList.length,
         totalBeads: totalBeads,
         mappedPixelData: JSON.stringify(mappedPixelData),  // 序列化为JSON字符串
-        colorList: colorList
+        colorList: colorList,
+        historyId: historyId || null
       };
 
       const res = await request.post('/box/save', saveData);
@@ -779,6 +823,18 @@ Page({
           isSaved: true,  // 触发动画
           boxId: res.id   // 保存boxId用于后续操作
         });
+
+        if (!historyId) {
+          this._saveAiHistoryRecord({
+            name: finalName,
+            mappedPixelData,
+            colorStats: colorList,
+            gridSize,
+            brand,
+            sourceUrl: aiImageUrl,
+            boxId: res.id
+          });
+        }
 
         wx.showToast({
           title: '已保存到图纸箱',
