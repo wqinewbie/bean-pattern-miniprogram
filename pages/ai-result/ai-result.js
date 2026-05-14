@@ -756,10 +756,9 @@ Page({
       const saveData = {
         name: finalName,
         taskId: taskId,
-        sourceType: 'ai',
-        originalUrl: aiImageUrl,
-        resultUrl: resultImageUrl,
-        patternUrl: colorNumberImageUrl,
+        sourceType: 'AI',
+        sourceUrl: aiImageUrl,
+        coverUrl: resultImageUrl || colorNumberImageUrl || aiImageUrl,
         gridSize: gridSize,
         brand: brand,
         colorCount: colorList.length,

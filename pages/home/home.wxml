@@ -46,12 +46,6 @@
             data-banner="{{item}}"
           >
             <image wx:if="{{item.imageUrl}}" class="banner-bg-img" src="{{item.imageUrl}}" mode="aspectFill"/>
-            <view class="banner-overlay"></view>
-            <view class="banner-card-content">
-              <text class="banner-tag">{{item.tagText || '魔法上新'}}</text>
-              <text class="banner-main-title">{{item.title || '初夏限定拼豆'}}</text>
-              <text class="banner-sub-title">{{item.subTitle || '一键生成专属图纸'}}</text>
-            </view>
           </view>
         </swiper-item>
       </swiper>
@@ -98,7 +92,7 @@
       <!-- 拼豆魔法 -->
       <view class="action-card" bindtap="onGoMyPatterns">
         <view class="action-icon icon-yellow">
-          <image class="icon-img icon-img--jimeng" src="/assets/icons/ScreenShot_2026-04-29_112714_302.png" mode="aspectFit"/>
+          <image class="icon-img icon-img--jimeng" src="/assets/icons/tweezers-orange.svg" mode="aspectFit"/>
         </view>
         <text class="action-title">沉浸式拼豆</text>
         <text class="action-desc">让拼豆变得更高效</text>

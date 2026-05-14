@@ -1,139 +1,183 @@
 /**
- * 画板渲染器 - Canvas 2D
- * 用于空白画板和编辑模式的绘制
+ * Drawing board renderer for Canvas 2D.
  */
 
-function getLineMetrics(cellSize, viewScale, dpr) {
-  const scale = Math.max(Number(viewScale) || 1, 1);
-  const renderDpr = Math.max(Number(dpr) || 1, 1);
-  const visualCellSize = cellSize * scale;
-
-  const screenThin = Math.max(0.45, Math.min(1.1, visualCellSize * 0.018));
-  const screenThick = Math.max(0.8, Math.min(1.9, visualCellSize * 0.032));
-
-  const thin = Math.max(screenThin / scale, 1 / renderDpr);
-  const thick = Math.max(screenThick / scale, 1 / renderDpr);
-
-  return { thin, thick };
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
-function alignToDevicePixel(value, dpr) {
+function getLineMetrics(cellSize, viewScale, dpr) {
+  const scale = Math.max(Number(viewScale) || 1, 0.1);
+  const screenThin = 1;
+  const screenThick = 1;
+
+  return {
+    thin: screenThin / scale,
+    thick: screenThick / scale
+  };
+}
+
+function alignToScreenPixel(value, viewScale, dpr) {
+  const scale = Math.max(Number(viewScale) || 1, 0.1);
   const renderDpr = Math.max(Number(dpr) || 1, 1);
-  return Math.round(value * renderDpr) / renderDpr;
+  return Math.round(value * scale * renderDpr) / (scale * renderDpr);
 }
 
 function drawGridLineRects(ctx, width, height, gridSize, cellSize, viewScale, dpr) {
-  // 问题1修复：使用细细的实心黑色线条
-  // 固定线宽：细线 0.5px，粗线 1px
-  const thinLineWidth = 0.5;
-  const thickLineWidth = 1;
-  
-  // 保存当前状态
+  const metrics = getLineMetrics(cellSize, viewScale, dpr);
+  const uniformLineWidth = metrics.thin;
+
   ctx.save();
-  
-  // 禁用抗锯齿，让线条更清晰
   ctx.imageSmoothingEnabled = false;
-  
-  // 绘制细线（每个格子）
-  ctx.strokeStyle = '#000000';  // 实心黑色
-  ctx.lineWidth = thinLineWidth;
-  ctx.beginPath();
+  ctx.fillStyle = '#BDBDBD';
+
   for (let i = 0; i <= gridSize; i++) {
-    const pos = i * cellSize;
-    // 垂直线
-    ctx.moveTo(pos, 0);
-    ctx.lineTo(pos, height);
-    // 水平线
-    ctx.moveTo(0, pos);
-    ctx.lineTo(width, pos);
+    const pos = alignToScreenPixel(i * cellSize, viewScale, dpr);
+    ctx.fillRect(pos, 0, uniformLineWidth, height);
+    ctx.fillRect(0, pos, width, uniformLineWidth);
   }
-  ctx.stroke();
-  
-  // 绘制粗线（每5个格子）
-  ctx.strokeStyle = '#000000';  // 实心黑色
-  ctx.lineWidth = thickLineWidth;
-  ctx.beginPath();
-  for (let i = 0; i <= gridSize; i += 5) {
-    const pos = i * cellSize;
-    // 垂直线
-    ctx.moveTo(pos, 0);
-    ctx.lineTo(pos, height);
-    // 水平线
-    ctx.moveTo(0, pos);
-    ctx.lineTo(width, pos);
-  }
-  ctx.stroke();
-  
-  // 恢复状态
+
   ctx.restore();
-  
-  console.log('[网格绘制] 使用实心黑色线条:', { 
-    thinLineWidth, 
-    thickLineWidth, 
-    gridSize, 
-    cellSize 
-  });
+}
+
+function drawCheckerCell(ctx, x, y, cellSize) {
+  if (!ctx || !cellSize) return;
+
+  const half = cellSize / 2;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(x, y, cellSize, cellSize);
+  ctx.fillStyle = '#D9D9D9';
+  ctx.fillRect(x, y, half, half);
+  ctx.fillRect(x + half, y + half, half, half);
+}
+
+function drawCheckerboard(ctx, width, height, gridSize, originX = 0, originY = 0) {
+  if (!ctx || !width || !height || !gridSize) return;
+
+  const cellSize = width / gridSize;
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(originX, originY, width, height);
+
+  for (let row = 0; row < gridSize; row++) {
+    for (let col = 0; col < gridSize; col++) {
+      const x = originX + col * cellSize;
+      const y = originY + row * cellSize;
+      const half = cellSize / 2;
+      ctx.fillStyle = '#D9D9D9';
+      ctx.fillRect(x, y, half, half);
+      ctx.fillRect(x + half, y + half, half, half);
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawCoordinateFrame(ctx, options) {
+  if (!ctx) return;
+  const width = Number(options.width) || 0;
+  const height = Number(options.height) || 0;
+  const gridSize = Number(options.gridSize) || 0;
+  const inset = Number(options.inset) || 0;
+  const viewScale = Math.max(Number(options.viewScale) || 1, 0.1);
+  const dpr = Math.max(Number(options.dpr) || 1, 1);
+  const showLabels = options.showLabels !== false;
+  if (!width || !height || !gridSize || !inset) return;
+
+  const totalWidth = width + inset * 2;
+  const totalHeight = height + inset * 2;
+  const cellW = width / gridSize;
+  const cellH = height / gridSize;
+  const line = Math.max(0.5, Math.min(1, inset * 0.08));
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#FFF4DC';
+  ctx.fillRect(0, 0, totalWidth, inset);
+  ctx.fillRect(0, inset + height, totalWidth, inset);
+  ctx.fillRect(0, inset, inset, height);
+  ctx.fillRect(inset + width, inset, inset, height);
+
+  ctx.fillStyle = '#FFEBB5';
+  for (let i = 0; i <= gridSize; i++) {
+    const x = inset + i * cellW;
+    ctx.fillRect(x, 0, line, inset);
+    ctx.fillRect(x, inset + height, line, inset);
+
+    const y = inset + i * cellH;
+    ctx.fillRect(0, y, inset, line);
+    ctx.fillRect(inset + width, y, inset, line);
+  }
+  ctx.fillRect(0, 0, totalWidth, line);
+  ctx.fillRect(0, totalHeight - line, totalWidth, line);
+  ctx.fillRect(0, 0, line, totalHeight);
+  ctx.fillRect(totalWidth - line, 0, line, totalHeight);
+  ctx.fillRect(inset, inset, width, line);
+  ctx.fillRect(inset, inset + height - line, width, line);
+  ctx.fillRect(inset, inset, line, height);
+  ctx.fillRect(inset + width - line, inset, line, height);
+
+  if (!showLabels) {
+    ctx.restore();
+    return;
+  }
+
+  const visualCell = inset * viewScale;
+  const digitCount = String(gridSize).length;
+  const maxByCell = visualCell * 0.55;
+  const maxByLength = visualCell / Math.max(1.15, digitCount * 0.68);
+  const visualFontSize = clamp(Math.min(maxByCell, maxByLength), 9, 14);
+  const fontSize = Math.max(3, Math.round((visualFontSize / viewScale) * 2) / 2);
+  ctx.fillStyle = '#A1887F';
+  ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (let i = 1; i <= gridSize; i++) {
+    const label = String(i);
+    const x = alignToScreenPixel(inset + (i - 0.5) * cellW, viewScale, dpr);
+    const y = alignToScreenPixel(inset + (i - 0.5) * cellH, viewScale, dpr);
+    const topY = alignToScreenPixel(inset / 2, viewScale, dpr);
+    const bottomY = alignToScreenPixel(inset + height + inset / 2, viewScale, dpr);
+    const leftX = alignToScreenPixel(inset / 2, viewScale, dpr);
+    const rightX = alignToScreenPixel(inset + width + inset / 2, viewScale, dpr);
+    ctx.fillText(label, x, topY);
+    ctx.fillText(label, x, bottomY);
+    ctx.fillText(label, leftX, y);
+    ctx.fillText(label, rightX, y);
+  }
+
+  ctx.restore();
 }
 
 function drawCellGridRects(ctx, x, y, cellSize, row, col, viewScale, dpr) {
-  // 问题1修复：单个格子的网格线也使用实心黑色
-  const thinLineWidth = 0.5;
-  const thickLineWidth = 1;
-  
+  const metrics = getLineMetrics(cellSize, viewScale, dpr);
+  const left = alignToScreenPixel(x, viewScale, dpr);
+  const top = alignToScreenPixel(y, viewScale, dpr);
+  const right = alignToScreenPixel(x + cellSize, viewScale, dpr);
+  const bottom = alignToScreenPixel(y + cellSize, viewScale, dpr);
+  const uniformLineWidth = metrics.thin;
+
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  
-  const left = x;
-  const top = y;
-  const right = x + cellSize;
-  const bottom = y + cellSize;
-
-  // 绘制细线边框
-  ctx.strokeStyle = '#000000';
-  ctx.lineWidth = thinLineWidth;
-  ctx.strokeRect(left, top, cellSize, cellSize);
-
-  // 如果是5的倍数位置，绘制粗线
-  const isMajorLeft = (col % 5 === 0);
-  const isMajorRight = ((col + 1) % 5 === 0);
-  const isMajorTop = (row % 5 === 0);
-  const isMajorBottom = ((row + 1) % 5 === 0);
-
-  if (isMajorLeft || isMajorRight || isMajorTop || isMajorBottom) {
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = thickLineWidth;
-    ctx.beginPath();
-    
-    if (isMajorLeft) {
-      ctx.moveTo(left, top);
-      ctx.lineTo(left, bottom);
-    }
-    if (isMajorRight) {
-      ctx.moveTo(right, top);
-      ctx.lineTo(right, bottom);
-    }
-    if (isMajorTop) {
-      ctx.moveTo(left, top);
-      ctx.lineTo(right, top);
-    }
-    if (isMajorBottom) {
-      ctx.moveTo(left, bottom);
-      ctx.lineTo(right, bottom);
-    }
-    
-    ctx.stroke();
-  }
-  
+  ctx.fillStyle = '#BDBDBD';
+  ctx.fillRect(left, top, uniformLineWidth, cellSize);
+  ctx.fillRect(left, top, cellSize, uniformLineWidth);
+  ctx.fillRect(right - uniformLineWidth, top, uniformLineWidth, cellSize);
+  ctx.fillRect(left, bottom - uniformLineWidth, cellSize, uniformLineWidth);
   ctx.restore();
 }
 
-function getCellCodeConfig(cellSize, viewScale) {
-  const visualCell = cellSize * Math.max(Number(viewScale) || 1, 1);
-  // 问题2临时修复：降低显示阈值，让色号更早显示，减少闪烁
-  const show = visualCell >= 20;  // 从 25 降低到 20
-  const maxFontSize = Math.min(cellSize * 0.45, 11);
-  const fontSize = Math.max(4, Math.min(maxFontSize, visualCell * 0.16));
-  return { show, fontSize };
+function getCellCodeConfig(cellSize, viewScale, maxCodeLength = 2) {
+  const scale = Math.max(Number(viewScale) || 1, 0.1);
+  const visualCell = cellSize * scale;
+  const show = visualCell >= 20;
+  const maxByCell = visualCell * 0.42;
+  const maxByLength = visualCell / Math.max(1.2, maxCodeLength * 0.62);
+  const visualFontSize = clamp(Math.min(maxByCell, maxByLength), 9, 15);
+  const fontSize = Math.max(3, Math.round((visualFontSize / scale) * 2) / 2);
+  return { show, fontSize, visualFontSize };
 }
 
 function getCodeTextColor(hexColor) {
@@ -149,33 +193,54 @@ function drawCellCode(ctx, color, code, cx, cy, fontSize, opts = {}) {
   if (!code) return;
 
   const textColor = getCodeTextColor(color);
-
-  // 小缩放/小格子时跳过描边，仅用 fillText（strokeText 成本极高）
-  const skipStroke = opts.skipStroke || false;
-
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   ctx.fillStyle = textColor;
-  ctx.font = `800 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
+  ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-
-  if (!skipStroke) {
-    if (textColor === '#FFFFFF') {
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-    } else {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    }
-    ctx.lineWidth = Math.max(0.5, fontSize * 0.08);
-    ctx.strokeText(code, cx, cy);
-  }
 
   ctx.fillText(code, cx, cy);
 }
 
-/**
- * 绘制完整画板（完美版：支持可视区域裁剪）
- */
+function drawCodeLayer(ctx, options) {
+  if (!ctx) return;
+
+  const {
+    width,
+    gridSize,
+    viewScale = 1,
+    colorCodeMap = null,
+    getCellColor = null,
+    gridData = null
+  } = options;
+
+  if (!width || !gridSize || !colorCodeMap) return;
+
+  const cellSize = width / gridSize;
+  const codes = Object.keys(colorCodeMap).map((key) => String(colorCodeMap[key] || ''));
+  const maxCodeLength = codes.reduce((max, code) => Math.max(max, code.length), 1);
+  const codeCfg = getCellCodeConfig(cellSize, viewScale, maxCodeLength);
+  if (!codeCfg.show) return;
+
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      const color = getCellColor ? getCellColor(y, x) : (gridData && gridData[y] ? gridData[y][x] : null);
+      if (!color || color === '#FFFFFF') continue;
+
+      const code = colorCodeMap[String(color).toUpperCase()];
+      if (!code) continue;
+
+      const px = x * cellSize;
+      const py = y * cellSize;
+      const visualCell = cellSize * Math.max(Number(viewScale) || 1, 1);
+      drawCellCode(ctx, color, code, px + cellSize / 2, py + cellSize / 2, codeCfg.fontSize, {
+        skipStroke: visualCell < 45
+      });
+    }
+  }
+}
+
 function drawBoard(ctx, options) {
   if (!ctx) return;
 
@@ -189,68 +254,56 @@ function drawBoard(ctx, options) {
     viewScale = 1,
     dpr = 1,
     colorCodeMap = null,
-    visibleRange = null // 完美版：可视区域裁剪
+    getCellColor = null,
+    skipGridLayer = false,
+    skipCodeLayer = false,
+    boardInset = 0
   } = options;
 
   const cellSize = width / gridSize;
-  const codeCfg = getCellCodeConfig(cellSize, viewScale);
+  const originX = Number(boardInset) || 0;
+  const originY = Number(boardInset) || 0;
+  const totalWidth = width + originX * 2;
+  const totalHeight = height + originY * 2;
 
-  ctx.clearRect(0, 0, width, height);
+  ctx.clearRect(0, 0, totalWidth || width, totalHeight || height);
+  if (originX || originY) {
+    drawCoordinateFrame(ctx, { width, height, gridSize, inset: originX, viewScale, dpr, showLabels: true });
+  }
 
   if (!hasBackground) {
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, width, height);
+    drawCheckerboard(ctx, width, height, gridSize, originX, originY);
   }
 
-  // 完美版：计算绘制范围
-  let startRow = 0;
-  let endRow = gridSize;
-  let startCol = 0;
-  let endCol = gridSize;
-
-  if (visibleRange && !visibleRange.isFullView) {
-    startRow = visibleRange.minRow;
-    endRow = visibleRange.maxRow + 1;
-    startCol = visibleRange.minCol;
-    endCol = visibleRange.maxCol + 1;
-    
-    console.log('[boardRenderer] 可视区域裁剪:', {
-      total: gridSize * gridSize,
-      visible: (endRow - startRow) * (endCol - startCol),
-      ratio: ((endRow - startRow) * (endCol - startCol) / (gridSize * gridSize) * 100).toFixed(1) + '%'
-    });
-  }
-
-  // 完美版：只绘制可见格子
-  for (let y = startRow; y < endRow; y++) {
-    for (let x = startCol; x < endCol; x++) {
-      const color = gridData[y] ? gridData[y][x] : null;
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      const color = getCellColor ? getCellColor(y, x) : (gridData[y] ? gridData[y][x] : null);
       if (color === null || color === undefined) continue;
+      if (hasBackground && color === '#FFFFFF') continue;
 
+      const px = originX + x * cellSize;
+      const py = originY + y * cellSize;
       ctx.fillStyle = color;
-      const px = x * cellSize;
-      const py = y * cellSize;
       ctx.fillRect(px, py, cellSize, cellSize);
 
-      if (codeCfg.show && colorCodeMap && color !== '#FFFFFF') {
-        const code = colorCodeMap[String(color).toUpperCase()];
-        if (code) {
-          // visualCell < 45 时跳过描边，减少 50% draw calls
-          const visualCell = cellSize * Math.max(Number(viewScale) || 1, 1);
-          drawCellCode(ctx, color, code, px + cellSize / 2, py + cellSize / 2, codeCfg.fontSize, { skipStroke: visualCell < 45 });
-        }
-      }
     }
   }
 
-  if (showGrid && cellSize >= 2) {
+  if (!skipCodeLayer) {
+    ctx.save();
+    ctx.translate(originX, originY);
+    drawCodeLayer(ctx, { width, gridSize, viewScale, colorCodeMap, getCellColor, gridData });
+    ctx.restore();
+  }
+
+  if (!skipGridLayer && showGrid) {
+    ctx.save();
+    ctx.translate(originX, originY);
     drawGridLineRects(ctx, width, height, gridSize, cellSize, viewScale, dpr);
+    ctx.restore();
   }
 }
 
-/**
- * 增量绘制单个像素
- */
 function drawPixel(ctx, options) {
   if (!ctx) return;
 
@@ -264,40 +317,52 @@ function drawPixel(ctx, options) {
     hasBackground = false,
     viewScale = 1,
     dpr = 1,
-    colorCodeMap = null
+    colorCodeMap = null,
+    getCellColor = null,
+    boardInset = 0
   } = options;
 
   const cellSize = width / gridSize;
-  const codeCfg = getCellCodeConfig(cellSize, viewScale);
-  const x = col * cellSize;
-  const y = row * cellSize;
+  const origin = Number(boardInset) || 0;
+  const x = origin + col * cellSize;
+  const y = origin + row * cellSize;
 
   ctx.clearRect(x, y, cellSize, cellSize);
 
   if (!hasBackground) {
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(x, y, cellSize, cellSize);
+    drawCheckerCell(ctx, x, y, cellSize);
   }
 
-  if (color !== null && color !== undefined) {
-    if (!hasBackground || color !== '#FFFFFF') {
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y, cellSize, cellSize);
+  const cellColor = getCellColor ? getCellColor(row, col) : color;
 
-      if (codeCfg.show && colorCodeMap && color !== '#FFFFFF') {
-        const code = colorCodeMap[String(color).toUpperCase()];
-        const visualCell = cellSize * Math.max(Number(viewScale) || 1, 1);
-        drawCellCode(ctx, color, code, x + cellSize / 2, y + cellSize / 2, codeCfg.fontSize, { skipStroke: visualCell < 45 });
+  if (cellColor !== null && cellColor !== undefined && (!hasBackground || cellColor !== '#FFFFFF')) {
+    ctx.fillStyle = cellColor;
+    ctx.fillRect(x, y, cellSize, cellSize);
+
+    if (colorCodeMap && cellColor !== '#FFFFFF') {
+      const code = colorCodeMap[String(cellColor).toUpperCase()];
+      const maxCodeLength = code ? String(code).length : 1;
+      const codeCfg = getCellCodeConfig(cellSize, viewScale, maxCodeLength);
+      const visualCell = cellSize * Math.max(Number(viewScale) || 1, 1);
+      if (codeCfg.show) {
+        drawCellCode(ctx, cellColor, code, x + cellSize / 2, y + cellSize / 2, codeCfg.fontSize, {
+          skipStroke: visualCell < 45
+        });
       }
     }
   }
 
-  if (showGrid && cellSize >= 2 && (!hasBackground || color !== '#FFFFFF')) {
+  if (showGrid && (!hasBackground || cellColor !== '#FFFFFF')) {
     drawCellGridRects(ctx, x, y, cellSize, row, col, viewScale, dpr);
   }
 }
 
 module.exports = {
   drawBoard,
-  drawPixel
+  drawPixel,
+  drawGridLineRects,
+  drawCodeLayer,
+  drawCheckerboard,
+  drawCheckerCell,
+  drawCoordinateFrame
 };

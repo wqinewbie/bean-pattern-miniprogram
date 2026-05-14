@@ -39,6 +39,30 @@ Component({
   },
 
   methods: {
+    _forwardTouchEvent(name, e) {
+      this.triggerEvent(name, {
+        touches: e && Array.isArray(e.touches) ? e.touches : [],
+        changedTouches: e && Array.isArray(e.changedTouches) ? e.changedTouches : [],
+        timeStamp: e && e.timeStamp ? e.timeStamp : Date.now()
+      });
+    },
+
+    onTouchStart(e) {
+      this._forwardTouchEvent('canvastouchstart', e);
+    },
+
+    onTouchMove(e) {
+      this._forwardTouchEvent('canvastouchmove', e);
+    },
+
+    onTouchEnd(e) {
+      this._forwardTouchEvent('canvastouchend', e);
+    },
+
+    onTouchCancel(e) {
+      this._forwardTouchEvent('canvastouchcancel', e);
+    },
+
     init() {
       if (this._initPromise) return this._initPromise;
       this._initPromise = this._doInit();

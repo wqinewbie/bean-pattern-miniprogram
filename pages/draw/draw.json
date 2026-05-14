@@ -2,6 +2,6 @@
   "usingComponents": {
     "bead-canvas2d": "/components/bead-canvas2d/index"
   },
-  "navigationBarTitleText": "空白画板",
+  "navigationBarTitleText": "????",
   "navigationStyle": "custom"
 }

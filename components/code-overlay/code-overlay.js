@@ -1,10 +1,6 @@
-/**
- * 色号覆盖层组件
- *
- * width/height = canvasWidth * scale（缩放后的 CSS 显示尺寸）
- * 内部以 logicalWidth = width/scale 为逻辑坐标绘制，ctx.scale(dpr * scale) 映射到物理像素
- */
-const OBSERVER_DEBOUNCE_MS = 150;
+const MAX_PHYSICAL_SIZE = 4096;
+const MIN_VISUAL_CELL_FOR_CODE = 25;
+const FIXED_VISUAL_FONT_SIZE = 14;
 
 Component({
   properties: {
@@ -15,221 +11,177 @@ Component({
     gridData: { type: Array, value: [] },
     colorCodeMap: { type: Object, value: {} },
     show: { type: Boolean, value: true },
-    canvasOffsetX: { type: Number, value: 0 },
-    canvasOffsetY: { type: Number, value: 0 },
-    areaWidth: { type: Number, value: 0 },
-    areaHeight: { type: Number, value: 0 },
     gesturing: { type: Boolean, value: false }
   },
 
   data: {
-    canvasId: 'code-overlay-' + Date.now(),
-    _visible: 'visible'
+    _visible: 'visible',
+    labels: []
   },
 
   lifetimes: {
     attached() {
-      this._gestureLock = false;
+      this._drawFrame = null;
+      this._ready = false;
     },
+
     ready() {
       setTimeout(() => this.initCanvas(), 100);
     },
+
     detached() {
-      if (this._debounceTimer) {
-        clearTimeout(this._debounceTimer);
-        this._debounceTimer = null;
+      if (this._drawFrame) {
+        this._cancelFrame(this._drawFrame);
+        this._drawFrame = null;
       }
       this.canvas = null;
       this.ctx = null;
-      this._gestureLock = false;
+      this._pixelSource = null;
+      this._colorCodeMapRef = null;
+      this._ready = false;
     }
   },
 
   observers: {
     'width, height, gridSize': function(width, height, gridSize) {
-      if (this._gestureLock || this.data.gesturing || this.properties.gesturing) return;
-      if (this.ctx && width > 0 && height > 0 && gridSize > 0) this._scheduleDraw();
+      if (this.data.gesturing || this.properties.gesturing) return;
+      if (width > 0 && height > 0 && gridSize > 0) this._scheduleDraw();
     },
+
     'gridData': function(gridData) {
-      if (this._gestureLock || this.data.gesturing || this.properties.gesturing) return;
-      if (this.ctx && gridData && gridData.length > 0) this._scheduleDraw();
+      if (this.data.gesturing || this.properties.gesturing) return;
+      if (gridData && gridData.length > 0) this._scheduleDraw();
     },
+
     'colorCodeMap': function(colorCodeMap) {
-      if (this._gestureLock || this.data.gesturing || this.properties.gesturing) return;
-      if (this.ctx && colorCodeMap) this._scheduleDraw();
+      if (this.data.gesturing || this.properties.gesturing) return;
+      if (colorCodeMap) this._scheduleDraw();
     },
+
     'scale': function() {
-      if (this._gestureLock || this.data.gesturing || this.properties.gesturing) return;
-      if (this.ctx) this._scheduleDraw();
+      if (this.data.gesturing || this.properties.gesturing) return;
+      this._scheduleDraw();
     },
+
     'show': function(show) {
       this.setData({ _visible: show ? 'visible' : 'hidden' });
     },
+
     'gesturing': function(gesturing) {
-      this._gestureLock = !!gesturing;
-      if (gesturing) {
-        if (this._debounceTimer) {
-          clearTimeout(this._debounceTimer);
-          this._debounceTimer = null;
-        }
-      } else if (this.ctx) {
-        this._scheduleDraw();
-      }
+      if (!gesturing) this._scheduleDraw();
     }
   },
 
   methods: {
-    /**
-     * 节流调度：合并短时间内多次 observer 触发为一次绘制
-     */
-    _scheduleDraw() {
-      if (this._debounceTimer) {
-        clearTimeout(this._debounceTimer);
+    _requestFrame(callback) {
+      if (typeof requestAnimationFrame === 'function') {
+        return requestAnimationFrame(callback);
       }
-      this._debounceTimer = setTimeout(() => {
-        this._debounceTimer = null;
-        this.drawCodes();
-      }, OBSERVER_DEBOUNCE_MS);
+      return setTimeout(callback, 16);
     },
 
-    /**
-     * 外部直接传入引用数据，避免通过 setData 传递大型数组
-     */
-    setExternalData(gridData, colorCodeMap) {
-      if (gridData) this._gridDataRef = gridData;
+    _cancelFrame(id) {
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(id);
+        return;
+      }
+      clearTimeout(id);
+    },
+
+    _scheduleDraw() {
+      if (this._drawFrame) return;
+      this._drawFrame = this._requestFrame(() => {
+        this._drawFrame = null;
+        this.drawCodes();
+      });
+    },
+
+    setExternalData(pixelSource, colorCodeMap) {
+      if (pixelSource) this._pixelSource = pixelSource;
       if (colorCodeMap) this._colorCodeMapRef = colorCodeMap;
-      if (this._ready && !this._gestureLock && !this.data.gesturing && !this.properties.gesturing) {
+      if (this._ready && !this.data.gesturing && !this.properties.gesturing) {
         this._scheduleDraw();
       }
     },
 
     initCanvas() {
-      const query = wx.createSelectorQuery().in(this);
-      query.select('#codeCanvas').node().exec((res) => {
-        if (!res || !res[0]) return;
-        this.canvas = res[0].node;
-        this.ctx = this.canvas.getContext('2d');
-        this.systemDpr = wx.getSystemInfoSync().pixelRatio || 2;
-        this._ready = true;
-        this.drawCodes();
-      });
+      this._ready = true;
+      this._scheduleDraw();
     },
 
-    /**
-     * 计算可视区域的格子范围（裁剪优化核心）
-     */
-    _getVisibleRange() {
-      const { width, height, gridSize, scale, canvasOffsetX, canvasOffsetY } = this.data;
-      const currentScale = Math.max(Number(scale) || 1, 0.5);
-      const logicalW = width / currentScale;
-      const cellSize = logicalW / gridSize;
-
-      const visibleLeft = Math.max(0, -canvasOffsetX);
-      const visibleTop = Math.max(0, -canvasOffsetY);
-
-      const areaW = this.data.areaWidth || width;
-      const areaH = this.data.areaHeight || height;
-      const visibleRight = Math.min(width, areaW - canvasOffsetX);
-      const visibleBottom = Math.min(height, areaH - canvasOffsetY);
-
-      const minCol = Math.max(0, Math.floor(visibleLeft / cellSize) - 1);
-      const minRow = Math.max(0, Math.floor(visibleTop / cellSize) - 1);
-      const maxCol = Math.min(gridSize - 1, Math.ceil(visibleRight / cellSize) + 1);
-      const maxRow = Math.min(gridSize - 1, Math.ceil(visibleBottom / cellSize) + 1);
-
-      return {
-        minRow, maxRow, minCol, maxCol,
-        isFullView: minRow === 0 && maxRow === gridSize - 1 && minCol === 0 && maxCol === gridSize - 1,
-        cellSize
-      };
+    _getCellColor(row, col) {
+      if (this._pixelSource && typeof this._pixelSource.getPixelHex === 'function') {
+        return this._pixelSource.getPixelHex(row, col);
+      }
+      const gridData = this.data.gridData;
+      return gridData && gridData[row] ? gridData[row][col] : '';
     },
 
     drawCodes() {
-      if (!this.ctx || !this.canvas) return;
-
       const { width, height, gridSize, scale } = this.data;
-      const gridData = this._gridDataRef || this.data.gridData;
       const colorCodeMap = this._colorCodeMapRef || this.data.colorCodeMap;
-      if (!gridData || gridData.length === 0 || !colorCodeMap || Object.keys(colorCodeMap).length === 0) return;
+      const safeGridSize = Math.max(1, Number(gridSize) || 1);
+      const screenW = Math.max(1, Number(width) || 1);
+      const screenH = Math.max(1, Number(height) || 1);
+      const viewScale = Math.max(1, Number(scale) || 1);
+      const cellW = screenW / safeGridSize;
+      const cellH = screenH / safeGridSize;
+      const visualCell = Math.min(cellW, cellH) * viewScale;
 
-      const ctx = this.ctx;
-      const canvas = this.canvas;
+      if (!colorCodeMap || Object.keys(colorCodeMap).length === 0 || visualCell < MIN_VISUAL_CELL_FOR_CODE) {
+        if (this.data.labels.length) this.setData({ labels: [] });
+        return;
+      }
 
-      const currentScale = Math.max(Number(scale) || 1, 0.5);
-      const logicalW = width / currentScale;
-      const cellSize = logicalW / gridSize;
-      const visualCell = cellSize * currentScale;
+      const availableCell = Math.max(1, Math.min(cellW, cellH));
+      const maxCodeLength = Object.values(colorCodeMap || {}).reduce((max, code) => {
+        return Math.max(max, String(code || '').length);
+      }, 1);
+      const maxByCell = availableCell * 0.58;
+      const maxByLength = availableCell / Math.max(1.1, maxCodeLength * 0.62);
+      const fontSize = Math.max(3, Math.min(FIXED_VISUAL_FONT_SIZE, maxByCell, maxByLength));
+      const labels = [];
 
-      if (visualCell < 25) return;
-
-      const systemDpr = Math.max(1, this.systemDpr || 2);
-      const maxPhysicalSize = 4096;
-      const maxDprByWidth = maxPhysicalSize / width;
-      const maxDprByHeight = maxPhysicalSize / height;
-      const dpr = Math.max(1, Math.min(systemDpr, maxDprByWidth, maxDprByHeight));
-
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
-
-      const effectiveDpr = dpr * currentScale;
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.scale(effectiveDpr, effectiveDpr);
-      ctx.clearRect(0, 0, logicalW, logicalW / width * height);
-
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-
-      const FIXED_LOGICAL_FONT_SIZE = 4;
-      const maxFontByCell = Math.max(4, cellSize * 0.55);
-      const fontSize = Math.min(FIXED_LOGICAL_FONT_SIZE, maxFontByCell) / Math.max(currentScale, 0.6);
-
-      // 可视区域裁剪
-      const range = this._getVisibleRange();
-      const startRow = range.minRow;
-      const endRow = range.maxRow;
-      const startCol = range.minCol;
-      const endCol = range.maxCol;
-
-      // visualCell < 45 时跳过描边，每像素减少 1 次 strokeText（约 50% draw calls）
-      const skipStroke = visualCell < 45;
-
-      for (let y = startRow; y <= endRow; y++) {
-        for (let x = startCol; x <= endCol; x++) {
-          const rawColor = gridData[y] ? gridData[y][x] : null;
+      for (let row = 0; row < safeGridSize; row++) {
+        for (let col = 0; col < safeGridSize; col++) {
+          const rawColor = this._getCellColor(row, col);
           if (!rawColor) continue;
 
           const color = String(rawColor).trim().toUpperCase();
-          if (color === '#FFFFFF') continue;
+          if (!color || color === '#FFFFFF') continue;
 
           const code = colorCodeMap[color] || colorCodeMap[String(rawColor).trim()] || '';
           if (!code) continue;
 
-          const px = x * cellSize + cellSize / 2;
-          const py = y * cellSize + cellSize / 2;
-
-          this._drawCode(ctx, color, code, px, py, fontSize, effectiveDpr, skipStroke);
+          const textColor = this._getCodeTextColor(color);
+          labels.push({
+            key: `${row}-${col}`,
+            code,
+            style: [
+              `left:${col * cellW}px`,
+              `top:${row * cellH}px`,
+              `width:${cellW}px`,
+              `height:${cellH}px`,
+              `font-size:${fontSize}px`,
+              `color:${textColor}`
+            ].join(';')
+          });
         }
       }
+
+      this.setData({ labels });
     },
 
-    _drawCode(ctx, color, code, cx, cy, fontSize, effectiveDpr, skipStroke) {
-      if (!code) return;
-
+    _drawCode(ctx, color, code, cx, cy, fontSize, dpr, skipStroke) {
       const textColor = this._getCodeTextColor(color);
-      ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
+      const alignedX = Math.round(cx * dpr) / dpr;
+      const alignedY = Math.round(cy * dpr) / dpr;
 
-      const alignedX = Math.round(cx * effectiveDpr) / effectiveDpr;
-      const alignedY = Math.round(cy * effectiveDpr) / effectiveDpr;
+      ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif`;
 
       if (!skipStroke) {
-        if (textColor === '#FFFFFF') {
-          ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
-        } else {
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-        }
-        ctx.lineWidth = Math.max(0.3, fontSize * 0.1);
+        ctx.strokeStyle = textColor === '#FFFFFF' ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.65)';
+        ctx.lineWidth = Math.max(1 / dpr, fontSize * 0.08);
         ctx.strokeText(code, alignedX, alignedY);
       }
 
@@ -247,7 +199,7 @@ Component({
     },
 
     redraw() {
-      this.drawCodes();
+      this._scheduleDraw();
     }
   }
 });

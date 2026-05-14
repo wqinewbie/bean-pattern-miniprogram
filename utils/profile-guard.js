@@ -17,6 +17,14 @@ function cacheProfile(profile) {
   wx.setStorageSync('nickName', profile.nickName || '');
   wx.setStorageSync('avatarUrl', profile.avatarUrl || '');
   wx.setStorageSync('phone', profile.phone || '');
+
+  const vipExpire = profile.vipExpireAt || profile.vipExpire || '';
+  wx.setStorageSync('vipExpire', vipExpire);
+
+  const aiQuota = Number(profile.aiQuota !== undefined ? profile.aiQuota : profile.magicCount);
+  if (!Number.isNaN(aiQuota)) {
+    wx.setStorageSync('magicCount', aiQuota);
+  }
 }
 
 function openProfilePage() {

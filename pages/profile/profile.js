@@ -23,6 +23,7 @@ Page({
     
     // 礼品包
     gifts: [],
+    availableGiftCount: 0,
     giftTab: 'available',
     giftTabs: [],
     visibleGifts: [],
@@ -154,6 +155,7 @@ Page({
       checkedIn,
       magicCount,
       gifts,
+      availableGiftCount: this.calcAvailableGiftCount(gifts),
       watermarkText,
       draftCount,
       inviteCode,
@@ -286,6 +288,18 @@ Page({
     return [];
   },
 
+  calcAvailableGiftCount(gifts) {
+    return (gifts || []).filter((gift) => {
+      if (gift.tabStatus) return gift.tabStatus === 'available';
+
+      const now = Date.now();
+      const expireTime = gift.expireAt ? new Date(gift.expireAt).getTime() : 0;
+      const expired = gift.status === 2 || (expireTime && expireTime <= now);
+      const used = gift.status === 1;
+      return !expired && !used;
+    }).length;
+  },
+
   loadNotifications() {
     const sessionId = wx.getStorageSync('sessionId');
     if (!sessionId) {
@@ -365,9 +379,10 @@ Page({
       request.get('/user/profile'),
       request.get('/user/stats'),
       request.get('/gift/my'),
-      this.loadTasksFromServer()
+      this.loadTasksFromServer(),
+      request.get('/invite/my-code').catch(() => null)
     ])
-      .then(([profile, stats, gifts, tasks]) => {
+      .then(([profile, stats, gifts, tasks, inviteData]) => {
         if (profile && profile.nickName) {
           wx.setStorageSync('nickName', profile.nickName);
           wx.setStorageSync('avatarUrl', profile.avatarUrl || '');
@@ -377,8 +392,11 @@ Page({
         const pendingTaskCount = this.calcPendingTaskCountFromServer(tasks || []);
 
         const normalizedGifts = Array.isArray(gifts) ? this.normalizeGifts(gifts) : [];
+        const availableGiftCount = this.calcAvailableGiftCount(normalizedGifts);
         const giftTabs = this.buildGiftTabs(normalizedGifts);
         const visibleGifts = this.filterGiftsByTab(normalizedGifts, this.data.giftTab);
+
+        const inviteCode = inviteData && inviteData.inviteCode ? inviteData.inviteCode : (wx.getStorageSync('myInviteCode') || '');
 
         this.setData({
           userInfo: {
@@ -387,14 +405,20 @@ Page({
           },
           stats: stats || EMPTY_STATS,
           phone: (profile && profile.phone) || phone || '',
+          inviteCode,
           isVip: (profile && profile.vipExpireAt && new Date(profile.vipExpireAt) > new Date()) || isVip,
           magicCount: (profile && profile.aiQuota) || 0,
           gifts: normalizedGifts,
+          availableGiftCount,
           giftTabs,
           visibleGifts,
           pendingTaskCount: pendingTaskCount,
           loading: false
         });
+
+        if (inviteCode) {
+          wx.setStorageSync('myInviteCode', inviteCode);
+        }
       })
       .catch(() => {
         this.setData({ loading: false });
@@ -431,11 +455,11 @@ Page({
   },
 
   onShowFeedback() {
-    this.setData({ subPage: 'feedback', feedbackText: '' }, () => this.updateTabBarVisibility());
+    wx.navigateTo({ url: '/pages/help-center/help-center' });
   },
 
   onShowPrivacy() {
-    this.setData({ subPage: 'privacy' }, () => this.updateTabBarVisibility());
+    wx.navigateTo({ url: '/pages/privacy-policy/privacy-policy' });
   },
 
   onOpenInvitePage() {
@@ -475,6 +499,7 @@ Page({
       const tabStatus = expired ? 'expired' : used ? 'used' : 'available';
       return {
         ...gift,
+        subtitle: this.getGiftSourceLabel(gift),
         expireText: this.formatGiftExpire(gift.expireAt),
         isPackageGift: gift.giftCode === 'GIFT_PACKAGE',
         expiringSoon,
@@ -517,6 +542,19 @@ Page({
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   },
 
+  getGiftSourceLabel(gift) {
+    const source = String(gift?.source || '').toUpperCase();
+    if (source.startsWith('INVITE_REGISTER_GIFT:')) return '来自邀请好友注册奖励';
+    if (source.startsWith('INVITE_RECHARGE_GIFT:')) return '来自邀请好友充值奖励';
+    if (source.startsWith('REGISTER_GIFT:')) return '来自注册礼包';
+    if (source.startsWith('FIRST_RECHARGE_GIFT:')) return '来自首冲礼包';
+    if (source.startsWith('GIFT_PACKAGE:')) return '来自礼包发放';
+    if (source === 'GIFT_PACKAGE') return '来自礼包兑换';
+    if (source === 'TASK') return '来自任务奖励';
+    if (source === 'PURCHASE') return '来自购买赠送';
+    return gift?.giftCategory === 'PACKAGE' ? '来自礼包奖励' : (gift?.giftCategory || '系统发放');
+  },
+
   onUseGift(e) {
     const gift = e.currentTarget.dataset.gift;
     if (!gift) return;
@@ -542,7 +580,12 @@ Page({
   removeGift(giftId) {
     const gifts = this.data.gifts.filter(g => g.id !== giftId);
     wx.setStorageSync('gifts', gifts);
-    this.setData({ gifts });
+    this.setData({
+      gifts,
+      availableGiftCount: this.calcAvailableGiftCount(gifts),
+      giftTabs: this.buildGiftTabs(gifts),
+      visibleGifts: this.filterGiftsByTab(gifts, this.data.giftTab)
+    });
   },
 
   // ─── 任务中心操作 ───
@@ -749,7 +792,8 @@ Page({
 
   onWatermarkChange(e) {
     const enabled = !!e.detail.value;
-    if (!this.data.isVip && !enabled) {
+    if (!this.data.isVip) {
+      this.setData({ watermarkEnabled: true });
       this.onCloseAllPanels();
       this.navigateToVipTab('vip');
       return;
@@ -875,8 +919,7 @@ Page({
   },
 
   onNotifications() {
-    this.markNotificationsRead();
-    this.setData({ subPage: 'notifications' }, () => this.updateTabBarVisibility());
+    wx.navigateTo({ url: '/pages/notifications/notifications' });
   },
 
   onVip() {

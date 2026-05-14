@@ -1,13 +1,15 @@
-// 拼豆画板 - Canvas 2D 版本
+﻿// 拼豆画板 - Canvas 2D 版本
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { drawBoard, drawPixel } = require('../../utils/canvas2d/renderers/boardRenderer');
 const { getScheduler } = require('../../utils/canvas2d/renderScheduler');
+const { resize2dCanvas } = require('../../utils/canvas2d/core');
 const HistoryManager = require('../../utils/canvas2d/HistoryManager');
 const PixelStore = require('./module/pixelStore');
 const CanvasRenderer = require('./module/canvasRenderer');
 const ColorBarManager = require('./module/colorBarManager');
 const Magnifier = require('./module/magnifier');
+const ToolEngine = require('./module/toolEngine');
 
 // 默认颜色
 const DEFAULT_COLORS = [
@@ -19,20 +21,28 @@ const DEFAULT_COLORS = [
 const MAX_GRID_SIZE = 200;
 const MIN_GRID_SIZE = 16;
 const BASE_PRESET_SIZES = [24, 36, 50, 52, 64, 78, 104, 200];
+const PIXEL_EDITOR_ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3, 4, 6];
 const LOCAL_RECOVERY_KEY = 'draw_local_recovery_v1';
+const LEFT_TOOLBAR_SAFE_RPX = 96;
+const BOTTOM_COLORBAR_VISUAL_SAFE_RPX = 220;
+const PINCH_SCALE_DEADZONE = 0.018;
+const PINCH_PAN_DEADZONE_PX = 2;
+const PINCH_SMOOTHING = 0.28;
 
 Page({
   data: {
     gridSize: 52,
     canvasWidth: 320,
     canvasHeight: 320,
+    coordinateCellSize: 0,
+    coordinateLabelFontSize: 8,
+    boardInset: 0,
+    boardCanvasWidth: 320,
+    boardCanvasHeight: 320,
     gridCellSize: 320 / 52,
     majorGridSizePx: 320 / 52 * 5,
     gridLineWidth: 1,
     majorLineWidth: 2,
-    gridLineWidthPx: 0.7,
-    majorLineWidthPx: 1.2,
-    gridLines: [],
     tool: 'pen',
     brushSize: 1,
     showGrid: true,
@@ -74,6 +84,7 @@ Page({
     colorPalette: [],
     statusBarHeight: 20,
     showSettings: false,
+    settingsClosing: false,
     colorbarExpanded: false,
     colorbarHeight: 340,
     usedColors: [],
@@ -87,17 +98,18 @@ Page({
     canvasOffsetX: 0,
     canvasOffsetY: 0,
     canvasScale: 1,
+    currentZoomLabel: '100%',
     overlayScale: 1,
     backgroundOffsetX: 0,
     backgroundOffsetY: 0,
     backgroundScale: 1,
     canvasAreaWidth: 0, // 完美版：canvas-area 宽度
     canvasAreaHeight: 0, // 完美版：canvas-area 高度
+    canvasAreaLeft: 0,
+    canvasAreaTop: 0,
+    minCanvasScale: 0.5,
+    maxCanvasScale: 6,
     // 标准架构：去掉 stageOffsetX/Y/Scale，锁定模式通过同步变量实现
-    topAxisLabels: [],
-    bottomAxisLabels: [],
-    leftAxisLabels: [],
-    rightAxisLabels: [],
     showColorReplaceModal: false,
     replaceTargetColor: '',
     // 拖动色块替换
@@ -139,10 +151,16 @@ Page({
   _pendingChangedCells: new Set(),
   _colorUsageMap: new Map(),
   _nonWhiteCount: 0,
+  _lastHasPixelsValue: null,
+  _colorCodeMapCacheKey: '',
+  _colorCodeMapCache: null,
+  _colorRgbCacheKey: '',
+  _colorRgbCache: null,
   _renderScheduler: null, // 完美版：渲染调度器
   _canvasRenderer: null,
   _colorBarManager: null,
   _magnifierModule: null,
+  _toolEngine: null,
   _rpxToPx: 0.5,
   _pendingDrawPos: null, // 完美版：待绘制位置（防误触）
   _pendingDrawTime: 0, // 完美版：待绘制时间（防误触）
@@ -192,76 +210,327 @@ Page({
   },
 
   _getGridOverlayMetrics(viewScale) {
-    const scale = Math.max(Number(viewScale) || 1, 1);
-    const cellSize = Number(this.data.gridCellSize) || (this.data.canvasWidth / this.data.gridSize);
-    const visualCellSize = cellSize * scale;
-    const screenThin = Math.max(0.55, Math.min(1.1, visualCellSize * 0.018));
-    const screenThick = Math.max(0.9, Math.min(1.9, visualCellSize * 0.032));
+    const scale = Math.max(Number(viewScale) || 1, 0.1);
+    const screenThin = 1;
+    const screenThick = 1;
     return {
       gridLineWidth: Math.max(screenThin / scale, 0.02),
       majorLineWidth: Math.max(screenThick / scale, 0.04)
     };
   },
 
-  _buildGridLines(gridSize, canvasSize) {
-    const cellSize = canvasSize / gridSize;
-    const lines = [];
-    for (let i = 0; i <= gridSize; i++) {
-      const isMajor = i % 5 === 0;
-      lines.push({
-        index: i,
-        pos: i === gridSize ? canvasSize : i * cellSize,
-        screenPos: 0,
-        major: isMajor,
-        type: isMajor ? 'major' : 'minor'
-      });
-    }
-    return lines;
-  },
+  _getEventTouches(e) {
+    const sourceTouches = (e && Array.isArray(e.touches))
+      ? e.touches
+      : (e && e.detail && Array.isArray(e.detail.touches) ? e.detail.touches : []);
 
-  _updateGridOverlayPosition() {
-    const query = wx.createSelectorQuery().in(this);
-    query.select('.canvas-wrapper').boundingClientRect();
-    query.exec((res) => {
-      if (!res || !res[0]) return;
-      
-      const rect = res[0];
-      const scale = this.data.canvasScale;
-      
-      // canvas-wrapper 有 1rpx 边框 + box-shadow，实际偏移更大
-      const borderOffset = 6;
-      
-      const gridLines = this.data.gridLines.map(line => ({
-        ...line,
-        screenPos: line.pos * scale
-      }));
+    return sourceTouches.map((touch) => {
+      const clientX = Number.isFinite(touch && touch.clientX)
+        ? touch.clientX
+        : (Number.isFinite(touch && touch.pageX) ? touch.pageX : touch && touch.x);
+      const clientY = Number.isFinite(touch && touch.clientY)
+        ? touch.clientY
+        : (Number.isFinite(touch && touch.pageY) ? touch.pageY : touch && touch.y);
 
-      this.setData({
-        gridOverlayLeft: rect.left + borderOffset,
-        gridOverlayTop: rect.top + borderOffset,
-        gridOverlayWidth: rect.width - borderOffset * 2,
-        gridOverlayHeight: rect.height - borderOffset * 2,
-        gridLines: gridLines
-      });
+      return {
+        ...touch,
+        clientX: Number.isFinite(clientX) ? clientX : 0,
+        clientY: Number.isFinite(clientY) ? clientY : 0,
+        pageX: Number.isFinite(touch && touch.pageX) ? touch.pageX : (Number.isFinite(clientX) ? clientX : 0),
+        pageY: Number.isFinite(touch && touch.pageY) ? touch.pageY : (Number.isFinite(clientY) ? clientY : 0),
+        x: Number.isFinite(touch && touch.x) ? touch.x : (Number.isFinite(clientX) ? clientX : 0),
+        y: Number.isFinite(touch && touch.y) ? touch.y : (Number.isFinite(clientY) ? clientY : 0)
+      };
     });
+
   },
 
-  _updateGridLineWidths(scale) {
-    // 固定线宽，不再随缩放变化
+  _hasUsableTouchPoints(touches) {
+    return Array.isArray(touches) && touches.every((touch) =>
+      touch &&
+      Number.isFinite(touch.clientX) &&
+      Number.isFinite(touch.clientY)
+    );
+  },
+
+  _getEventTimestamp(e) {
+    if (e && Number.isFinite(e.timeStamp)) return e.timeStamp;
+    if (e && e.detail && Number.isFinite(e.detail.timeStamp)) return e.detail.timeStamp;
+    return Date.now();
+  },
+
+  _scheduleGestureFrame(callback) {
+    if (typeof requestAnimationFrame === 'function') {
+      return requestAnimationFrame(callback);
+    }
+    return setTimeout(callback, 16);
+  },
+
+  _cancelGestureFrame(id) {
+    if (!id) return;
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(id);
+      return;
+    }
+    clearTimeout(id);
+  },
+
+  _startPendingDrawStroke(nextPos = null) {
+    const startPos = this._pendingDrawPos;
+    if (!startPos || this._isDrawing || this._isPinching) return false;
+
+    this._isDrawing = true;
+    this._lastPos = startPos;
+    this._beginStrokeUndo();
+    this._dirtyRect = { x1: startPos.col, y1: startPos.row, x2: startPos.col, y2: startPos.row };
+
+    if (nextPos && (nextPos.row !== startPos.row || nextPos.col !== startPos.col)) {
+      this._paintLine(startPos.row, startPos.col, nextPos.row, nextPos.col);
+      this._lastPos = nextPos;
+    } else {
+      this._paintPixel(startPos.row, startPos.col);
+    }
+
+    this._pendingDrawPos = null;
+    this._pendingDrawTime = 0;
+    return true;
+  },
+
+  _endRenderGesture() {
+    if (this._renderScheduler && typeof this._renderScheduler.endGesture === 'function') {
+      this._renderScheduler.endGesture();
+    }
+  },
+
+  _maybeStartPinchFromTouches(touches, now) {
+    if (touches.length < 2 || this._isPinching || !this._hasUsableTouchPoints(touches)) {
+      return false;
+    }
+    return this._beginPinchGesture(touches, now);
+  },
+
+  _shouldIgnoreContainerTouchEvent(e) {
+    const detailTouches = e && e.detail && Array.isArray(e.detail.touches) ? e.detail.touches : null;
+    return !detailTouches && this._lastCanvasTouchEventAt && (Date.now() - this._lastCanvasTouchEventAt) < 80;
   },
 
   _setCanvasTransform(updates) {
     const nextCanvasScale = updates.canvasScale == null ? this.data.canvasScale : updates.canvasScale;
-    this.setData({
-      ...updates,
-      overlayScale: this._isPinching ? this.data.overlayScale : nextCanvasScale,
-      isPinching: this._isPinching || false,
-      ...this._getGridOverlayMetrics(nextCanvasScale)
-    }, () => {
+    const nextUpdates = this._isPinching
+      ? {
+        ...updates,
+        isPinching: true
+      }
+      : {
+        ...updates,
+        currentZoomLabel: this._getZoomLabel(nextCanvasScale),
+        overlayScale: nextCanvasScale,
+        isPinching: false,
+        ...this._getGridOverlayMetrics(nextCanvasScale)
+      };
+
+    this.setData(nextUpdates, () => {
       if (this._canvasRenderer && !this._isPinching) {
         this._canvasRenderer.setLowQualityMode(false);
       }
     });
+  },
+
+  _beginPinchGesture(touches, now) {
+    if (!Array.isArray(touches) || touches.length < 2) return false;
+
+    if (this._isDrawing && !this._isPinching) {
+      this._isDrawing = false;
+      this._lastPos = null;
+      if (this._history && this._history.getState().canUndo && (now - this._lastTouchTime) < 200) {
+        this.onUndo();
+      }
+    }
+
+    this._pendingDrawPos = null;
+    this._isPinching = true;
+    this._isDrawing = false;
+    this._isDragging = false;
+    this._viewportHistoryBefore = this._viewportHistoryBefore || this._createViewportMetaSnapshot();
+
+    if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(true);
+    this.setData({ isPinching: true, overlayScale: this.data.canvasScale });
+
+    if (this.data.showMagnifier) {
+      this.setData({ showMagnifier: false });
+    }
+    this._cachedCompositeCanvas = null;
+    this._compositeRect = null;
+
+    if (!this._toolBeforePinch) {
+      this._toolBeforePinch = this.data.tool;
+    }
+
+    if (this.data.tool !== 'drag') {
+      this.setData({ tool: 'drag' });
+    }
+
+    const touch1 = touches[0];
+    const touch2 = touches[1];
+    this._touchStartDistance = this._getDistance(touch1, touch2);
+    this._touchStartScale = this.data.canvasScale;
+    this._touchStartBackgroundScale = this.data.backgroundScale;
+    this._lockScaleRatio = (this.data.canvasScale > 0)
+      ? (this.data.backgroundScale / this.data.canvasScale)
+      : 1;
+
+    this._pinchCenterX = (touch1.clientX + touch2.clientX) / 2;
+    this._pinchCenterY = (touch1.clientY + touch2.clientY) / 2;
+    this._pinchStartCenterX = this._pinchCenterX;
+    this._pinchStartCenterY = this._pinchCenterY;
+    this._pinchConfirmed = false;
+    this._smoothedPinchScaleChange = 1;
+    this._smoothedPinchCenterX = this._pinchCenterX;
+    this._smoothedPinchCenterY = this._pinchCenterY;
+
+    this._touchStartCanvasOffsetX = this.data.canvasOffsetX;
+    this._touchStartCanvasOffsetY = this.data.canvasOffsetY;
+    this._touchStartBackgroundOffsetX = this.data.backgroundOffsetX;
+    this._touchStartBackgroundOffsetY = this.data.backgroundOffsetY;
+    return true;
+  },
+
+  onWxsPinchStart() {
+    const now = Date.now();
+    this._lastCanvasTouchEventAt = now;
+
+    if (this._isDrawing && !this._isPinching) {
+      this._isDrawing = false;
+      this._lastPos = null;
+      if (this._history && this._history.getState().canUndo && (now - this._lastTouchTime) < 200) {
+        this.onUndo();
+      }
+    }
+
+    this._pendingDrawPos = null;
+    this._pendingPinch = null;
+    if (this._pinchRafId) {
+      this._cancelGestureFrame(this._pinchRafId);
+      this._pinchRafId = null;
+    }
+
+    this._isPinching = true;
+    this._isDrawing = false;
+    this._isDragging = false;
+    this._viewportHistoryBefore = this._viewportHistoryBefore || this._createViewportMetaSnapshot();
+
+    if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(true);
+    if (this.data.showMagnifier) {
+      this.setData({ showMagnifier: false });
+    }
+
+    this._cachedCompositeCanvas = null;
+    this._compositeRect = null;
+
+    if (!this._toolBeforePinch) {
+      this._toolBeforePinch = this.data.tool;
+    }
+
+    const updates = {
+      isPinching: true,
+      overlayScale: this.data.canvasScale
+    };
+    if (this.data.tool !== 'drag') {
+      updates.tool = 'drag';
+    }
+    this.setData(updates);
+  },
+
+  onWxsPinchEnd(state = {}) {
+    const toFinite = (value, fallback) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    };
+
+    this._lastCanvasTouchEventAt = Date.now();
+    this._isPinching = false;
+    this._pendingPinch = null;
+    if (this._pinchRafId) {
+      this._cancelGestureFrame(this._pinchRafId);
+      this._pinchRafId = null;
+    }
+    this._endRenderGesture();
+
+    const nextScale = toFinite(state.canvasScale, this.data.canvasScale);
+    const updates = {
+      canvasOffsetX: toFinite(state.canvasOffsetX, this.data.canvasOffsetX),
+      canvasOffsetY: toFinite(state.canvasOffsetY, this.data.canvasOffsetY),
+      canvasScale: nextScale,
+      overlayScale: nextScale,
+      currentZoomLabel: this._getZoomLabel(nextScale),
+      isPinching: false,
+      ...this._getGridOverlayMetrics(nextScale)
+    };
+
+    if (this.data.backgroundImage) {
+      updates.backgroundOffsetX = toFinite(state.backgroundOffsetX, this.data.backgroundOffsetX);
+      updates.backgroundOffsetY = toFinite(state.backgroundOffsetY, this.data.backgroundOffsetY);
+      updates.backgroundScale = toFinite(state.backgroundScale, this.data.backgroundScale);
+    }
+
+    const remainingTouches = Math.max(0, Math.floor(toFinite(state.remainingTouches, 0)));
+
+    this.setData(updates, () => {
+      if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(false);
+      this._redrawCanvasAtCurrentScale();
+      this._updateAxisLabels();
+      this._updateCanvasAreaRect();
+      this._pushViewportHistory(this._viewportHistoryBefore, 'viewport');
+      this._viewportHistoryBefore = null;
+      this._scheduleLocalRecoveryDraft();
+    });
+
+    if (remainingTouches === 0 && this._toolBeforePinch) {
+      const restoreTool = this._toolBeforePinch;
+      this._toolBeforePinch = null;
+      this.setData({ tool: restoreTool });
+    }
+  },
+
+  _getTargetRenderDpr(scale, mode) {
+    const baseWidth = Math.max(1, Number(this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
+    const baseHeight = Math.max(1, Number(this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
+    const safeScale = Math.max(1, Number(scale) || 1);
+    const renderMode = mode || (safeScale > 1 ? 'high' : 'low');
+
+    if (this._renderScheduler && typeof this._renderScheduler.getAdaptiveDpr === 'function') {
+      return this._renderScheduler.getAdaptiveDpr(baseWidth, baseHeight, safeScale, this._dpr || 1, renderMode);
+    }
+
+    return Math.max(1, this._dpr || 1);
+  },
+
+  _syncCanvasResolution(force = false, options = {}) {
+    if (!this._canvas || !this._ctx) return false;
+
+    const width = Math.max(1, Number(this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
+    const height = Math.max(1, Number(this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
+    const scale = Math.max(1, Number(options.scale == null ? this.data.canvasScale : options.scale) || 1);
+    const mode = options.mode || 'high';
+    const targetDpr = this._getTargetRenderDpr(scale, mode);
+    const resolutionKey = [width, height, targetDpr.toFixed(3)].join(':');
+
+    if (!force && this._renderResolutionKey === resolutionKey) {
+      this._renderDpr = targetDpr;
+      return false;
+    }
+
+    resize2dCanvas({
+      canvas: this._canvas,
+      ctx: this._ctx,
+      width,
+      height,
+      dpr: targetDpr
+    });
+
+    this._renderDpr = targetDpr;
+    this._renderResolutionKey = resolutionKey;
+    return true;
   },
 
   _clampGridSize(size) {
@@ -284,24 +553,27 @@ Page({
           // 完美版：同步更新到 data，供组件使用
           this.setData({
             canvasAreaWidth: res[0].width,
-            canvasAreaHeight: res[0].height
+            canvasAreaHeight: res[0].height,
+            canvasAreaLeft: res[0].left || 0,
+            canvasAreaTop: res[0].top || 0,
+            minCanvasScale: this._minScale || 0.5,
+            maxCanvasScale: this._getMaxScale()
           });
           
-          console.log('[坐标系] canvas-area rect:', this._canvasAreaRect);
         }
       });
   },
 
-  _snapshotState() {
+  _createRecoveryStateObject() {
     this._ensurePixelStoreFromGrid();
     const pixelSnapshot = this._pixelStore ? this._pixelStore.createSnapshot() : null;
 
-    return JSON.stringify({
-      gridData: this._gridData,
+    return {
+      gridData: null,
       pixelSnapshot: pixelSnapshot ? {
         gridSize: pixelSnapshot.gridSize,
         palette: pixelSnapshot.palette,
-        indices: Array.from(pixelSnapshot.indices || [])
+        indicesPacked: this._packPixelIndices(pixelSnapshot.indices)
       } : null,
       gridSize: this.data.gridSize,
       canvasOffsetX: this.data.canvasOffsetX,
@@ -314,28 +586,65 @@ Page({
       locked: !!this.data.locked,
       showBackground: !!this.data.showBackground,
       backgroundImage: this.data.backgroundImage || ''
-    });
+    };
   },
 
-  _restoreState(snapshotText) {
-    if (!snapshotText) return;
-    let snapshot = null;
-    try {
-      snapshot = JSON.parse(snapshotText);
-    } catch (e) {
-      return;
+  _snapshotState() {
+    const state = this._createRecoveryStateObject();
+    return JSON.stringify(state);
+  },
+
+  _packPixelIndices(indices) {
+    if (!indices || !indices.length) return '';
+    const chunkSize = 0x8000;
+    let packed = '';
+    for (let i = 0; i < indices.length; i += chunkSize) {
+      const chunk = indices.subarray ? indices.subarray(i, i + chunkSize) : indices.slice(i, i + chunkSize);
+      packed += String.fromCharCode.apply(null, chunk);
+    }
+    return packed;
+  },
+
+  _unpackPixelIndices(packed) {
+    if (typeof packed !== 'string' || !packed.length) return new Uint16Array(0);
+    const indices = new Uint16Array(packed.length);
+    for (let i = 0; i < packed.length; i++) {
+      indices[i] = packed.charCodeAt(i);
+    }
+    return indices;
+  },
+
+  _restoreState(snapshotInput) {
+    if (!snapshotInput) return;
+    let snapshot = snapshotInput;
+    if (typeof snapshotInput === 'string') {
+      try {
+        snapshot = JSON.parse(snapshotInput);
+      } catch (e) {
+        return;
+      }
     }
     if (!snapshot || (!Array.isArray(snapshot.gridData) && !snapshot.pixelSnapshot)) return;
 
     if (snapshot.pixelSnapshot && snapshot.pixelSnapshot.gridSize) {
+      const rawIndices = snapshot.pixelSnapshot.indices;
+      const indexArray = rawIndices && typeof rawIndices === 'object'
+        ? Object.keys(rawIndices)
+          .filter((key) => /^\d+$/.test(key))
+          .sort((a, b) => Number(a) - Number(b))
+          .map((key) => rawIndices[key])
+        : [];
       const typedSnapshot = {
         gridSize: snapshot.pixelSnapshot.gridSize,
         palette: Array.isArray(snapshot.pixelSnapshot.palette) ? snapshot.pixelSnapshot.palette : [''],
-        indices: new Uint16Array(Array.isArray(snapshot.pixelSnapshot.indices) ? snapshot.pixelSnapshot.indices : [])
+        indices: snapshot.pixelSnapshot.indicesPacked
+          ? this._unpackPixelIndices(snapshot.pixelSnapshot.indicesPacked)
+          : rawIndices instanceof Uint16Array
+          ? rawIndices
+          : new Uint16Array(Array.isArray(rawIndices) ? rawIndices : indexArray)
       };
       this._ensurePixelStoreFromGrid();
       this._pixelStore.restoreSnapshot(typedSnapshot);
-      this._syncGridFromPixelStore();
     } else {
       this._gridData = snapshot.gridData;
       this._pixelStore = PixelStore.fromGridData(this._gridData);
@@ -346,14 +655,13 @@ Page({
     const needResizeCanvas = snapshot.gridSize != null && snapshot.gridSize !== this.data.gridSize;
     
     if (needResizeCanvas) {
-      const canvasSize = this._getAdaptiveCanvasSize();
+      const canvasSize = this._getAdaptiveCanvasSize(snapshot.gridSize);
       this.setData({
         gridSize: snapshot.gridSize,
         canvasWidth: canvasSize,
         canvasHeight: canvasSize,
         gridCellSize: canvasSize / snapshot.gridSize,
         majorGridSizePx: canvasSize / snapshot.gridSize * 5,
-        gridLines: this._buildGridLines(snapshot.gridSize, canvasSize),
         canvasOffsetX: snapshot.canvasOffsetX == null ? this.data.canvasOffsetX : snapshot.canvasOffsetX,
         canvasOffsetY: snapshot.canvasOffsetY == null ? this.data.canvasOffsetY : snapshot.canvasOffsetY,
         canvasScale: snapshot.canvasScale == null ? this.data.canvasScale : snapshot.canvasScale,
@@ -397,12 +705,28 @@ Page({
 
   _ensurePixelStoreFromGrid() {
     if (this._pixelStore && this._pixelStore.gridSize === this.data.gridSize) return;
-    this._pixelStore = PixelStore.fromGridData(this._gridData || []);
+    const fallbackGrid = Array.isArray(this._gridData) ? this._gridData : [];
+    this._pixelStore = fallbackGrid.length
+      ? PixelStore.fromGridData(fallbackGrid)
+      : new PixelStore(this.data.gridSize || 0);
   },
 
-  _syncGridFromPixelStore() {
-    if (!this._pixelStore) return;
-    this._gridData = this._pixelStore.toGridData();
+  _getPixelColor(row, col) {
+    this._ensurePixelStoreFromGrid();
+    const color = this._pixelStore ? this._pixelStore.getPixelHex(row, col) : '';
+    return color || null;
+  },
+
+  _getPixelColorByOffset(offset) {
+    this._ensurePixelStoreFromGrid();
+    const color = this._pixelStore ? this._pixelStore.getPixelHexByOffset(offset) : '';
+    return color || null;
+  },
+
+  _setPixelColor(row, col, color) {
+    this._ensurePixelStoreFromGrid();
+    if (!this._pixelStore) return false;
+    return this._pixelStore.setPixelHex(row, col, color);
   },
 
   _scheduleUsedColorsUpdate() {
@@ -429,37 +753,62 @@ Page({
     this._colorUsageMap.forEach((count) => {
       this._nonWhiteCount += count;
     });
+    if (this._canvasRenderer) this._canvasRenderer.invalidatePixelLayer();
   },
 
   _getOverlayColorCodeMap() {
+    const colorsWithCode = this.data.colorsWithCode || [];
+    const cacheKey = colorsWithCode
+      .map((item) => `${item && item.hex ? String(item.hex).toUpperCase() : ''}:${item && item.code ? item.code : ''}`)
+      .join('|');
+    if (this._colorCodeMapCache && this._colorCodeMapCacheKey === cacheKey) {
+      return this._colorCodeMapCache;
+    }
+
     const colorCodeMap = {};
-    (this.data.colorsWithCode || []).forEach((item) => {
+    colorsWithCode.forEach((item) => {
       if (item && item.hex && item.code) {
         colorCodeMap[item.hex.toUpperCase()] = item.code;
       }
     });
+    this._colorCodeMapCacheKey = cacheKey;
+    this._colorCodeMapCache = colorCodeMap;
     return colorCodeMap;
   },
 
-  _getRenderViewport() {
-    if (!this._canvasAreaRect) return null;
-    return {
-      canvasWidth: this.data.canvasWidth,
-      canvasHeight: this.data.canvasHeight,
-      canvasOffsetX: this.data.canvasOffsetX,
-      canvasOffsetY: this.data.canvasOffsetY,
-      canvasScale: this.data.canvasScale,
-      areaWidth: this._canvasAreaRect.width,
-      areaHeight: this._canvasAreaRect.height
-    };
+  _getColorItemByHex(hex) {
+    if (!hex) return null;
+    const code = this._getOverlayColorCodeMap()[String(hex).toUpperCase()];
+    return code ? { hex: String(hex).toUpperCase(), code } : null;
+  },
+
+  _getColorRgbList() {
+    const colors = this.data.colors || [];
+    const cacheKey = colors.map((color) => String(color || '').toUpperCase()).join('|');
+    if (this._colorRgbCache && this._colorRgbCacheKey === cacheKey) {
+      return this._colorRgbCache;
+    }
+
+    this._colorRgbCacheKey = cacheKey;
+    this._colorRgbCache = colors
+      .map((color) => {
+        const rgb = this._hexToRGB(color);
+        return rgb ? { color, rgb } : null;
+      })
+      .filter(Boolean);
+    return this._colorRgbCache;
   },
 
   _getRenderState() {
     return {
       canvasWidth: this.data.canvasWidth,
       canvasHeight: this.data.canvasHeight,
+      boardCanvasWidth: this.data.boardCanvasWidth || this.data.canvasWidth,
+      boardCanvasHeight: this.data.boardCanvasHeight || this.data.canvasHeight,
+      boardInset: this.data.boardInset || 0,
       gridSize: this.data.gridSize,
-      showGrid: this.data.showGrid,
+      showGrid: true,
+      renderCodes: true,
       canvasScale: this.data.canvasScale,
       backgroundImage: this.data.backgroundImage,
       dpr: this._dpr,
@@ -494,6 +843,7 @@ Page({
   onLoad(options) {
     const { storageKey, source } = options;
     const info = wx.getSystemInfoSync();
+    this._rpxToPx = (Number(info.windowWidth) || 375) / 750;
     const statusBarHeight = info.statusBarHeight || 20;
     const menuButton = wx.getMenuButtonBoundingClientRect();
     const capsuleHeight = menuButton.height || 32;
@@ -503,16 +853,22 @@ Page({
     // 完美版：初始化渲染调度器
     this._renderScheduler = getScheduler();
     this._canvasRenderer = new CanvasRenderer({
-      renderScheduler: this._renderScheduler,
       getColorCodeMap: () => this._getOverlayColorCodeMap(),
-      getViewport: () => this._getRenderViewport(),
-      getState: () => this._getRenderState()
+      getState: () => this._getRenderState(),
+      getPixelColor: (row, col) => this._getPixelColor(row, col),
+      getPixelColorByOffset: (offset) => this._getPixelColorByOffset(offset)
     });
     this._colorBarManager = new ColorBarManager({
       getState: () => this.data
     });
     this._magnifierModule = new Magnifier({
       size: 100
+    });
+    this._toolEngine = new ToolEngine({
+      getGridSize: () => this.data.gridSize,
+      getPixel: (row, col) => this._getPixelColor(row, col),
+      setPixel: (row, col, color) => this._setPixelColor(row, col, color),
+      paintPixel: (row, col, paintOptions) => this._paintPixel(row, col, paintOptions)
     });
     
     this.setData({
@@ -608,9 +964,6 @@ Page({
     return request.get(`/bead/kits/${kitId}/colors`).then((colorList) => {
       if (!colorList || !colorList.length) throw new Error('empty colors');
       
-      // 转换为 hex 格式
-      const colors = colorList.map(c => c.hex);
-      
       // 保存完整的颜色数据（包含色号）
       const colorsWithCode = colorList.map(c => ({
         hex: c.hex,
@@ -637,13 +990,17 @@ Page({
         return a.sortKey.localeCompare(b.sortKey);
       });
       
-      // 初始化时不设置当前颜色，等用户点击后再设置
+      const firstColor = colorsWithCode[0] || null;
       this.setData({ 
         colors: colorsWithCode.map(c => c.hex),
-        colorsWithCode
+        colorsWithCode,
+        currentColor: firstColor ? firstColor.hex : this.data.currentColor,
+        currentCode: firstColor ? firstColor.code : this.data.currentCode
       });
       
       this._updateColorRows();
+      if (this._canvasRenderer) this._canvasRenderer.invalidateCodeLayer();
+      this._drawFullGrid();
     }).catch((err) => {
       console.error('加载套餐色号失败:', err);
       throw err;
@@ -674,35 +1031,20 @@ Page({
       .exec((res) => {
         if (res && res[0]) {
           this._canvasAreaRect = res[0];
-          console.log('[onReady] 容器尺寸已缓存:', {
-            width: res[0].width,
-            height: res[0].height,
-            当前canvasWidth: this.data.canvasWidth,
-            当前canvasHeight: this.data.canvasHeight,
-            当前canvasOffsetX: this.data.canvasOffsetX,
-            当前canvasOffsetY: this.data.canvasOffsetY
-          });
-          
           // 如果画布已经初始化，立即居中
           if (this.data.canvasWidth > 0) {
-            const centerX = (res[0].width - this.data.canvasWidth) / 2;
-            const centerY = (res[0].height - this.data.canvasHeight) / 2;
-            
-            console.log('[onReady] 画布已初始化，立即居中:', {
-              canvasSize: [this.data.canvasWidth, this.data.canvasHeight],
-              计算出的center: [centerX, centerY]
-            });
+            const centered = this._getCenteredCanvasOffset(
+              this.data.canvasWidth,
+              this.data.canvasHeight,
+              this.data.canvasScale || 1,
+              res[0]
+            );
             
             this.setData({
-              canvasOffsetX: centerX,
-              canvasOffsetY: centerY,
-              backgroundOffsetX: centerX,
-              backgroundOffsetY: centerY
-            }, () => {
-              console.log('[onReady] 居中完成，最终offset:', {
-                canvasOffsetX: this.data.canvasOffsetX,
-                canvasOffsetY: this.data.canvasOffsetY
-              });
+              canvasOffsetX: centered.x,
+              canvasOffsetY: centered.y,
+              backgroundOffsetX: centered.x,
+              backgroundOffsetY: centered.y
             });
           } else {
             console.warn('[onReady] 画布尚未初始化，canvasWidth =', this.data.canvasWidth);
@@ -725,13 +1067,21 @@ Page({
       clearTimeout(this._usedColorsTimer);
       this._usedColorsTimer = null;
     }
+    if (this._settingsCloseTimer) {
+      clearTimeout(this._settingsCloseTimer);
+      this._settingsCloseTimer = null;
+    }
+    if (this._renderScheduler && typeof this._renderScheduler.destroy === 'function') {
+      this._renderScheduler.destroy();
+    }
   },
 
   _buildLocalRecoverySnapshot() {
-    if (!this._gridData || !Array.isArray(this._gridData) || this._gridData.length === 0) return null;
+    this._ensurePixelStoreFromGrid();
+    if (!this._pixelStore || !this._pixelStore.gridSize) return null;
     return {
       ts: Date.now(),
-      state: this._snapshotState()
+      state: this._createRecoveryStateObject()
     };
   },
 
@@ -836,11 +1186,10 @@ Page({
     
     this.setData({ canvasReady: true, canvas2dComponent: canvas2dComponent });
     this._updateCanvasRect();
+    this._syncCanvasResolution(true, { mode: 'high' });
     
-    // 立即绘制
-    if (this._gridData) {
-      this._drawFullGrid();
-    }
+    this._ensurePixelStoreFromGrid();
+    if (this._pixelStore) this._drawFullGrid();
     
     this._updateUsedColors();
   },
@@ -851,14 +1200,14 @@ Page({
   },
 
   _updateCanvasRect() {
-    // 使用 canvas-touch-layer 的 rect，因为触摸事件在这个层上
+    // 使用实际画布包裹层的 rect，统一命中与渲染坐标系
     const query = wx.createSelectorQuery();
-    query.select('.canvas-touch-layer').boundingClientRect();
+    query.select('.canvas-wrapper').boundingClientRect();
     query.exec((res) => {
       if (res && res[0]) {
         this._canvasRect = res[0];
       } else {
-        console.error('无法获取 touch layer rect');
+        console.error('无法获取 canvas wrapper rect');
       }
     });
   },
@@ -877,7 +1226,7 @@ Page({
         return;
       }
 
-      const canvasSize = this._getAdaptiveCanvasSize();
+      const canvasSize = this._getAdaptiveCanvasSize(gridSize);
       const cellSize = canvasSize / gridSize;
       const hexGridData = gridData.map(row => row.map(idx => {
         if (idx === -1) return null;
@@ -912,6 +1261,7 @@ Page({
       // 恢复背景图层状态
       const bgState = backgroundState ? (typeof backgroundState === 'string' ? JSON.parse(backgroundState) : backgroundState) : null;
       
+      const initialColor = colors[1] || colors[0] || '#FF6B35';
       this.setData({ 
         gridSize, 
         canvasWidth: canvasSize, 
@@ -920,11 +1270,11 @@ Page({
         majorGridSizePx: canvasSize / gridSize * 5,
         gridLineWidth: 1,
         majorLineWidth: 2,
-        gridLines: this._buildGridLines(gridSize, canvasSize),
         brand: brand || 'MARD', 
         colorPalette, 
         colors, 
-        currentColor: colors[1] || colors[0] || '#FF6B35',
+        currentColor: initialColor,
+        currentCode: this._getColorCode(initialColor),
         ...(bgState ? {
           backgroundImage: bgState.backgroundImage || '',
           backgroundImageWidth: bgState.backgroundImageWidth || 0,
@@ -953,13 +1303,15 @@ Page({
     }
   },
 
-  _getAdaptiveCanvasSize() {
+  _getAdaptiveCanvasSize(gridSize = this.data.gridSize) {
     const info = wx.getSystemInfoSync();
     // 完整可见优先：给顶部坐标轴和底部颜色栏留出更保守空间
     const safeByWidth = Math.max(160, info.windowWidth - 96);
     const safeByHeight = Math.max(160, info.windowHeight * 0.34);
     const preferred = Math.min(safeByWidth, safeByHeight);
-    return Math.floor(preferred);
+    const safeGridSize = Math.max(1, parseInt(gridSize, 10) || this.data.gridSize || 1);
+    const cellMultiplier = Math.max(1, Math.floor(preferred / safeGridSize));
+    return cellMultiplier * safeGridSize;
   },
 
   _initData() {
@@ -967,7 +1319,7 @@ Page({
   },
 
   _applyGridSize(newGridSize, keepContent = false) {
-    const canvasSize = this._getAdaptiveCanvasSize();
+    const canvasSize = this._getAdaptiveCanvasSize(newGridSize);
     this._cellSize = canvasSize / newGridSize;
 
     // 完美版：记录切换前的相对位置
@@ -977,12 +1329,13 @@ Page({
       const oldScale = this.data.canvasScale;
       const oldOffsetX = this.data.canvasOffsetX;
       const oldOffsetY = this.data.canvasOffsetY;
+      const workspace = this._getVisualWorkspaceMetrics(this._canvasAreaRect);
       
-      // 计算画布中心点在容器中的相对位置（0-1）
+      // 计算画布中心点在视觉工作区中的相对位置（0-1）
       const canvasCenterX = oldOffsetX + (oldCanvasSize * oldScale) / 2;
       const canvasCenterY = oldOffsetY + (oldCanvasSize * oldScale) / 2;
-      const relativeX = canvasCenterX / this._canvasAreaRect.width;
-      const relativeY = canvasCenterY / this._canvasAreaRect.height;
+      const relativeX = workspace ? (canvasCenterX - workspace.left) / workspace.width : canvasCenterX / this._canvasAreaRect.width;
+      const relativeY = workspace ? (canvasCenterY - workspace.top) / workspace.height : canvasCenterY / this._canvasAreaRect.height;
       
       relativePosition = {
         relativeX,
@@ -990,55 +1343,13 @@ Page({
         scale: oldScale
       };
       
-      console.log('[_applyGridSize] 记录相对位置:', {
-        oldSize: oldCanvasSize,
-        newSize: canvasSize,
-        oldScale,
-        relativeX: (relativeX * 100).toFixed(1) + '%',
-        relativeY: (relativeY * 100).toFixed(1) + '%'
-      });
     }
 
-    let newGridData = Array.from({ length: newGridSize }, () => Array(newGridSize).fill(null)); // 完美版：使用透明色
-
-    if (keepContent && this._gridData && Array.isArray(this._gridData)) {
-      // 使用实际的 gridData 长度，防止越界
-      const oldSize = Math.min(this.data.gridSize, this._gridData.length);
-      
-      if (newGridSize >= oldSize) {
-        // 尺寸变大：内容居中，四周扩展
-        const offset = Math.floor((newGridSize - oldSize) / 2);
-        for (let y = 0; y < oldSize; y++) {
-          // 添加安全检查：确保行存在且是数组
-          if (this._gridData[y] && Array.isArray(this._gridData[y])) {
-            for (let x = 0; x < oldSize; x++) {
-              // 确保列索引在范围内
-              if (x < this._gridData[y].length) {
-                newGridData[y + offset][x + offset] = this._gridData[y][x];
-              }
-            }
-          }
-        }
-      } else {
-        // 尺寸变小：从中心裁剪
-        const offset = Math.floor((oldSize - newGridSize) / 2);
-        for (let y = 0; y < newGridSize; y++) {
-          for (let x = 0; x < newGridSize; x++) {
-            const srcY = y + offset;
-            const srcX = x + offset;
-            // 添加完整的边界检查
-            if (srcY >= 0 && srcY < this._gridData.length && 
-                this._gridData[srcY] && Array.isArray(this._gridData[srcY]) &&
-                srcX >= 0 && srcX < this._gridData[srcY].length) {
-              newGridData[y][x] = this._gridData[srcY][srcX];
-            }
-          }
-        }
-      }
-    }
-
-    this._gridData = newGridData;
-    this._pixelStore = PixelStore.fromGridData(newGridData);
+    this._ensurePixelStoreFromGrid();
+    this._pixelStore = keepContent && this._pixelStore
+      ? this._pixelStore.resize(newGridSize, true)
+      : new PixelStore(newGridSize);
+    this._gridData = null;
     this._rebuildColorStatsFromGrid();
     
     // 问题4修复：尺寸变更时保存状态到撤销栈，但不清空撤销栈
@@ -1056,15 +1367,19 @@ Page({
     const newBackgroundScale = relativePosition ? relativePosition.scale : 1;
 
     // 标准做法：setData 完成后计算位置
+    const coordinateCellSize = canvasSize / newGridSize;
     this.setData({
       gridSize: newGridSize,
       canvasWidth: canvasSize,
       canvasHeight: canvasSize,
+      coordinateCellSize,
+      boardInset: coordinateCellSize,
+      boardCanvasWidth: canvasSize + coordinateCellSize * 2,
+      boardCanvasHeight: canvasSize + coordinateCellSize * 2,
       gridCellSize: canvasSize / newGridSize,
       majorGridSizePx: canvasSize / newGridSize * 5,
       gridLineWidth: 1,
       majorLineWidth: 2,
-      gridLines: this._buildGridLines(newGridSize, canvasSize),
       ...(this._history ? this._history.getState() : { canUndo: false, canRedo: false }),
       canvasScale: newScale,
       backgroundScale: newBackgroundScale
@@ -1075,26 +1390,21 @@ Page({
         
         if (relativePosition) {
           // 完美版：按相对位置重新定位
-          const newCanvasCenterX = relativePosition.relativeX * this._canvasAreaRect.width;
-          const newCanvasCenterY = relativePosition.relativeY * this._canvasAreaRect.height;
+          const workspace = this._getVisualWorkspaceMetrics(this._canvasAreaRect);
+          const newCanvasCenterX = workspace
+            ? workspace.left + relativePosition.relativeX * workspace.width
+            : relativePosition.relativeX * this._canvasAreaRect.width;
+          const newCanvasCenterY = workspace
+            ? workspace.top + relativePosition.relativeY * workspace.height
+            : relativePosition.relativeY * this._canvasAreaRect.height;
           newOffsetX = newCanvasCenterX - (canvasSize * newScale) / 2;
           newOffsetY = newCanvasCenterY - (canvasSize * newScale) / 2;
           
-          console.log('[_applyGridSize] 按相对位置重新定位:', {
-            relativeX: (relativePosition.relativeX * 100).toFixed(1) + '%',
-            relativeY: (relativePosition.relativeY * 100).toFixed(1) + '%',
-            newOffset: [newOffsetX.toFixed(1), newOffsetY.toFixed(1)]
-          });
         } else {
-          // 初始化：居中
-          newOffsetX = (this._canvasAreaRect.width - canvasSize) / 2;
-          newOffsetY = (this._canvasAreaRect.height - canvasSize) / 2;
+          const centered = this._getCenteredCanvasOffset(canvasSize, canvasSize, newScale, this._canvasAreaRect);
+          newOffsetX = centered.x;
+          newOffsetY = centered.y;
           
-          console.log('[_applyGridSize] 初始化居中:', {
-            canvasSize,
-            areaSize: [this._canvasAreaRect.width, this._canvasAreaRect.height],
-            center: [newOffsetX, newOffsetY]
-          });
         }
         
         this.setData({
@@ -1117,6 +1427,7 @@ Page({
       this._updateCanvasRect();
       this._updateCanvasAreaRect();
       this._drawFullGrid();
+      if (keepContent) this._commitState('resize');
     }, 150);
   },
 
@@ -1125,31 +1436,31 @@ Page({
       return;
     }
 
+    if (!this._isPinching) {
+      this._syncCanvasResolution(false, { mode: 'high' });
+    }
+
     if (this._canvasRenderer) {
-      this._canvasRenderer.renderFull(this._ctx, this._gridData);
+      this._canvasRenderer.renderFull(this._ctx);
       return;
     }
 
     const hasBackground = !!this.data.backgroundImage;
     const colorCodeMap = this._getOverlayColorCodeMap();
-
-    let visibleRange = null;
-    if (this._renderScheduler && this._canvasAreaRect) {
-      const viewport = this._getRenderViewport();
-      visibleRange = this._renderScheduler.getVisibleRange(viewport, this.data.gridSize);
-    }
+    const effectiveShowGrid = true;
 
     drawBoard(this._ctx, {
       width: this.data.canvasWidth,
       height: this.data.canvasHeight,
       gridSize: this.data.gridSize,
       gridData: this._gridData,
-      showGrid: this.data.showGrid,
+      showGrid: effectiveShowGrid,
       dpr: this._renderDpr || this._dpr,
       hasBackground,
       viewScale: this.data.canvasScale,
       colorCodeMap,
-      visibleRange
+      getCellColor: (row, col) => this._getPixelColor(row, col),
+      boardInset: this.data.boardInset || 0
     });
   },
 
@@ -1158,11 +1469,12 @@ Page({
 
     if (this._canvasRenderer) {
       this._canvasRenderer.markDirtyBatch(changedCells);
-      this._canvasRenderer.renderDirty(this._ctx, this._gridData);
+      this._canvasRenderer.renderDirty(this._ctx);
       return;
     }
 
     const colorCodeMap = this._getOverlayColorCodeMap();
+    const effectiveShowGrid = true;
 
     changedCells.forEach((key) => {
       const [rowStr, colStr] = key.split(',');
@@ -1174,12 +1486,14 @@ Page({
         gridSize: this.data.gridSize,
         row,
         col,
-        color: this._gridData[row][col],
-        showGrid: this.data.showGrid,
+        color: this._getPixelColor(row, col),
+        showGrid: effectiveShowGrid,
         dpr: this._renderDpr || this._dpr,
         hasBackground: !!this.data.backgroundImage,
         viewScale: this.data.canvasScale,
-        colorCodeMap
+        colorCodeMap,
+        getCellColor: (r, c) => this._getPixelColor(r, c),
+        boardInset: this.data.boardInset || 0
       });
     });
   },
@@ -1191,7 +1505,10 @@ Page({
   },
 
   _endStrokeUndo() {
-    if (!this._strokeUndoCells || this._strokeUndoCells.size === 0) return;
+    if (!this._strokeUndoCells || this._strokeUndoCells.size === 0) {
+      this._strokeUndoCells = null;
+      return;
+    }
     if (!this._history) this._history = new HistoryManager();
     this._history.endStroke(this._strokeUndoCells);
     this._strokeUndoCells = null;
@@ -1200,13 +1517,18 @@ Page({
   },
 
   _saveState() {
-    if (!this._gridData || !Array.isArray(this._gridData)) return;
+    this._ensurePixelStoreFromGrid();
+    if (!this._pixelStore || !this._pixelStore.gridSize) return;
     if (!this._history) this._history = new HistoryManager();
 
+    this._pendingFullState = this._createFullStateSnapshot();
+  },
+
+  _createFullStateSnapshot() {
     this._ensurePixelStoreFromGrid();
 
-    const gridCopy = this._gridData.map(row => [...row]);
     const pixelSnapshot = this._pixelStore ? this._pixelStore.createSnapshot() : null;
+    const gridCopy = null;
 
     const meta = {
       gridSize: this.data.gridSize,
@@ -1222,13 +1544,69 @@ Page({
       backgroundImage: this.data.backgroundImage || ''
     };
 
+    return { fullGridData: gridCopy, pixelSnapshot, meta };
+  },
+
+  _createViewportMetaSnapshot() {
+    return {
+      gridSize: this.data.gridSize,
+      canvasOffsetX: this.data.canvasOffsetX,
+      canvasOffsetY: this.data.canvasOffsetY,
+      canvasScale: this.data.canvasScale,
+      backgroundOffsetX: this.data.backgroundOffsetX,
+      backgroundOffsetY: this.data.backgroundOffsetY,
+      backgroundScale: this.data.backgroundScale,
+      backgroundMirror: !!this.data.backgroundMirror,
+      locked: !!this.data.locked,
+      showBackground: !!this.data.showBackground,
+      backgroundImage: this.data.backgroundImage || ''
+    };
+  },
+
+  _hasViewportMetaChanged(before, after) {
+    if (!before || !after) return false;
+    const keys = [
+      'canvasOffsetX', 'canvasOffsetY', 'canvasScale',
+      'backgroundOffsetX', 'backgroundOffsetY', 'backgroundScale'
+    ];
+
+    return keys.some((key) => Math.abs((Number(before[key]) || 0) - (Number(after[key]) || 0)) > 0.5);
+  },
+
+  _pushViewportHistory(previousMeta, type = 'viewport') {
+    if (!previousMeta) return;
+    const nextMeta = this._createViewportMetaSnapshot();
+    if (!this._hasViewportMetaChanged(previousMeta, nextMeta)) return;
+    if (!this._history) this._history = new HistoryManager();
+
+    this._history.push({
+      type,
+      meta: nextMeta,
+      _previousMeta: previousMeta
+    });
+    this.setData(this._history.getState());
+    this._scheduleLocalRecoveryDraft();
+  },
+
+  _commitState(type = 'full') {
+    if (!this._pendingFullState) return;
+    if (!this._history) this._history = new HistoryManager();
+
+    const previousState = this._pendingFullState;
+    const currentState = this._createFullStateSnapshot();
+    this._pendingFullState = null;
+
     this._history.pushFullState(
-      'full',
-      { fullGridData: gridCopy, pixelSnapshot, meta },
-      { fullGridData: gridCopy, pixelSnapshot, meta }
+      type,
+      currentState,
+      previousState
     );
     this.setData(this._history.getState());
     this._scheduleLocalRecoveryDraft();
+  },
+
+  _discardPendingState() {
+    this._pendingFullState = null;
   },
 
   onGestureEnd(state) {
@@ -1263,82 +1641,225 @@ Page({
     });
   },
 
+  _getCanvasAreaMetrics() {
+    if (this._canvasAreaRect && this._canvasAreaRect.width && this._canvasAreaRect.height) {
+      return this._canvasAreaRect;
+    }
+    const width = Number(this.data.canvasAreaWidth) || 0;
+    const height = Number(this.data.canvasAreaHeight) || 0;
+    if (!width || !height) return null;
+    return { left: 0, top: 0, width, height };
+  },
+
+  _getVisualWorkspaceMetrics(area = null) {
+    const base = area || this._getCanvasAreaMetrics();
+    if (!base) return null;
+
+    const leftInset = Math.min(base.width * 0.35, LEFT_TOOLBAR_SAFE_RPX * this._rpxToPx);
+    const colorbarSafeRpx = Math.min(Number(this.data.colorbarHeight) || 340, BOTTOM_COLORBAR_VISUAL_SAFE_RPX);
+    const bottomInset = Math.min(base.height * 0.45, colorbarSafeRpx * this._rpxToPx);
+    const width = Math.max(1, base.width - leftInset);
+    const height = Math.max(1, base.height - bottomInset);
+
+    return {
+      left: leftInset,
+      top: 0,
+      width,
+      height,
+      centerX: leftInset + width / 2,
+      centerY: height / 2
+    };
+  },
+
+  _getCenteredCanvasOffset(canvasWidth, canvasHeight, scale, area = null) {
+    const workspace = this._getVisualWorkspaceMetrics(area);
+    if (!workspace) {
+      const base = area || this._getCanvasAreaMetrics();
+      if (!base) return { x: 0, y: 0 };
+      return {
+        x: (base.width - canvasWidth * scale) / 2,
+        y: (base.height - canvasHeight * scale) / 2
+      };
+    }
+
+    return {
+      x: workspace.centerX - (canvasWidth * scale) / 2,
+      y: workspace.centerY - (canvasHeight * scale) / 2
+    };
+  },
+
+  _setWorkspaceScale(nextScale, options = {}) {
+    const area = this._getCanvasAreaMetrics();
+    if (!area) return;
+
+    const minScale = this._minScale || 0.5;
+    const maxScale = this._getMaxScale();
+    const targetScale = this._maybeSnapScaleToPixelGrid(
+      Math.max(minScale, Math.min(maxScale, Number(nextScale) || 1)),
+      { threshold: 0.08 }
+    );
+    const currentCanvasScale = Math.max(Number(this.data.canvasScale) || 1, 0.0001);
+    const scaleRatio = targetScale / currentCanvasScale;
+    const anchorX = options.anchorX == null ? (area.width / 2) : options.anchorX;
+    const anchorY = options.anchorY == null ? (area.height / 2) : options.anchorY;
+
+    let nextCanvasOffsetX;
+    let nextCanvasOffsetY;
+    if (options.centerCanvas) {
+      const centered = this._getCenteredCanvasOffset(this.data.canvasWidth, this.data.canvasHeight, targetScale, area);
+      nextCanvasOffsetX = centered.x;
+      nextCanvasOffsetY = centered.y;
+    } else {
+      nextCanvasOffsetX = anchorX - (anchorX - this.data.canvasOffsetX) * scaleRatio;
+      nextCanvasOffsetY = anchorY - (anchorY - this.data.canvasOffsetY) * scaleRatio;
+    }
+
+    const updates = {
+      canvasScale: targetScale,
+      currentZoomLabel: this._getZoomLabel(targetScale),
+      canvasOffsetX: nextCanvasOffsetX,
+      canvasOffsetY: nextCanvasOffsetY,
+      overlayScale: targetScale,
+      isPinching: false
+    };
+
+    if (this.data.backgroundImage) {
+      const currentBackgroundScale = Math.max(Number(this.data.backgroundScale) || 1, 0.0001);
+      const nextBackgroundScale = currentBackgroundScale * scaleRatio;
+      updates.backgroundScale = nextBackgroundScale;
+      updates.backgroundOffsetX = anchorX - (anchorX - this.data.backgroundOffsetX) * scaleRatio;
+      updates.backgroundOffsetY = anchorY - (anchorY - this.data.backgroundOffsetY) * scaleRatio;
+    }
+
+    this.setData(updates, () => {
+      this._redrawCanvasAtCurrentScale();
+      this._updateAxisLabels();
+      if (options.historyBefore) {
+        this._pushViewportHistory(options.historyBefore, options.historyType || 'viewport');
+      }
+      this._scheduleLocalRecoveryDraft();
+    });
+  },
+
+  _fitCanvasViewport(options = {}) {
+    const area = this._getCanvasAreaMetrics();
+    if (!area) return;
+    const workspace = this._getVisualWorkspaceMetrics(area) || area;
+
+    const horizontalPadding = 32;
+    const verticalPadding = 32;
+    const fitScale = Math.min(
+      (workspace.width - horizontalPadding * 2) / this.data.canvasWidth,
+      (workspace.height - verticalPadding * 2) / this.data.canvasHeight
+    );
+
+    this._setWorkspaceScale(fitScale, {
+      centerCanvas: true,
+      historyBefore: options.historyBefore,
+      historyType: options.historyType
+    });
+  },
+
+  _getNextZoomStep(direction) {
+    const current = Math.max(Number(this.data.canvasScale) || 1, this._minScale || 0.5);
+    const maxScale = this._getMaxScale();
+    const steps = PIXEL_EDITOR_ZOOM_STEPS.filter((step) => step >= (this._minScale || 0.5) && step <= maxScale);
+
+    if (!steps.length) return current;
+
+    if (direction > 0) {
+      for (let i = 0; i < steps.length; i++) {
+        if (steps[i] > current + 0.001) return steps[i];
+      }
+      return steps[steps.length - 1];
+    }
+
+    for (let i = steps.length - 1; i >= 0; i--) {
+      if (steps[i] < current - 0.001) return steps[i];
+    }
+    return steps[0];
+  },
+
+  _shouldRenderGridAtScale(scale) {
+    return !!this.data.showGrid;
+  },
+
+  _getZoomLabel(scale) {
+    const percent = Math.max(1, Math.round((Number(scale) || 1) * 100));
+    return `${percent}%`;
+  },
+
+  _maybeSnapScaleToPixelGrid(scale, options = {}) {
+    const cellSize = Number(this.data.gridCellSize) || 0;
+    if (!cellSize) return scale;
+
+    const minScale = this._minScale || 0.5;
+    const maxScale = this._getMaxScale();
+    const rawScale = Math.max(minScale, Math.min(maxScale, Number(scale) || 1));
+    const visualCellSize = cellSize * rawScale;
+    if (visualCellSize < 6) return rawScale;
+
+    const nearestVisualCell = Math.max(1, Math.round(visualCellSize));
+    const snappedScale = nearestVisualCell / cellSize;
+    const threshold = options.threshold == null ? 0.12 : options.threshold;
+
+    if (options.force || Math.abs(visualCellSize - nearestVisualCell) <= threshold) {
+      return Math.max(minScale, Math.min(maxScale, snappedScale));
+    }
+
+    return rawScale;
+  },
+
+  onZoomIn() {
+    this._setWorkspaceScale(this._getNextZoomStep(1), {
+      historyBefore: this._createViewportMetaSnapshot(),
+      historyType: 'viewport'
+    });
+  },
+
+  onZoomOut() {
+    this._setWorkspaceScale(this._getNextZoomStep(-1), {
+      historyBefore: this._createViewportMetaSnapshot(),
+      historyType: 'viewport'
+    });
+  },
+
+  onZoomReset() {
+    this._setWorkspaceScale(1, {
+      centerCanvas: true,
+      historyBefore: this._createViewportMetaSnapshot(),
+      historyType: 'viewport'
+    });
+  },
+
+  onZoomFit() {
+    this._fitCanvasViewport({
+      historyBefore: this._createViewportMetaSnapshot(),
+      historyType: 'viewport'
+    });
+  },
+
   handleTouchStart(e) {
+    if (e && e.detail && Array.isArray(e.detail.touches)) {
+      this._lastCanvasTouchEventAt = Date.now();
+    } else if (this._shouldIgnoreContainerTouchEvent(e)) {
+      return;
+    }
     // 完美版：标记手势开始
     if (this._renderScheduler) {
       this._renderScheduler.startGesture();
     }
     
-    // 每次触摸开始时更新 canvas-area 和 canvas-touch-layer 位置
+    // 每次触摸开始时更新容器与实际画布位置
     this._updateCanvasAreaRect();
     this._updateCanvasRect();
     
-    const touches = e.touches;
-    const now = Date.now();
+    const touches = this._getEventTouches(e);
+    const now = this._getEventTimestamp(e);
     
     // 双指缩放检测
     if (touches.length === 2) {
-      // 完美版：双指开始时，取消可能的误触绘制
-      if (this._isDrawing && !this._isPinching) {
-        console.log('[防误触] 检测到双指，取消单指绘制');
-        this._isDrawing = false;
-        this._lastPos = null;
-        // 撤销刚才的误触绘制
-        if (this._history && this._history.getState().canUndo && (now - this._lastTouchTime) < 200) {
-          console.log('[防误触] 撤销误触绘制');
-          this.onUndo();
-        }
-      }
-      
-      this._isPinching = true;
-      this._isDrawing = false;
-      this._isDragging = false;
-      if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(true);
-      console.log('[PINCH_TRACE] start pinch');
-
-      // 冻结 overlay 缩放参数，避免双指过程中的异步抖动
-      
-      // 通知网格和色号组件暂停重绘
-      this.setData({ isPinching: true, overlayScale: this.data.canvasScale });
-      
-      // 双指开始时强制关闭放大镜，避免悬浮残留
-      if (this.data.showMagnifier) {
-        this.setData({ showMagnifier: false });
-      }
-      this._cachedCompositeCanvas = null;
-      this._compositeRect = null;
-      
-      // 问题6修复：保存双指操作前的工具状态
-      if (!this._toolBeforePinch) {
-        this._toolBeforePinch = this.data.tool;
-      }
-      
-      // 自动切换到拖拽工具
-      if (this.data.tool !== 'drag') {
-        this.setData({ tool: 'drag' });
-      }
-      
-      const touch1 = touches[0];
-      const touch2 = touches[1];
-      this._touchStartDistance = this._getDistance(touch1, touch2);
-      this._touchStartScale = this.data.canvasScale;
-      this._touchStartBackgroundScale = this.data.backgroundScale;
-      this._lockScaleRatio = (this.data.canvasScale > 0)
-        ? (this.data.backgroundScale / this.data.canvasScale)
-        : 1;
-      
-      // 记录缩放中心点（起始）
-      this._pinchCenterX = (touch1.clientX + touch2.clientX) / 2;
-      this._pinchCenterY = (touch1.clientY + touch2.clientY) / 2;
-      this._pinchStartCenterX = this._pinchCenterX;
-      this._pinchStartCenterY = this._pinchCenterY;
-
-      // 记录各层起始偏移
-      this._touchStartCanvasOffsetX = this.data.canvasOffsetX;
-      this._touchStartCanvasOffsetY = this.data.canvasOffsetY;
-      this._touchStartBackgroundOffsetX = this.data.backgroundOffsetX;
-      this._touchStartBackgroundOffsetY = this.data.backgroundOffsetY;
-      
+      this._maybeStartPinchFromTouches(touches, now);
       return;
     }
     
@@ -1348,6 +1869,7 @@ Page({
     // 拖拽工具 - 单指拖动
     if (this.data.tool === 'drag') {
       this._isDragging = true;
+      this._viewportHistoryBefore = this._createViewportMetaSnapshot();
       this._dragStartX = touch.clientX;
       this._dragStartY = touch.clientY;
       this._velocityX = 0;
@@ -1355,7 +1877,7 @@ Page({
       
       // 停止惯性动画
       if (this._animationFrame) {
-        clearTimeout(this._animationFrame);
+        this._cancelGestureFrame(this._animationFrame);
         this._animationFrame = null;
       }
       return;
@@ -1383,47 +1905,67 @@ Page({
     this._pendingDrawPos = pos;
     this._pendingDrawTime = now;
     
-    // 100ms后才真正开始绘制
+    // 短延迟防止双指误触；移动到新格时会立即起笔
     setTimeout(() => {
-      // 如果已经变成双指，取消绘制
       if (this._isPinching) {
-        console.log('[防误触] 延迟检测到双指，取消绘制');
         this._pendingDrawPos = null;
         return;
       }
       
-      // 如果位置没变，才执行绘制
       if (this._pendingDrawPos && this._pendingDrawPos === pos) {
-        this._isDrawing = true;
-        this._lastPos = pos;
-        // 增量撤销：开始一笔新绘画
-        this._beginStrokeUndo();
-        // 初始化脏矩形
-        this._dirtyRect = { x1: pos.col, y1: pos.row, x2: pos.col, y2: pos.row };
-        this._paintPixel(pos.row, pos.col);
-        this._pendingDrawPos = null;
+        this._startPendingDrawStroke();
       }
-    }, 100);
+    }, 60);
   },
 
   handleTouchMove(e) {
-    const touches = e.touches;
-    const now = Date.now();
+    if (e && e.detail && Array.isArray(e.detail.touches)) {
+      this._lastCanvasTouchEventAt = Date.now();
+    } else if (this._shouldIgnoreContainerTouchEvent(e)) {
+      return;
+    }
+
+    const touches = this._getEventTouches(e);
+    const now = this._getEventTimestamp(e);
+
+    if (touches.length === 2 && !this._isPinching) {
+      this._maybeStartPinchFromTouches(touches, now);
+    }
 
     // 双指缩放/拖拽（同时支持缩放与平移）—— RAF 节流
     if (touches.length === 2 && this._isPinching) {
-      if (this._canvasRenderer) {
-        this._canvasRenderer.renderFull(this._ctx, this._gridData);
+      const rawScaleChange = this._getDistance(touches[0], touches[1]) / this._touchStartDistance;
+      const rawCenterX = (touches[0].clientX + touches[1].clientX) / 2;
+      const rawCenterY = (touches[0].clientY + touches[1].clientY) / 2;
+      const startCenterX = this._pinchStartCenterX || rawCenterX;
+      const startCenterY = this._pinchStartCenterY || rawCenterY;
+      const panDistance = Math.hypot(rawCenterX - startCenterX, rawCenterY - startCenterY);
+      const scaleDistance = Math.abs(rawScaleChange - 1);
+
+      if (!this._pinchConfirmed) {
+        if (scaleDistance < PINCH_SCALE_DEADZONE && panDistance < PINCH_PAN_DEADZONE_PX) {
+          return;
+        }
+        this._pinchConfirmed = true;
       }
+
+      const prevScaleChange = this._smoothedPinchScaleChange || 1;
+      const prevCenterX = this._smoothedPinchCenterX == null ? rawCenterX : this._smoothedPinchCenterX;
+      const prevCenterY = this._smoothedPinchCenterY == null ? rawCenterY : this._smoothedPinchCenterY;
+      const smooth = PINCH_SMOOTHING;
+      this._smoothedPinchScaleChange = prevScaleChange + (rawScaleChange - prevScaleChange) * smooth;
+      this._smoothedPinchCenterX = prevCenterX + (rawCenterX - prevCenterX) * smooth;
+      this._smoothedPinchCenterY = prevCenterY + (rawCenterY - prevCenterY) * smooth;
+
       // 缓存最新 pinch 参数，下一帧统一执行 setData
       this._pendingPinch = {
         touches,
-        scaleChange: this._getDistance(touches[0], touches[1]) / this._touchStartDistance,
-        centerClientX: (touches[0].clientX + touches[1].clientX) / 2,
-        centerClientY: (touches[0].clientY + touches[1].clientY) / 2
+        scaleChange: this._smoothedPinchScaleChange,
+        centerClientX: this._smoothedPinchCenterX,
+        centerClientY: this._smoothedPinchCenterY
       };
       if (!this._pinchRafId) {
-        this._pinchRafId = requestAnimationFrame(() => {
+        this._pinchRafId = this._scheduleGestureFrame(() => {
           this._pinchRafId = null;
           const p = this._pendingPinch;
           if (!p) return;
@@ -1444,7 +1986,7 @@ Page({
       this._dragDeltaTime = deltaTime;
 
       if (!this._dragRafId) {
-        this._dragRafId = requestAnimationFrame(() => {
+        this._dragRafId = this._scheduleGestureFrame(() => {
           this._dragRafId = null;
           const curX = this._dragCurrentX;
           const curY = this._dragCurrentY;
@@ -1488,11 +2030,8 @@ Page({
       return;
     }
     
-    // 绘制工具
-    if (!this._isDrawing) return;
-    
     // 吸色工具 - 更新放大镜（不限制在画布内）
-    if (this.data.tool === 'picker') {
+    if (this._isDrawing && this.data.tool === 'picker') {
       const pos = this._getPixelPosition(touch.clientX, touch.clientY);
       this._lastPickerPos = pos || null;
       this._showMagnifier(touch.clientX, touch.clientY, pos);
@@ -1501,6 +2040,13 @@ Page({
     
     const pos = this._getPixelPosition(touch.clientX, touch.clientY);
     if (!pos) return;
+
+    if (!this._isDrawing) {
+      if (this._pendingDrawPos) {
+        this._startPendingDrawStroke(pos);
+      }
+      return;
+    }
     
     if (this._lastPos) {
       this._paintLine(this._lastPos.row, this._lastPos.col, pos.row, pos.col);
@@ -1523,6 +2069,8 @@ Page({
     const startCenterY = (this._pinchStartCenterY || centerClientY) - areaTop;
     const panX = centerX - startCenterX;
     const panY = centerY - startCenterY;
+    const anchorX = startCenterX;
+    const anchorY = startCenterY;
 
     const minScale = this._minScale || 0.5;
     const maxScale = this._getMaxScale();
@@ -1535,6 +2083,7 @@ Page({
 
       let nextScale = baseScale * scaleChange;
       nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
+      const scaleChanged = Math.abs(nextScale - baseScale) > 0.0001;
 
       const nextBackgroundScale = Math.max(minScale, Math.min(maxScale, nextScale * lockRatio));
 
@@ -1543,22 +2092,21 @@ Page({
       
       const baseCanvasOffsetX = this._touchStartCanvasOffsetX != null ? this._touchStartCanvasOffsetX : this.data.canvasOffsetX;
       const baseCanvasOffsetY = this._touchStartCanvasOffsetY != null ? this._touchStartCanvasOffsetY : this.data.canvasOffsetY;
-      const zoomCanvasOffsetX = centerX - (centerX - baseCanvasOffsetX) * canvasScaleRatio;
-      const zoomCanvasOffsetY = centerY - (centerY - baseCanvasOffsetY) * canvasScaleRatio;
+      const zoomCanvasOffsetX = anchorX - (anchorX - baseCanvasOffsetX) * canvasScaleRatio;
+      const zoomCanvasOffsetY = anchorY - (anchorY - baseCanvasOffsetY) * canvasScaleRatio;
       
       const baseBackgroundOffsetX = this._touchStartBackgroundOffsetX != null ? this._touchStartBackgroundOffsetX : this.data.backgroundOffsetX;
       const baseBackgroundOffsetY = this._touchStartBackgroundOffsetY != null ? this._touchStartBackgroundOffsetY : this.data.backgroundOffsetY;
-      const zoomBackgroundOffsetX = centerX - (centerX - baseBackgroundOffsetX) * bgScaleRatio;
-      const zoomBackgroundOffsetY = centerY - (centerY - baseBackgroundOffsetY) * bgScaleRatio;
+      const zoomBackgroundOffsetX = anchorX - (anchorX - baseBackgroundOffsetX) * bgScaleRatio;
+      const zoomBackgroundOffsetY = anchorY - (anchorY - baseBackgroundOffsetY) * bgScaleRatio;
 
       this.setData({
         canvasScale: nextScale,
-        canvasOffsetX: zoomCanvasOffsetX + panX,
-        canvasOffsetY: zoomCanvasOffsetY + panY,
+        canvasOffsetX: scaleChanged ? zoomCanvasOffsetX + panX : baseCanvasOffsetX,
+        canvasOffsetY: scaleChanged ? zoomCanvasOffsetY + panY : baseCanvasOffsetY,
         backgroundScale: nextBackgroundScale,
-        backgroundOffsetX: zoomBackgroundOffsetX + panX,
-        backgroundOffsetY: zoomBackgroundOffsetY + panY,
-        overlayScale: this.data.overlayScale,
+        backgroundOffsetX: scaleChanged ? zoomBackgroundOffsetX + panX : baseBackgroundOffsetX,
+        backgroundOffsetY: scaleChanged ? zoomBackgroundOffsetY + panY : baseBackgroundOffsetY,
         isPinching: true
       });
       return;
@@ -1570,66 +2118,91 @@ Page({
       const baseScale = this._touchStartBackgroundScale || this.data.backgroundScale;
       let nextScale = baseScale * scaleChange;
       nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
+      const scaleChanged = Math.abs(nextScale - baseScale) > 0.0001;
 
       const scaleRatio = nextScale / baseScale;
       const baseOffsetX = this._touchStartBackgroundOffsetX != null ? this._touchStartBackgroundOffsetX : this.data.backgroundOffsetX;
       const baseOffsetY = this._touchStartBackgroundOffsetY != null ? this._touchStartBackgroundOffsetY : this.data.backgroundOffsetY;
 
-      const zoomOffsetX = centerX - (centerX - baseOffsetX) * scaleRatio;
-      const zoomOffsetY = centerY - (centerY - baseOffsetY) * scaleRatio;
+      const zoomOffsetX = anchorX - (anchorX - baseOffsetX) * scaleRatio;
+      const zoomOffsetY = anchorY - (anchorY - baseOffsetY) * scaleRatio;
 
       this.setData({
         backgroundScale: nextScale,
-        backgroundOffsetX: zoomOffsetX + panX,
-        backgroundOffsetY: zoomOffsetY + panY,
+        backgroundOffsetX: scaleChanged ? zoomOffsetX + panX : baseOffsetX,
+        backgroundOffsetY: scaleChanged ? zoomOffsetY + panY : baseOffsetY,
         isPinching: true
       });
     } else {
       const baseScale = this._touchStartScale || this.data.canvasScale;
       let nextScale = baseScale * scaleChange;
       nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
+      const scaleChanged = Math.abs(nextScale - baseScale) > 0.0001;
 
       const scaleRatio = nextScale / baseScale;
       const baseOffsetX = this._touchStartCanvasOffsetX != null ? this._touchStartCanvasOffsetX : this.data.canvasOffsetX;
       const baseOffsetY = this._touchStartCanvasOffsetY != null ? this._touchStartCanvasOffsetY : this.data.canvasOffsetY;
 
-      const zoomOffsetX = centerX - (centerX - baseOffsetX) * scaleRatio;
-      const zoomOffsetY = centerY - (centerY - baseOffsetY) * scaleRatio;
+      const zoomOffsetX = anchorX - (anchorX - baseOffsetX) * scaleRatio;
+      const zoomOffsetY = anchorY - (anchorY - baseOffsetY) * scaleRatio;
 
       this._setCanvasTransform({
         canvasScale: nextScale,
-        canvasOffsetX: zoomOffsetX + panX,
-        canvasOffsetY: zoomOffsetY + panY
+        canvasOffsetX: scaleChanged ? zoomOffsetX + panX : baseOffsetX,
+        canvasOffsetY: scaleChanged ? zoomOffsetY + panY : baseOffsetY
       });
     }
   },
 
   handleTouchEnd(e) {
+    if (e && e.detail && Array.isArray(e.detail.touches)) {
+      this._lastCanvasTouchEventAt = Date.now();
+    } else if (this._shouldIgnoreContainerTouchEvent(e)) {
+      return;
+    }
+
+    const touches = this._getEventTouches(e);
+    this._endRenderGesture();
+
     // 如果是双指缩放结束
     if (this._isPinching) {
-      console.log('[PINCH_TRACE] end pinch');
       this._isPinching = false;
       if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(false);
       this._updateCanvasAreaRect();
 
-      // 缩放结束后，重新绘制以提高清晰度
-      this._redrawCanvasAtCurrentScale();
-      
-      // setData({ isPinching: false }) 后回到高精度渲染
-      this.setData({ isPinching: false, overlayScale: this.data.canvasScale }, () => {
-        this._drawFullGrid();
-      });
+      const snappedScale = this._maybeSnapScaleToPixelGrid(this.data.canvasScale, { threshold: 0.18 });
+      const scaleChanged = Math.abs(snappedScale - this.data.canvasScale) > 0.001;
+
+      if (scaleChanged) {
+        this._setWorkspaceScale(snappedScale, {
+          historyBefore: this._viewportHistoryBefore,
+          historyType: 'viewport'
+        });
+        this._viewportHistoryBefore = null;
+      } else {
+        // 缩放结束后，重新绘制一次高精度画面
+        this._redrawCanvasAtCurrentScale();
+        
+        // 结束手势后同步 UI 状态，避免重复整屏重绘
+        this.setData({
+          isPinching: false,
+          overlayScale: this.data.canvasScale,
+          currentZoomLabel: this._getZoomLabel(this.data.canvasScale)
+        });
+        this._pushViewportHistory(this._viewportHistoryBefore, 'viewport');
+        this._viewportHistoryBefore = null;
+      }
       
       // 问题3修复：双指操作结束后的工具切换逻辑优化
       // 如果还有手指在屏幕上，继续保持拖拽模式
-      if (e.touches.length > 0) {
-        console.log('[工具切换] 还有', e.touches.length, '个手指，继续拖拽模式');
+      if (touches.length > 0) {
         // 不恢复工具，保持 drag
         
         // 如果是单指，切换到拖拽状态
-        if (e.touches.length === 1) {
-          const touch = e.touches[0];
+        if (touches.length === 1) {
+          const touch = touches[0];
           this._isDragging = true;
+          this._viewportHistoryBefore = this._viewportHistoryBefore || this._createViewportMetaSnapshot();
           this._dragStartX = touch.clientX;
           this._dragStartY = touch.clientY;
         }
@@ -1638,7 +2211,6 @@ Page({
       
       // 所有手指都离开了，恢复工具
       if (this._toolBeforePinch) {
-        console.log('[工具切换] 所有手指离开，恢复工具:', this._toolBeforePinch);
         const restoreTool = this._toolBeforePinch;
         this._toolBeforePinch = null;
         this.setData({ tool: restoreTool });
@@ -1650,10 +2222,11 @@ Page({
     if (this._isDragging && this.data.tool === 'drag') {
       this._isDragging = false;
       this._updateCanvasAreaRect();
+      this._pushViewportHistory(this._viewportHistoryBefore, 'viewport');
+      this._viewportHistoryBefore = null;
       
       // 问题3修复：拖拽结束时，如果所有手指都离开且有保存的工具，恢复工具
-      if (e.touches.length === 0 && this._toolBeforePinch) {
-        console.log('[工具切换] 拖拽结束，恢复工具:', this._toolBeforePinch);
+      if (touches.length === 0 && this._toolBeforePinch) {
         const restoreTool = this._toolBeforePinch;
         this._toolBeforePinch = null;
         this.setData({ tool: restoreTool });
@@ -1671,15 +2244,16 @@ Page({
       this._cachedCompositeCanvas = null;
       this._compositeRect = null;
 
-      // 双通道取色：画布优先取 gridData；背景图/画布外取 magnifierColor
+      // 双通道取色：画布优先取 PixelStore；背景图/画布外取 magnifierColor
       let finalColor = null;
       const pickerPos = this._lastPickerPos;
 
       if (pickerPos && pickerPos.row != null && pickerPos.col != null) {
         const row = pickerPos.row;
         const col = pickerPos.col;
-        if (this._gridData[row] && this._gridData[row][col]) {
-          const c = String(this._gridData[row][col]).toUpperCase();
+        const pixelColor = this._getPixelColor(row, col);
+        if (pixelColor) {
+          const c = String(pixelColor).toUpperCase();
           if (c && c !== '#FFFFFF') {
             finalColor = c;
           }
@@ -1692,9 +2266,12 @@ Page({
 
       if (finalColor) {
         const nearestColor = this._findNearestColor(finalColor);
-        this.setData({ currentColor: nearestColor, tool: 'pen' });
-        const colorItem = this.data.colorsWithCode.find(c => c.hex === nearestColor);
-        if (colorItem) this.setData({ currentCode: colorItem.code });
+        const colorItem = this._getColorItemByHex(nearestColor);
+        this.setData({
+          currentColor: nearestColor,
+          currentCode: colorItem ? colorItem.code : this.data.currentCode,
+          tool: 'pen'
+        });
         wx.vibrateShort({ type: 'light' });
         wx.showToast({ title: '已选取颜色', icon: 'success', duration: 1000 });
       }
@@ -1703,71 +2280,17 @@ Page({
       return;
     }
     
+    if (!this._isDrawing && this._pendingDrawPos) {
+      this._startPendingDrawStroke();
+    }
     this._endStrokeUndo();
     this._isDrawing = false;
     this._lastPos = null;
   },
 
   _redrawCanvasAtCurrentScale() {
-    const scale = this.data.canvasScale;
     if (!this._canvas || !this._ctx) return;
-
-    const baseWidth = this.data.canvasWidth;
-    const baseHeight = this.data.canvasHeight;
-    const systemDpr = this._dpr || 1;
-
-    // Canvas CSS display size is now canvasWidth * canvasScale (set in WXML).
-    // The backing store needs to cover that display size at device DPR.
-    const displayWidth = baseWidth * scale;
-    const displayHeight = baseHeight * scale;
-
-    // 智能 DPR 计算：根据显示尺寸动态调整 DPR
-    const maxDisplaySize = 3200; // 提高显示尺寸限制，支持更大缩放
-    const maxPhysicalSize = 4096; // Canvas 物理像素上限
-
-    // 计算允许的最大 DPR
-    let effectiveDpr = systemDpr;
-
-    if (displayWidth > maxDisplaySize || displayHeight > maxDisplaySize) {
-      // 超过显示限制时，降低 DPR 以适应
-      const dprByWidth = maxDisplaySize / displayWidth * systemDpr;
-      const dprByHeight = maxDisplaySize / displayHeight * systemDpr;
-      effectiveDpr = Math.max(1, Math.min(dprByWidth, dprByHeight));
-
-      console.log('[智能DPR] 显示尺寸超限，降低DPR:', {
-        displaySize: displayWidth.toFixed(0) + 'x' + displayHeight.toFixed(0),
-        systemDpr: systemDpr.toFixed(2),
-        effectiveDpr: effectiveDpr.toFixed(2)
-      });
-    }
-
-    // 根据物理尺寸进一步限制 DPR
-    const maxDprByWidth = maxPhysicalSize / displayWidth;
-    const maxDprByHeight = maxPhysicalSize / displayHeight;
-    effectiveDpr = Math.max(1, Math.min(effectiveDpr, maxDprByWidth, maxDprByHeight));
-
-    this._renderDpr = effectiveDpr * scale;
-
-    const physicalWidth = Math.floor(displayWidth * effectiveDpr);
-    const physicalHeight = Math.floor(displayHeight * effectiveDpr);
-
-    // 最终安全检查
-    if (physicalWidth > maxPhysicalSize || physicalHeight > maxPhysicalSize || physicalWidth <= 0 || physicalHeight <= 0) {
-      console.warn('[高清重绘] 物理尺寸异常，跳过重绘:', physicalWidth + 'x' + physicalHeight);
-      return;
-    }
-
-    this._canvas.width = physicalWidth;
-    this._canvas.height = physicalHeight;
-
-    // Scale context so drawing in logical coordinates (canvasWidth x canvasHeight) maps to physical pixels
-    this._ctx.setTransform(1, 0, 0, 1, 0, 0);
-    this._ctx.scale(effectiveDpr * scale, effectiveDpr * scale);
-    this._ctx.imageSmoothingEnabled = false;
-    this._ctx.imageSmoothingQuality = 'low';
-
-    console.log('[高清重绘] scale:', scale.toFixed(2), 'displaySize:', displayWidth.toFixed(0) + 'x' + displayHeight.toFixed(0), 'physical:', physicalWidth + 'x' + physicalHeight, 'effectiveDpr:', effectiveDpr.toFixed(2));
-
+    this._syncCanvasResolution(true, { mode: 'high' });
     this._drawFullGrid();
   },
   
@@ -1843,7 +2366,7 @@ Page({
     }
 
     const scale = this.data.canvasScale || 1;
-    const borderComp = 1; // canvas-wrapper 视觉边框补偿（屏幕坐标）
+    const borderComp = 0;
 
     // 画布在屏幕上的实时矩形（同步计算，避免快速操作时异步延迟）
     const screenLeft = areaRect.left + this.data.canvasOffsetX + borderComp;
@@ -2017,15 +2540,6 @@ Page({
         const relX = touchX - compositeLeft;
         const relY = touchY - compositeTop;
 
-        console.log('[MAG_DEBUG] 放大镜绘制:', {
-          touchX, touchY,
-          compositeRect,
-          relX, relY,
-          compositeCanvasWidth: compositeCanvas.width,
-          compositeCanvasHeight: compositeCanvas.height,
-          captureSize, magnifierSize
-        });
-
         // 从合成 Canvas 中裁剪
         const scale = magnifierSize / captureSize;
         const halfCapture = captureSize / 2;
@@ -2041,34 +2555,10 @@ Page({
             0, 0, srcW * scale, srcH * scale
           );
         } catch (err) {
-          console.error('[MAG_DEBUG] 从合成 Canvas 裁剪失败:', err);
+          console.error('从合成 Canvas 裁剪失败:', err);
         }
         
         this._drawMagnifierGrid(ctx, magnifierSize);
-
-        // 同步绘制调试窗口
-        this._drawDebugComposite(compositeCanvas);
-      });
-  },
-
-  _drawDebugComposite(compositeCanvas) {
-    if (!compositeCanvas) return;
-    wx.createSelectorQuery()
-      .select('#debugCompositeCanvas')
-      .node()
-      .exec((res) => {
-        if (!res || !res[0]) return;
-        const canvas = res[0].node;
-        const ctx = canvas.getContext('2d');
-        canvas.width = 150;
-        canvas.height = 150;
-        ctx.clearRect(0, 0, 150, 150);
-        try {
-          ctx.drawImage(compositeCanvas, 0, 0, compositeCanvas.width, compositeCanvas.height, 0, 0, 150, 150);
-          console.log('[DEBUG] 调试图已绘制:', compositeCanvas.width, compositeCanvas.height);
-        } catch (err) {
-          console.error('[DEBUG] 绘制调试图失败:', err);
-        }
       });
   },
 
@@ -2091,20 +2581,6 @@ Page({
         }
 
         this._compositeRect = containerRect;
-
-        console.log('[MAG_DEBUG] composite source rects', {
-          containerRect,
-          canvasWrapperRect,
-          bgWrapperRect,
-          bgImageRect,
-          canvasScale: this.data.canvasScale,
-          backgroundScale: this.data.backgroundScale,
-          canvasOffsetX: this.data.canvasOffsetX,
-          canvasOffsetY: this.data.canvasOffsetY,
-          backgroundOffsetX: this.data.backgroundOffsetX,
-          backgroundOffsetY: this.data.backgroundOffsetY,
-          locked: this.data.locked
-        });
 
         wx.createSelectorQuery()
           .select('#compositeCanvas')
@@ -2232,16 +2708,9 @@ Page({
 
   _drawCanvasToComposite(ctx, containerRect, canvasWrapperRect) {
     if (!this._canvas || !canvasWrapperRect) {
-      console.error('[MAG_DEBUG] _drawCanvasToComposite 失败:', { hasCanvas: !!this._canvas, hasRect: !!canvasWrapperRect });
+      console.error('_drawCanvasToComposite 失败:', { hasCanvas: !!this._canvas, hasRect: !!canvasWrapperRect });
       return;
     }
-
-    console.log('[MAG_DEBUG] _drawCanvasToComposite 开始:', {
-      canvasWidth: this._canvas.width,
-      canvasHeight: this._canvas.height,
-      containerRect,
-      canvasWrapperRect
-    });
 
     const dx = canvasWrapperRect.left - containerRect.left;
     const dy = canvasWrapperRect.top - containerRect.top;
@@ -2252,7 +2721,7 @@ Page({
     const sourceCanvasHeight = this._canvas.height || this.data.canvasHeight;
 
     if (dw <= 0 || dh <= 0 || sourceCanvasWidth <= 0 || sourceCanvasHeight <= 0) {
-      console.error('[MAG_DEBUG] 尺寸无效:', { dw, dh, sourceCanvasWidth, sourceCanvasHeight });
+      console.error('合成画布尺寸无效:', { dw, dh, sourceCanvasWidth, sourceCanvasHeight });
       return;
     }
 
@@ -2267,7 +2736,7 @@ Page({
     const visibleDh = dh - clipTop - clipBottom;
 
     if (visibleDw <= 0 || visibleDh <= 0) {
-      console.error('[MAG_DEBUG] 可见区域无效:', { visibleDw, visibleDh });
+      console.error('合成画布可见区域无效:', { visibleDw, visibleDh });
       return;
     }
 
@@ -2276,20 +2745,14 @@ Page({
     const srcW = (visibleDw / dw) * sourceCanvasWidth;
     const srcH = (visibleDh / dh) * sourceCanvasHeight;
 
-    console.log('[MAG_DEBUG] drawImage 参数:', {
-      srcX, srcY, srcW, srcH,
-      visibleDx, visibleDy, visibleDw, visibleDh
-    });
-
     try {
       ctx.drawImage(
         this._canvas,
         srcX, srcY, srcW, srcH,
         visibleDx, visibleDy, visibleDw, visibleDh
       );
-      console.log('[MAG_DEBUG] 画布层绘制成功');
     } catch (err) {
-      console.error('[MAG_DEBUG] 绘制画布到合成图失败:', err);
+      console.error('绘制画布到合成图失败:', err);
     }
   },
 
@@ -2415,10 +2878,13 @@ Page({
       const halfCapture = captureSize / 2;
       const canvasWidth = this.data.canvasWidth;
       const canvasHeight = this.data.canvasHeight;
-      const srcX = Math.max(0, Math.min(canvasWidth - 1, centerX - halfCapture));
-      const srcY = Math.max(0, Math.min(canvasHeight - 1, centerY - halfCapture));
-      const srcW = Math.max(1, Math.min(captureSize, canvasWidth - srcX));
-      const srcH = Math.max(1, Math.min(captureSize, canvasHeight - srcY));
+      const boardInset = this.data.boardInset || 0;
+      const contentSrcX = Math.max(0, Math.min(canvasWidth - 1, centerX - halfCapture));
+      const contentSrcY = Math.max(0, Math.min(canvasHeight - 1, centerY - halfCapture));
+      const srcX = boardInset + contentSrcX;
+      const srcY = boardInset + contentSrcY;
+      const srcW = Math.max(1, Math.min(captureSize, canvasWidth - contentSrcX));
+      const srcH = Math.max(1, Math.min(captureSize, canvasHeight - contentSrcY));
       
       ctx.drawImage(
         this._canvas,
@@ -2469,7 +2935,7 @@ Page({
         const r = centerRow + dy;
         const c = centerCol + dx;
         if (r >= 0 && r < this.data.gridSize && c >= 0 && c < this.data.gridSize) {
-          const cellColor = this._gridData[r] ? this._gridData[r][c] : '#FFFFFF';
+          const cellColor = this._getPixelColor(r, c) || '#FFFFFF';
           row.push(cellColor);
         } else {
           row.push('#FFFFFF');
@@ -2568,23 +3034,30 @@ Page({
     
     const { skipRender = false, skipStats = false, changedCells = null } = options;
     if (tool === 'picker') {
-      const pickedColor = this._gridData[row] ? this._gridData[row][col] : null;
+      const pickedColor = this._getPixelColor(row, col);
       if (pickedColor && pickedColor !== '#FFFFFF') {
-        this.setData({ currentColor: pickedColor, tool: 'pen' });
-        // 查找对应的色号
-        const colorItem = this.data.colorsWithCode.find(c => c.hex === pickedColor);
-        if (colorItem) this.setData({ currentCode: colorItem.code });
+        const colorItem = this._getColorItemByHex(pickedColor);
+        this.setData({
+          currentColor: pickedColor,
+          currentCode: colorItem ? colorItem.code : this.data.currentCode,
+          tool: 'pen'
+        });
       }
       return;
     }
     if (tool === 'fill') {
       // 精细撤回：填充前保存状态
       this._saveState();
-      this._floodFill(row, col, currentColor);
+      const changed = this._floodFill(row, col, currentColor);
+      if (!changed) {
+        this._discardPendingState();
+        return;
+      }
       this._rebuildColorStatsFromGrid();
       this._drawFullGrid();
       this._scheduleUsedColorsUpdate();
       this._updateHasPixels();
+      this._commitState('fill');
       return;
     }
     const color = tool === 'eraser' ? null : currentColor; // 完美版：橡皮擦使用透明色
@@ -2593,15 +3066,13 @@ Page({
 
     // 增量更新颜色统计 + 记录到撤销栈
     const updateCell = (r, c) => {
-      const oldValue = this._gridData[r][c]; // 原始值（可能为 null）
+      const oldValue = this._getPixelColor(r, c);
       const oldColor = this._normalizeColor(oldValue);
       const newColor = this._normalizeColor(color);
       if (oldColor !== newColor) {
         this._bumpColorCount(oldColor, -1);
         this._bumpColorCount(newColor, 1);
-        this._gridData[r][c] = color;
-        this._ensurePixelStoreFromGrid();
-        this._pixelStore.setPixelHex(r, c, color);
+        this._setPixelColor(r, c, color);
         changed.add(`${r},${c}`);
         // 记录到笔画撤销集合（old 保持原始值，new 为新值）
         if (this._strokeUndoCells) {
@@ -2654,20 +3125,9 @@ Page({
   },
 
   _paintLine(r0, c0, r1, c1) {
-    const dr = Math.abs(r1 - r0);
-    const dc = Math.abs(c1 - c0);
-    const sr = r0 < r1 ? 1 : -1;
-    const sc = c0 < c1 ? 1 : -1;
-    let err = dc - dr;
-    const changedCells = new Set();
-
-    while (true) {
-      this._paintPixel(r0, c0, { skipRender: true, skipStats: true, changedCells });
-      if (r0 === r1 && c0 === c1) break;
-      const e2 = 2 * err;
-      if (e2 > -dr) { err -= dr; c0 += sc; }
-      if (e2 < dc) { err += dc; r0 += sr; }
-    }
+    const changedCells = this._toolEngine
+      ? this._toolEngine.paintLine(r0, c0, r1, c1)
+      : new Set();
 
     this._queueRenderChangedPixels(changedCells);
     this._scheduleUsedColorsUpdate();
@@ -2675,17 +3135,22 @@ Page({
   },
 
   _floodFill(startRow, startCol, newColor) {
-    const targetColor = this._gridData[startRow] ? this._gridData[startRow][startCol] : null;
+    if (this._toolEngine) {
+      return this._toolEngine.floodFill(startRow, startCol, newColor).changed;
+    }
+
+    const targetColor = this._getPixelColor(startRow, startCol);
 
     // 修复：正确处理透明色块（null/undefined）的填充
     // null 和 undefined 视为相同的透明色
     const isSameColor = (targetColor === newColor) ||
                         (targetColor == null && newColor == null);
-    if (isSameColor) return;
+    if (isSameColor) return false;
 
     const { gridSize } = this.data;
     const stack = [[startRow, startCol]];
     const visited = new Set();
+    this._ensurePixelStoreFromGrid();
 
     // 辅助函数：判断两个颜色是否相同（考虑透明色）
     const colorEquals = (color1, color2) => {
@@ -2701,14 +3166,14 @@ Page({
       if (r < 0 || r >= gridSize || c < 0 || c >= gridSize) continue;
 
       // 修复：使用 colorEquals 判断颜色是否匹配
-      if (!colorEquals(this._gridData[r][c], targetColor)) continue;
+      if (!colorEquals(this._getPixelColor(r, c), targetColor)) continue;
 
       visited.add(key);
-      this._gridData[r][c] = newColor;
-      this._ensurePixelStoreFromGrid();
-      this._pixelStore.setPixelHex(r, c, newColor);
+      this._setPixelColor(r, c, newColor);
       stack.push([r + 1, c], [r - 1, c], [r, c + 1], [r, c - 1]);
     }
+
+    return visited.size > 0;
   },
 
   onUndo() {
@@ -2742,7 +3207,7 @@ Page({
   },
 
   /**
-   * 应用历史记录到 gridData
+   * 应用历史记录到像素存储
    */
   _applyHistoryRecord(record) {
     if (!record) return;
@@ -2750,22 +3215,58 @@ Page({
     if (record.pixelSnapshot && record.pixelSnapshot.gridSize) {
       this._ensurePixelStoreFromGrid();
       this._pixelStore.restoreSnapshot(record.pixelSnapshot);
-      this._syncGridFromPixelStore();
+      this._gridData = null;
     } else if (record.fullGridData) {
       this._gridData = record.fullGridData.map(row => [...row]);
       this._pixelStore = PixelStore.fromGridData(this._gridData);
+    }
+
+    if (record.meta) {
+      this._applyHistoryMeta(record.meta);
     }
 
     if (record._cells) {
       this._ensurePixelStoreFromGrid();
       for (const [key, val] of Object.entries(record._cells)) {
         const [r, c] = key.split(',').map(Number);
-        if (this._gridData[r] != null && this._gridData[r][c] != null) {
-          this._gridData[r][c] = val.new;
-          this._pixelStore.setPixelHex(r, c, val.new);
-        }
+        this._setPixelColor(r, c, val.new);
       }
     }
+  },
+
+  _applyHistoryMeta(meta) {
+    if (!meta || typeof meta !== 'object') return;
+
+    const nextGridSize = meta.gridSize || this.data.gridSize;
+    const nextScale = meta.canvasScale == null ? this.data.canvasScale : meta.canvasScale;
+    const updates = {
+      canvasOffsetX: meta.canvasOffsetX == null ? this.data.canvasOffsetX : meta.canvasOffsetX,
+      canvasOffsetY: meta.canvasOffsetY == null ? this.data.canvasOffsetY : meta.canvasOffsetY,
+      canvasScale: nextScale,
+      overlayScale: nextScale,
+      currentZoomLabel: this._getZoomLabel(nextScale),
+      ...this._getGridOverlayMetrics(nextScale),
+      backgroundOffsetX: meta.backgroundOffsetX == null ? this.data.backgroundOffsetX : meta.backgroundOffsetX,
+      backgroundOffsetY: meta.backgroundOffsetY == null ? this.data.backgroundOffsetY : meta.backgroundOffsetY,
+      backgroundScale: meta.backgroundScale == null ? this.data.backgroundScale : meta.backgroundScale,
+      backgroundMirror: meta.backgroundMirror == null ? this.data.backgroundMirror : meta.backgroundMirror,
+      locked: meta.locked == null ? this.data.locked : meta.locked,
+      showBackground: meta.showBackground == null ? this.data.showBackground : meta.showBackground,
+      backgroundImage: meta.backgroundImage == null ? this.data.backgroundImage : meta.backgroundImage
+    };
+
+    if (nextGridSize !== this.data.gridSize) {
+      const canvasSize = this._getAdaptiveCanvasSize(nextGridSize);
+      updates.gridSize = nextGridSize;
+      updates.canvasWidth = canvasSize;
+      updates.canvasHeight = canvasSize;
+      updates.gridCellSize = canvasSize / nextGridSize;
+      updates.majorGridSizePx = canvasSize / nextGridSize * 5;
+      this._cellSize = canvasSize / nextGridSize;
+    }
+
+    this.setData(updates);
+    if (updates.gridSize) this._updateAxisLabels();
   },
 
   onGridSizeInput(e) {
@@ -2814,6 +3315,7 @@ Page({
         }, () => {
           // 重新绘制画布以应用透明背景
           this._drawFullGrid();
+          this._commitState('background');
         });
         
         wx.showToast({ title: '背景图已上传', icon: 'success' });
@@ -2836,6 +3338,9 @@ Page({
       showBackground: false,
       locked: false,
       activeLayer: 'canvas'
+    }, () => {
+      this._drawFullGrid();
+      this._commitState('background');
     });
     wx.showToast({ title: '背景图已清除', icon: 'success' });
   },
@@ -2846,8 +3351,7 @@ Page({
       return this._hexCodeMap[String(hex).toUpperCase()];
     }
     // 回退：从 colorsWithCode 中查找（API加载的品牌色卡）
-    const colorsWithCode = this.data.colorsWithCode || [];
-    const match = colorsWithCode.find(c => String(c.hex).toUpperCase() === String(hex).toUpperCase());
+    const match = this._getColorItemByHex(hex);
     if (match && match.code) return match.code;
     // 最终回退：使用索引合成色号
     const index = this.data.colors.indexOf(hex);
@@ -2871,15 +3375,10 @@ Page({
 
   _countColorUsage(color) {
     if (!color) return 0;
-    let count = 0;
-    for (let y = 0; y < this.data.gridSize; y++) {
-      for (let x = 0; x < this.data.gridSize; x++) {
-        const cell = this._gridData[y] && this._gridData[y][x];
-        if (!cell) continue;
-        if (String(cell).toUpperCase() === String(color).toUpperCase()) count++;
-      }
-    }
-    return count;
+    this._ensurePixelStoreFromGrid();
+    if (!this._pixelStore) return 0;
+    const normalized = String(color).toUpperCase();
+    return this._pixelStore.getColorUsageMap().get(normalized) || 0;
   },
 
   onClear() {
@@ -2893,12 +3392,17 @@ Page({
       success: (res) => {
         if (res.confirm) {
           this._saveState();
-          this._gridData = Array.from({ length: this.data.gridSize }, () => Array(this.data.gridSize).fill(null));
+          this._ensurePixelStoreFromGrid();
+          if (this._pixelStore) {
+            this._pixelStore.clear();
+          }
           this._rebuildColorStatsFromGrid();
           this._drawFullGrid();
           this._updateUsedColors();
           this._updateHasPixels();
-          this.setData({ mirror: false });
+          this.setData({ mirror: false }, () => {
+            this._commitState('clear');
+          });
         }
       }
     });
@@ -2946,27 +3450,9 @@ Page({
     }
     const colorStats = this._buildColorStats();
     const colorPalette = colorStats.map((s, idx) => ({
-      index: idx, id: s.id, name: s.name, r: s.r, g: s.g, b: s.b, count: s.count
+      index: idx, id: s.id, name: s.name, hex: s.hex, r: s.r, g: s.g, b: s.b, count: s.count
     }));
-    const gridData = this._gridData.map(row => row.map(hex => {
-      if (hex === null || hex === undefined || hex === '') return -1;
-      const hexUpper = String(hex).toUpperCase();
-      const idx = colorStats.findIndex(s => '#' + [s.r, s.g, s.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase() === hexUpper);
-      return idx >= 0 ? idx : -1;
-    }));
-
-    // 转换为 mappedPixelData 格式
-    const mappedPixelData = gridData.map(row => row.map(idx => {
-      if (idx === -1 || idx === null || idx === undefined) {
-        return { id: 'ERASE', name: 'Transparent', r: 255, g: 255, b: 255, hex: '#FFFFFF', isExternal: true };
-      }
-      const c = colorPalette[idx] || {};
-      const r = Number(c.r ?? 255);
-      const g = Number(c.g ?? 255);
-      const b = Number(c.b ?? 255);
-      const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
-      return { id: c.id || '', name: c.name || c.id || '', r, g, b, hex, isExternal: false };
-    }));
+    const { gridData, mappedPixelData } = this._buildPersistencePixelData(colorStats, colorPalette);
 
     request.post('/box/save', {
       name,
@@ -2990,27 +3476,9 @@ Page({
     const { gridSize, brand, source, backgroundImage, backgroundImageWidth, backgroundImageHeight, backgroundOffsetX, backgroundOffsetY, backgroundScale, locked } = this.data;
     const colorStats = this._buildColorStats();
     const colorPalette = colorStats.map((s, idx) => ({
-      index: idx, id: s.id, name: s.name, r: s.r, g: s.g, b: s.b, count: s.count
+      index: idx, id: s.id, name: s.name, hex: s.hex, r: s.r, g: s.g, b: s.b, count: s.count
     }));
-    const gridData = this._gridData.map(row => row.map(hex => {
-      if (hex === null || hex === undefined || hex === '') return -1;
-      const hexUpper = String(hex).toUpperCase();
-      const idx = colorStats.findIndex(s => '#' + [s.r, s.g, s.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase() === hexUpper);
-      return idx >= 0 ? idx : -1;
-    }));
-
-    // 转换为 mappedPixelData 格式
-    const mappedPixelData = gridData.map(row => row.map(idx => {
-      if (idx === -1 || idx === null || idx === undefined) {
-        return { id: 'ERASE', name: 'Transparent', r: 255, g: 255, b: 255, hex: '#FFFFFF', isExternal: true };
-      }
-      const c = colorPalette[idx] || {};
-      const r = Number(c.r ?? 255);
-      const g = Number(c.g ?? 255);
-      const b = Number(c.b ?? 255);
-      const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
-      return { id: c.id || '', name: c.name || c.id || '', r, g, b, hex, isExternal: false };
-    }));
+    const { gridData, mappedPixelData } = this._buildPersistencePixelData(colorStats, colorPalette);
 
     // 保存背景图层状态
     const backgroundState = backgroundImage ? {
@@ -3082,10 +3550,61 @@ Page({
       const r = parseInt(hex.slice(1, 3), 16);
       const g = parseInt(hex.slice(3, 5), 16);
       const b = parseInt(hex.slice(5, 7), 16);
-      stats.push({ id: hex.replace('#', ''), name: hex, count, r, g, b });
+      const colorItem = this._getColorItemByHex(hex);
+      const code = colorItem && colorItem.code ? colorItem.code : this._getColorCode(hex);
+      stats.push({ id: code, name: code, hex, count, r, g, b });
     });
 
     return stats.sort((a, b) => b.count - a.count);
+  },
+
+  _buildPersistencePixelData(colorStats, colorPalette = null) {
+    this._ensurePixelStoreFromGrid();
+    const palette = colorPalette || (colorStats || []).map((s, idx) => ({
+      index: idx,
+      id: s.id,
+      name: s.name,
+      r: s.r,
+      g: s.g,
+      b: s.b,
+      hex: s.hex,
+      count: s.count
+    }));
+    const colorIndexMap = new Map();
+    const mappedByIndex = palette.map((item, index) => {
+      const r = Number(item.r ?? 255);
+      const g = Number(item.g ?? 255);
+      const b = Number(item.b ?? 255);
+      const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+      colorIndexMap.set(hex, index);
+      const code = item.id || item.name || item.code || hex.replace('#', '');
+      return { id: code, name: item.name || code, r, g, b, hex, isExternal: false };
+    });
+    const createTransparentCell = () => ({ id: 'ERASE', name: 'Transparent', r: 255, g: 255, b: 255, hex: '#FFFFFF', isExternal: true });
+
+    const gridSize = this.data.gridSize;
+    const gridData = Array.from({ length: gridSize }, () => Array(gridSize).fill(-1));
+    const mappedPixelData = Array.from({ length: gridSize }, () => Array(gridSize));
+
+    for (let row = 0; row < gridSize; row++) {
+      for (let col = 0; col < gridSize; col++) {
+        const offset = row * gridSize + col;
+        const hex = this._pixelStore ? this._pixelStore.getPixelHexByOffset(offset) : null;
+        if (!hex) {
+          mappedPixelData[row][col] = createTransparentCell();
+          continue;
+        }
+        const index = colorIndexMap.get(String(hex).toUpperCase());
+        if (index == null) {
+          mappedPixelData[row][col] = createTransparentCell();
+          continue;
+        }
+        gridData[row][col] = index;
+        mappedPixelData[row][col] = mappedByIndex[index] || createTransparentCell();
+      }
+    }
+
+    return { gridData, mappedPixelData };
   },
 
   async onExport() {
@@ -3148,12 +3667,21 @@ Page({
       hex: color,
       code: this._getColorCode(color)
     }));
-    
-    this.setData({
+    const currentColor = this.data.currentColor;
+    const currentStillExists = currentColor && colors.some(color => String(color).toUpperCase() === String(currentColor).toUpperCase());
+    const firstColor = colorsWithCode[0] || null;
+    const updates = {
       colorsRow1: colorsWithCode.slice(0, mid),
       colorsRow2: colorsWithCode.slice(mid),
       colorsWithCode
-    }, () => {
+    };
+
+    if (!currentStillExists && firstColor) {
+      updates.currentColor = firstColor.hex;
+      updates.currentCode = firstColor.code;
+    }
+    
+    this.setData(updates, () => {
       const hasUsedColors = this.data.usedColors && this.data.usedColors.length > 0;
       const compactHeight = hasUsedColors ? 400 : 340;
       const targetHeight = this.data.colorbarExpanded ? 700 : compactHeight;
@@ -3167,24 +3695,31 @@ Page({
     const canvasHeight = this.data.canvasHeight || 0;
     const cellWidth = gridSize > 0 ? canvasWidth / gridSize : 0;
     const cellHeight = gridSize > 0 ? canvasHeight / gridSize : 0;
-    const horizontalLabels = [];
-    const verticalLabels = [];
-
-    for (let i = 5; i <= gridSize; i += 5) {
-      horizontalLabels.push({ label: i, positionPx: i * cellWidth });
-      verticalLabels.push({ label: i, positionPx: i * cellHeight });
-    }
+    const coordinateCellSize = cellWidth || cellHeight || 0;
+    const boardInset = coordinateCellSize;
+    const boardCanvasWidth = canvasWidth + boardInset * 2;
+    const boardCanvasHeight = canvasHeight + boardInset * 2;
+    const digitCount = String(gridSize).length;
+    const coordinateLabelFontSize = Math.max(3, Math.min(
+      11,
+      coordinateCellSize * 0.48,
+      coordinateCellSize / Math.max(1.15, digitCount * 0.68)
+    ));
 
     this.setData({
-      topAxisLabels: horizontalLabels,
-      bottomAxisLabels: horizontalLabels,
-      leftAxisLabels: verticalLabels,
-      rightAxisLabels: verticalLabels
+      coordinateCellSize,
+      coordinateLabelFontSize,
+      boardInset,
+      boardCanvasWidth,
+      boardCanvasHeight
     });
   },
 
   _updateHasPixels() {
-    this.setData({ hasPixels: this._nonWhiteCount > 0 });
+    const hasPixels = this._nonWhiteCount > 0;
+    if (this._lastHasPixelsValue === hasPixels && this.data.hasPixels === hasPixels) return;
+    this._lastHasPixelsValue = hasPixels;
+    this.setData({ hasPixels });
   },
 
   onSetActiveLayer(e) {
@@ -3215,12 +3750,13 @@ Page({
 
   _refreshVirtualColors(scrollTopPx, containerHeightRpx) {
     if (!this._colorBarManager) return;
-    const itemHeightPx = 80 * this._rpxToPx;
+    const itemHeightPx = 92 * this._rpxToPx;
     const virtualResult = this._colorBarManager.getVisibleColors(
       this.data.colorsWithCode || [],
       Math.max(0, scrollTopPx || 0),
       Math.max(0, (containerHeightRpx || 0) * this._rpxToPx),
-      itemHeightPx
+      itemHeightPx,
+      8
     );
     this.setData({
       virtualColorsWithCode: virtualResult.visibleColors,
@@ -3229,38 +3765,70 @@ Page({
     });
   },
 
+  _getCompactColorbarHeight() {
+    const hasUsedColors = this.data.usedColors && this.data.usedColors.length > 0;
+    return hasUsedColors ? 400 : 340;
+  },
+
+  _openSettingsPanel() {
+    if (this._settingsCloseTimer) {
+      clearTimeout(this._settingsCloseTimer);
+      this._settingsCloseTimer = null;
+    }
+    this.setData({
+      showSettings: true,
+      settingsClosing: false
+    });
+  },
+
+  _closeSettingsPanel() {
+    if (!this.data.showSettings && !this.data.settingsClosing) return;
+    if (this._settingsCloseTimer) clearTimeout(this._settingsCloseTimer);
+
+    this.setData({
+      showSettings: false,
+      settingsClosing: true
+    });
+
+    this._settingsCloseTimer = setTimeout(() => {
+      this._settingsCloseTimer = null;
+      this.setData({ settingsClosing: false });
+    }, 180);
+  },
+
+  _closeColorbar() {
+    const compactHeight = this._getCompactColorbarHeight();
+    this.setData({
+      colorbarExpanded: false,
+      colorbarHeight: compactHeight
+    }, () => {
+      this._refreshVirtualColors(0, compactHeight);
+    });
+  },
+
   onToggleSettings() {
-    this.setData({ showSettings: !this.data.showSettings });
+    if (this.data.showSettings) {
+      this._closeSettingsPanel();
+    } else {
+      this._openSettingsPanel();
+    }
   },
 
   onCloseSettings() {
-    this.setData({ showSettings: false });
+    this._closeSettingsPanel();
   },
 
   onCanvasAreaTap(e) {
     // 如果面板展开，点击画板区域关闭
-    if (this.data.colorbarExpanded || this.data.showSettings) {
-      const hasUsedColors = this.data.usedColors && this.data.usedColors.length > 0;
-      const compactHeight = hasUsedColors ? 400 : 340;
-      this.setData({ 
-        colorbarExpanded: false,
-        colorbarHeight: compactHeight,
-        showSettings: false
-      }, () => {
-        this._refreshVirtualColors(0, compactHeight);
-      });
+    if (this.data.colorbarExpanded || this.data.showSettings || this.data.settingsClosing) {
+      this.onCloseAllPanels();
       return false;
     }
   },
 
-  onToggleLeftToolbar() {},
-
-  onCloseLeftToolbar() {},
-
   onToggleColorbar() {
     const nextExpanded = !this.data.colorbarExpanded;
-    const hasUsedColors = this.data.usedColors && this.data.usedColors.length > 0;
-    const compactHeight = hasUsedColors ? 400 : 340;
+    const compactHeight = this._getCompactColorbarHeight();
     const nextHeight = nextExpanded ? 700 : compactHeight;
     this.setData({
       colorbarExpanded: nextExpanded,
@@ -3273,8 +3841,7 @@ Page({
   // 颜色栏滑动手势
   onColorbarTouchStart(e) {
     this._colorbarTouchStartY = e.touches[0].clientY;
-    const hasUsedColors = this.data.usedColors && this.data.usedColors.length > 0;
-    const compactHeight = hasUsedColors ? 400 : 340;
+    const compactHeight = this._getCompactColorbarHeight();
     this._colorbarStartHeight = this.data.colorbarExpanded ? 700 : compactHeight;
   },
 
@@ -3288,8 +3855,7 @@ Page({
     let newHeight = this._colorbarStartHeight + deltaY / this._rpxToPx;
     
     // 限制高度范围
-    const hasUsedColors = this.data.usedColors && this.data.usedColors.length > 0;
-    const minHeight = hasUsedColors ? 400 : 340;
+    const minHeight = this._getCompactColorbarHeight();
     const maxHeight = 700;
     newHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
 
@@ -3310,8 +3876,7 @@ Page({
   onColorbarTouchEnd(e) {
     // 松手后，根据当前高度决定最终状态
     const finalExpanded = this.data.colorbarHeight > 500;
-    const hasUsedColors = this.data.usedColors && this.data.usedColors.length > 0;
-    const compactHeight = hasUsedColors ? 400 : 340;
+    const compactHeight = this._getCompactColorbarHeight();
     this.setData({ 
       colorbarExpanded: finalExpanded,
       colorbarHeight: finalExpanded ? 700 : compactHeight
@@ -3332,10 +3897,13 @@ Page({
   },
 
   onCloseColorbar() {
-    this.setData({ colorbarExpanded: false });
+    this._closeColorbar();
   },
 
-  onCloseAllPanels() {},
+  onCloseAllPanels() {
+    if (this.data.colorbarExpanded) this._closeColorbar();
+    if (this.data.showSettings || this.data.settingsClosing) this._closeSettingsPanel();
+  },
 
   stopPropagation() {},
 
@@ -3346,7 +3914,7 @@ Page({
     wx.vibrateShort({ type: 'medium' });
     
     // 获取色号
-    const colorItem = this.data.colorsWithCode.find(c => c.hex === color);
+    const colorItem = this._getColorItemByHex(color);
     const code = colorItem ? colorItem.code : '';
     
     // 获取触摸位置
@@ -3366,8 +3934,7 @@ Page({
   onSelectColor(e) {
     const color = e.currentTarget.dataset.color;
     
-    // 查找对应的色号
-    const colorItem = this.data.colorsWithCode.find(c => c.hex === color);
+    const colorItem = this._getColorItemByHex(color);
     const code = colorItem ? colorItem.code : '';
     
     this.setData({
@@ -3390,14 +3957,17 @@ Page({
     });
     
     // 检测是否悬停在已使用色号上
-    const targetColor = this._getColorAtPosition(x, y);
-    if (targetColor && targetColor !== this.data.dragTargetColor) {
-      // 轻微震动提示
-      wx.vibrateShort({ type: 'light' });
-      this.setData({ dragTargetColor: targetColor });
-    } else if (!targetColor && this.data.dragTargetColor) {
-      this.setData({ dragTargetColor: '' });
-    }
+    this._getColorAtPosition(x, y, (targetColor) => {
+      if (!this.data.isDraggingColor || this.data.dragX !== x || this.data.dragY !== y) return;
+
+      if (targetColor && targetColor !== this.data.dragTargetColor) {
+        // 轻微震动提示
+        wx.vibrateShort({ type: 'light' });
+        this.setData({ dragTargetColor: targetColor });
+      } else if (!targetColor && this.data.dragTargetColor) {
+        this.setData({ dragTargetColor: '' });
+      }
+    });
   },
 
   onColorDragEnd(e) {
@@ -3429,12 +3999,15 @@ Page({
     }
   },
 
-  _getColorAtPosition(x, y) {
+  _getColorAtPosition(x, y, callback) {
     // 获取已使用色号区域的位置
-    const query = wx.createSelectorQuery();
+    const query = wx.createSelectorQuery().in(this);
     query.selectAll('.used-color-item').boundingClientRect();
     query.exec((res) => {
-      if (!res || !res[0]) return null;
+      if (!res || !res[0]) {
+        if (typeof callback === 'function') callback('');
+        return;
+      }
       
       const items = res[0];
       for (let i = 0; i < items.length; i++) {
@@ -3442,37 +4015,26 @@ Page({
         if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
           // 找到对应的颜色
           const color = this.data.usedColors[i];
-          if (color) {
-            this.setData({ dragTargetColor: color.hex });
-          }
+          if (typeof callback === 'function') callback(color ? color.hex : '');
           return;
         }
       }
-      this.setData({ dragTargetColor: '' });
+      if (typeof callback === 'function') callback('');
     });
-    
-    return this.data.dragTargetColor;
   },
 
   _replaceColorInCanvas(oldColor, newColor) {
     this._saveState();
     
-    let replaceCount = 0;
-    const gridSize = this.data.gridSize;
-    
-    // 遍历画布，替换所有匹配的颜色
-    for (let y = 0; y < gridSize; y++) {
-      for (let x = 0; x < gridSize; x++) {
-        const cell = this._gridData[y] ? this._gridData[y][x] : null;
-        if (!cell) continue;
-        if (String(cell).toUpperCase() === String(oldColor).toUpperCase()) {
-          this._gridData[y][x] = newColor;
-          replaceCount++;
-        }
-      }
+    this._ensurePixelStoreFromGrid();
+    const replaceCount = this._pixelStore ? this._pixelStore.replaceColor(oldColor, newColor) : 0;
+
+    if (replaceCount === 0) {
+      this._discardPendingState();
+      wx.showToast({ title: '没有可替换的色块', icon: 'none' });
+      return;
     }
     
-    // 重建颜色统计
     this._rebuildColorStatsFromGrid();
     
     // 重绘画布
@@ -3480,6 +4042,7 @@ Page({
     
     // 更新已使用颜色
     this._updateUsedColors();
+    this._commitState('replace');
     
     wx.showToast({ 
       title: `已替换 ${replaceCount} 个色块`, 
@@ -3496,22 +4059,20 @@ Page({
     
     this._saveState();
     
-    // 替换所有匹配的颜色
-    let replaceCount = 0;
-    for (let y = 0; y < this.data.gridSize; y++) {
-      for (let x = 0; x < this.data.gridSize; x++) {
-        const cell = this._gridData[y] ? this._gridData[y][x] : null;
-        if (!cell) continue;
-        if (String(cell).toUpperCase() === String(sourceColor).toUpperCase()) {
-          this._gridData[y][x] = targetColor;
-          replaceCount++;
-        }
-      }
+    this._ensurePixelStoreFromGrid();
+    const replaceCount = this._pixelStore ? this._pixelStore.replaceColor(sourceColor, targetColor) : 0;
+
+    if (replaceCount === 0) {
+      this._discardPendingState();
+      this.setData({ showColorReplaceModal: false });
+      wx.showToast({ title: '没有可替换的色块', icon: 'none' });
+      return;
     }
     
-    this._drawFullGrid();
     this._rebuildColorStatsFromGrid();
+    this._drawFullGrid();
     this._updateUsedColors();
+    this._commitState('replace');
     
     this.setData({ showColorReplaceModal: false });
     wx.showToast({ title: `已替换${replaceCount}个色块`, icon: 'success' });
@@ -3668,27 +4229,23 @@ Page({
       
       this._saveState();
       
-      // 画布镜像：左右翻转 gridData
-      const gridSize = this.data.gridSize;
-      const newGridData = Array.from({ length: gridSize }, () => Array(gridSize).fill('#FFFFFF'));
-      
-      for (let y = 0; y < gridSize; y++) {
-        for (let x = 0; x < gridSize; x++) {
-          newGridData[y][gridSize - 1 - x] = this._gridData[y][x];
-        }
+      this._ensurePixelStoreFromGrid();
+      if (this._pixelStore) {
+        this._pixelStore.mirrorHorizontal();
+        if (this._canvasRenderer) this._canvasRenderer.invalidatePixelLayer();
       }
-      
-      this._gridData = newGridData;
-      this._pixelStore = PixelStore.fromGridData(newGridData);
       this._drawFullGrid();
       this._updateUsedColors();
+      this._updateHasPixels();
       
       // 背景也一起镜像
       this.setData({ 
         mirror: !this.data.mirror,
         backgroundMirror: !this.data.backgroundMirror
+      }, () => {
+        this._commitState('mirror');
       });
-      
+
       wx.showToast({ title: '画布和背景已一起镜像', icon: 'success', duration: 1500 });
       return;
     }
@@ -3708,25 +4265,23 @@ Page({
     this._saveState();
     
     if (this.data.activeLayer === 'canvas') {
-      // 画布镜像：左右翻转 gridData
-      const gridSize = this.data.gridSize;
-      const newGridData = Array.from({ length: gridSize }, () => Array(gridSize).fill('#FFFFFF'));
-      
-      for (let y = 0; y < gridSize; y++) {
-        for (let x = 0; x < gridSize; x++) {
-          newGridData[y][gridSize - 1 - x] = this._gridData[y][x];
-        }
+      this._ensurePixelStoreFromGrid();
+      if (this._pixelStore) {
+        this._pixelStore.mirrorHorizontal();
+        if (this._canvasRenderer) this._canvasRenderer.invalidatePixelLayer();
       }
-      
-      this._gridData = newGridData;
-      this._pixelStore = PixelStore.fromGridData(newGridData);
       this._drawFullGrid();
       this._updateUsedColors();
+      this._updateHasPixels();
       
-      this.setData({ mirror: !this.data.mirror });
+      this.setData({ mirror: !this.data.mirror }, () => {
+        this._commitState('mirror');
+      });
     } else {
       // 背景图层镜像：翻转背景图
-      this.setData({ backgroundMirror: !this.data.backgroundMirror });
+      this.setData({ backgroundMirror: !this.data.backgroundMirror }, () => {
+        this._commitState('mirror');
+      });
     }
   },
 
@@ -3739,28 +4294,8 @@ Page({
     // 问题3修复：锁定/解锁时不改变任何位置，只改变锁定状态
     const willLock = !this.data.locked;
     
-    console.log('[锁定调试] 锁定前状态:', {
-      locked: this.data.locked,
-      canvasOffsetX: this.data.canvasOffsetX,
-      canvasOffsetY: this.data.canvasOffsetY,
-      canvasScale: this.data.canvasScale,
-      backgroundOffsetX: this.data.backgroundOffsetX,
-      backgroundOffsetY: this.data.backgroundOffsetY,
-      backgroundScale: this.data.backgroundScale
-    });
-    
     // 只改变锁定状态，不修改任何位置参数
     this.setData({ locked: willLock });
-    
-    console.log('[锁定调试] 锁定后状态:', {
-      locked: this.data.locked,
-      canvasOffsetX: this.data.canvasOffsetX,
-      canvasOffsetY: this.data.canvasOffsetY,
-      canvasScale: this.data.canvasScale,
-      backgroundOffsetX: this.data.backgroundOffsetX,
-      backgroundOffsetY: this.data.backgroundOffsetY,
-      backgroundScale: this.data.backgroundScale
-    });
     
     const lockStatus = willLock ? '已锁定' : '已解锁';
     wx.showToast({ 
@@ -3839,14 +4374,12 @@ Page({
             
             // 匹配相近色
             const nearestColor = this._findNearestColor(pickedColor);
-            
-            this.setData({ 
+            const colorItem = this._getColorItemByHex(nearestColor);
+            this.setData({
               currentColor: nearestColor,
+              currentCode: colorItem ? colorItem.code : this.data.currentCode,
               tool: 'pen'
             });
-            
-            const colorItem = this.data.colorsWithCode.find(c => c.hex === nearestColor);
-            if (colorItem) this.setData({ currentCode: colorItem.code });
             
             wx.vibrateShort({ type: 'light' });
             wx.showToast({ title: '已从背景图选取颜色', icon: 'success', duration: 1000 });
@@ -3872,14 +4405,12 @@ Page({
       // 选择一个中间的颜色
       const midIndex = Math.floor(colors.length / 2);
       const color = colors[midIndex];
-      
-      this.setData({ 
+      const colorItem = this._getColorItemByHex(color);
+      this.setData({
         currentColor: color,
+        currentCode: colorItem ? colorItem.code : this.data.currentCode,
         tool: 'pen'
       });
-      
-      const colorItem = this.data.colorsWithCode.find(c => c.hex === color);
-      if (colorItem) this.setData({ currentCode: colorItem.code });
       
       wx.vibrateShort({ type: 'light' });
       wx.showToast({ title: '已选取颜色', icon: 'success', duration: 1000 });
@@ -3887,22 +4418,20 @@ Page({
   },
 
   _findNearestColor(targetColor) {
-    const colors = this.data.colors;
-    if (!colors || colors.length === 0) return '#FF6B35';
+    const colorRgbList = this._getColorRgbList();
+    if (!colorRgbList.length) return '#FF6B35';
     
     let minDistance = Infinity;
-    let nearestColor = colors[0];
+    let nearestColor = colorRgbList[0].color;
     
     const targetRGB = this._hexToRGB(targetColor);
+    if (!targetRGB) return nearestColor;
     
-    colors.forEach(color => {
-      const rgb = this._hexToRGB(color);
-      // 使用欧几里得距离计算颜色相似度
-      const distance = Math.sqrt(
-        Math.pow(rgb.r - targetRGB.r, 2) +
-        Math.pow(rgb.g - targetRGB.g, 2) +
-        Math.pow(rgb.b - targetRGB.b, 2)
-      );
+    colorRgbList.forEach(({ color, rgb }) => {
+      const dr = rgb.r - targetRGB.r;
+      const dg = rgb.g - targetRGB.g;
+      const db = rgb.b - targetRGB.b;
+      const distance = dr * dr + dg * dg + db * db;
       
       if (distance < minDistance) {
         minDistance = distance;
@@ -3914,11 +4443,15 @@ Page({
   },
 
   _hexToRGB(hex) {
+    if (!hex || typeof hex !== 'string') return null;
     // 移除 # 号
     const cleanHex = hex.replace('#', '');
+    if (cleanHex.length < 6) return null;
     const r = parseInt(cleanHex.slice(0, 2), 16);
     const g = parseInt(cleanHex.slice(2, 4), 16);
     const b = parseInt(cleanHex.slice(4, 6), 16);
+    if ([r, g, b].some(Number.isNaN)) return null;
     return { r, g, b };
   }
 });
+

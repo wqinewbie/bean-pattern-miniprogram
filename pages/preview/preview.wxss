@@ -1,1 +1,36 @@
 @import "../result/result.wxss";
+
+page.container--ai,
+.container--ai {
+  background: #050505;
+  color: #E0E0E0;
+  position: relative;
+  overflow: hidden;
+}
+
+.container--ai::before {
+  content: '';
+  position: absolute;
+  top: -80rpx;
+  right: -80rpx;
+  width: 400rpx;
+  height: 400rpx;
+  background: radial-gradient(circle, rgba(156, 39, 176, 0.15) 0%, transparent 70%);
+  filter: blur(100rpx);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.container--ai::after {
+  content: '';
+  position: absolute;
+  bottom: 20%;
+  left: -60rpx;
+  width: 320rpx;
+  height: 320rpx;
+  background: radial-gradient(circle, rgba(199, 125, 255, 0.1) 0%, transparent 70%);
+  filter: blur(80rpx);
+  pointer-events: none;
+  z-index: 0;
+}
+

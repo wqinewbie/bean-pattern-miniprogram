@@ -75,7 +75,7 @@ Page({
         loading: true
       });
     } else {
-      if (!this.data.hasMore || this.data.loadingMore) return;
+      if (!this.data.hasMore || this.data.loadingMore) return Promise.resolve();
       this.setData({ loadingMore: true });
     }
 
@@ -83,10 +83,10 @@ Page({
       wx.showToast({ title: '请先登录', icon: 'none' });
       wx.navigateTo({ url: '/pages/login/login' });
       this.setData({ loading: false, loadingMore: false });
-      return;
+      return Promise.resolve();
     }
 
-    request.get('/box/list', {
+    return request.get('/box/list', {
       page: this.data.page,
       pageSize: this.data.pageSize
     })
@@ -176,8 +176,9 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadPatterns(true);
-    wx.stopPullDownRefresh();
+    this.loadPatterns(true).finally(() => {
+      wx.stopPullDownRefresh();
+    });
   },
 
   onItemTap(e) {
@@ -233,11 +234,14 @@ Page({
   },
 
   getPatternSourceType(item) {
-    if (item.draftId || item.sourceType === 'DRAW') return 'draft';
-    const sourceType = String(item.sourceType || item.source || item.type || '').toLowerCase();
-    if (sourceType.includes('ai')) return 'ai';
-    if (sourceType.includes('draft') || sourceType.includes('draw')) return 'draft';
-    if (sourceType.includes('free') || sourceType.includes('convert') || sourceType.includes('image')) return 'free';
+    const raw = String(item.sourceType || '').toUpperCase();
+    if (raw === 'AI') return 'ai';
+    if (item.draftId || raw === 'DRAW') return 'draft';
+    if (raw === 'LOCAL') return 'free';
+    const lc = raw.toLowerCase();
+    if (lc.includes('ai')) return 'ai';
+    if (lc.includes('draft') || lc.includes('draw')) return 'draft';
+    if (lc.includes('free') || lc.includes('convert') || lc.includes('image')) return 'free';
     if (item.sourceUrl) return 'free';
     return '';
   },

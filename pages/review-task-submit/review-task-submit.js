@@ -1,5 +1,6 @@
 const request = require('../../utils/request');
 const { API_BASE_URL } = require('../../utils/config');
+const { getSafeAreaLayout } = require('../../utils/safe-area');
 
 Page({
   data: {
@@ -8,17 +9,49 @@ Page({
     submissionText: '',
     proofImages: ['', ''],
     submitting: false,
+    canSubmit: false,
+    statusBarHeight: 20,
+    navHeight: 32,
+    capsuleWidth: 87,
+    bottomSafeHeight: 0,
   },
 
   onLoad(options) {
+    this.calcNavTop();
     this.setData({
       taskCode: options.taskCode || '',
       taskName: options.taskName || '社交平台任务'
     });
+    this.updateSubmitState(['', '']);
+  },
+
+  calcNavTop() {
+    const layout = getSafeAreaLayout();
+    const menuButton = layout.menuButton || {};
+    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+    const safeArea = windowInfo.safeArea || null;
+    const screenHeight = windowInfo.screenHeight || windowInfo.windowHeight || 0;
+    const bottomSafeHeight = safeArea && screenHeight ? Math.max(screenHeight - safeArea.bottom, 0) : 0;
+
+    this.setData({
+      statusBarHeight: menuButton.top || layout.statusBarHeight || 20,
+      navHeight: menuButton.height || 32,
+      capsuleWidth: menuButton.width || 87,
+      bottomSafeHeight,
+    });
+  },
+
+  onBack() {
+    wx.navigateBack();
   },
 
   onInputText(e) {
     this.setData({ submissionText: e.detail.value || '' });
+  },
+
+  updateSubmitState(proofImages = this.data.proofImages) {
+    const canSubmit = Array.isArray(proofImages) && proofImages.length === 2 && proofImages.every((item) => !!item);
+    this.setData({ canSubmit });
   },
 
   onChooseImage(e) {
@@ -33,17 +66,21 @@ Page({
         const next = [...this.data.proofImages];
         next[index] = file.tempFilePath;
         this.setData({ proofImages: next });
+        this.updateSubmitState(next);
       }
     });
   },
 
   onSubmit() {
-    const { taskCode, submissionText, proofImages } = this.data;
+    const { taskCode, submissionText, proofImages, canSubmit, submitting } = this.data;
+    if (submitting) {
+      return;
+    }
     if (!taskCode) {
       wx.showToast({ title: '任务参数错误', icon: 'none' });
       return;
     }
-    if (proofImages.some((item) => !item)) {
+    if (!canSubmit || proofImages.some((item) => !item)) {
       wx.showToast({ title: '请上传两张图片', icon: 'none' });
       return;
     }

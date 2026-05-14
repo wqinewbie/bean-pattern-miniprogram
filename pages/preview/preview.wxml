@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container {{isAiStyle ? 'container--ai' : ''}}">
 
   <page-nav-bar title="图纸预览" subtitle="{{brandName}} · {{currentSize}}×{{currentSize}}" nav-top="{{navTop}}" bind:back="onBack"/>
 

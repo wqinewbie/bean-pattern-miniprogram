@@ -1,0 +1,229 @@
+var state = {
+  pinching: false,
+  confirmed: false,
+  startDistance: 0,
+  startCenterX: 0,
+  startCenterY: 0,
+  baseCanvasOffsetX: 0,
+  baseCanvasOffsetY: 0,
+  baseCanvasScale: 1,
+  baseBackgroundOffsetX: 0,
+  baseBackgroundOffsetY: 0,
+  baseBackgroundScale: 1,
+  smoothedScaleChange: 1,
+  smoothedCenterX: 0,
+  smoothedCenterY: 0,
+  finalCanvasOffsetX: 0,
+  finalCanvasOffsetY: 0,
+  finalCanvasScale: 1,
+  finalBackgroundOffsetX: 0,
+  finalBackgroundOffsetY: 0,
+  finalBackgroundScale: 1
+};
+
+var SCALE_DEADZONE = 0.018;
+var PAN_DEADZONE = 2;
+var SMOOTHING = 0.28;
+
+function toNumber(value, fallback) {
+  var n = value * 1;
+  return n !== n ? fallback : n;
+}
+
+function toBool(value) {
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function distance(a, b) {
+  var dx = b.clientX - a.clientX;
+  var dy = b.clientY - a.clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function centerX(a, b) {
+  return (a.clientX + b.clientX) / 2;
+}
+
+function centerY(a, b) {
+  return (a.clientY + b.clientY) / 2;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function applyCanvasStyle(owner, offsetX, offsetY, scale, boardInset) {
+  var layer = owner.selectComponent('#canvasLayer');
+  if (!layer) return;
+  layer.setStyle({
+    left: (offsetX - boardInset * scale) + 'px',
+    top: (offsetY - boardInset * scale) + 'px',
+    transform: 'scale(' + scale + ')',
+    transformOrigin: '0 0'
+  });
+}
+
+function applyBackgroundStyle(owner, offsetX, offsetY, scale) {
+  var layer = owner.selectComponent('#backgroundLayer');
+  if (!layer) return;
+  layer.setStyle({
+    left: offsetX + 'px',
+    top: offsetY + 'px',
+    transform: 'scale(' + scale + ')',
+    transformOrigin: '0 0'
+  });
+}
+
+function beginPinch(event, owner) {
+  var touches = event.touches || [];
+  if (touches.length < 2) return false;
+
+  var ds = event.currentTarget.dataset || {};
+  var t0 = touches[0];
+  var t1 = touches[1];
+  var cx = centerX(t0, t1);
+  var cy = centerY(t0, t1);
+
+  state.pinching = true;
+  state.confirmed = false;
+  state.startDistance = Math.max(1, distance(t0, t1));
+  state.startCenterX = cx;
+  state.startCenterY = cy;
+  state.baseCanvasOffsetX = toNumber(ds.canvasOffsetX, 0);
+  state.baseCanvasOffsetY = toNumber(ds.canvasOffsetY, 0);
+  state.baseCanvasScale = toNumber(ds.canvasScale, 1);
+  state.baseBackgroundOffsetX = toNumber(ds.backgroundOffsetX, 0);
+  state.baseBackgroundOffsetY = toNumber(ds.backgroundOffsetY, 0);
+  state.baseBackgroundScale = toNumber(ds.backgroundScale, 1);
+  state.smoothedScaleChange = 1;
+  state.smoothedCenterX = cx;
+  state.smoothedCenterY = cy;
+  state.finalCanvasOffsetX = state.baseCanvasOffsetX;
+  state.finalCanvasOffsetY = state.baseCanvasOffsetY;
+  state.finalCanvasScale = state.baseCanvasScale;
+  state.finalBackgroundOffsetX = state.baseBackgroundOffsetX;
+  state.finalBackgroundOffsetY = state.baseBackgroundOffsetY;
+  state.finalBackgroundScale = state.baseBackgroundScale;
+
+  owner.callMethod('onWxsPinchStart', {});
+  return true;
+}
+
+function touchstart(event, owner) {
+  var touches = event.touches || [];
+  if (touches.length === 2 && beginPinch(event, owner)) return;
+  owner.callMethod('handleTouchStart', event);
+}
+
+function touchmove(event, owner) {
+  var touches = event.touches || [];
+  if (!state.pinching) {
+    if (touches.length === 2 && beginPinch(event, owner)) return;
+    owner.callMethod('handleTouchMove', event);
+    return;
+  }
+
+  if (touches.length < 2) return;
+
+  var ds = event.currentTarget.dataset || {};
+  var minScale = toNumber(ds.minScale, 0.5);
+  var maxScale = toNumber(ds.maxScale, 6);
+  var boardInset = toNumber(ds.boardInset, 0);
+  var locked = toBool(ds.locked);
+  var hasBackground = toBool(ds.hasBackground);
+  var activeLayer = ds.activeLayer || 'canvas';
+  var t0 = touches[0];
+  var t1 = touches[1];
+  var rawScaleChange = distance(t0, t1) / Math.max(1, state.startDistance);
+  var rawCenterX = centerX(t0, t1);
+  var rawCenterY = centerY(t0, t1);
+  var panXRaw = rawCenterX - state.startCenterX;
+  var panYRaw = rawCenterY - state.startCenterY;
+  var panDistance = Math.sqrt(panXRaw * panXRaw + panYRaw * panYRaw);
+  var scaleDistance = Math.abs(rawScaleChange - 1);
+
+  if (!state.confirmed) {
+    if (scaleDistance < SCALE_DEADZONE && panDistance < PAN_DEADZONE) return;
+    state.confirmed = true;
+  }
+
+  state.smoothedScaleChange = state.smoothedScaleChange + (rawScaleChange - state.smoothedScaleChange) * SMOOTHING;
+  state.smoothedCenterX = state.smoothedCenterX + (rawCenterX - state.smoothedCenterX) * SMOOTHING;
+  state.smoothedCenterY = state.smoothedCenterY + (rawCenterY - state.smoothedCenterY) * SMOOTHING;
+
+  var centerXInArea = state.smoothedCenterX - toNumber(ds.areaLeft, 0);
+  var centerYInArea = state.smoothedCenterY - toNumber(ds.areaTop, 0);
+  var anchorX = state.startCenterX - toNumber(ds.areaLeft, 0);
+  var anchorY = state.startCenterY - toNumber(ds.areaTop, 0);
+  var panX = centerXInArea - anchorX;
+  var panY = centerYInArea - anchorY;
+
+  if (locked && hasBackground) {
+    var nextScale = clamp(state.baseCanvasScale * state.smoothedScaleChange, minScale, maxScale);
+    var lockRatio = state.baseCanvasScale > 0 ? state.baseBackgroundScale / state.baseCanvasScale : 1;
+    var nextBgScale = clamp(nextScale * lockRatio, minScale, maxScale);
+    var scaleChanged = Math.abs(nextScale - state.baseCanvasScale) > 0.0001;
+    var canvasRatio = nextScale / state.baseCanvasScale;
+    var bgRatio = nextBgScale / state.baseBackgroundScale;
+    var canvasX = anchorX - (anchorX - state.baseCanvasOffsetX) * canvasRatio;
+    var canvasY = anchorY - (anchorY - state.baseCanvasOffsetY) * canvasRatio;
+    var bgX = anchorX - (anchorX - state.baseBackgroundOffsetX) * bgRatio;
+    var bgY = anchorY - (anchorY - state.baseBackgroundOffsetY) * bgRatio;
+
+    state.finalCanvasScale = nextScale;
+    state.finalCanvasOffsetX = scaleChanged ? canvasX + panX : state.baseCanvasOffsetX;
+    state.finalCanvasOffsetY = scaleChanged ? canvasY + panY : state.baseCanvasOffsetY;
+    state.finalBackgroundScale = nextBgScale;
+    state.finalBackgroundOffsetX = scaleChanged ? bgX + panX : state.baseBackgroundOffsetX;
+    state.finalBackgroundOffsetY = scaleChanged ? bgY + panY : state.baseBackgroundOffsetY;
+    applyCanvasStyle(owner, state.finalCanvasOffsetX, state.finalCanvasOffsetY, state.finalCanvasScale, boardInset);
+    applyBackgroundStyle(owner, state.finalBackgroundOffsetX, state.finalBackgroundOffsetY, state.finalBackgroundScale);
+    return;
+  }
+
+  if (activeLayer === 'background' && hasBackground) {
+    var bgScale = clamp(state.baseBackgroundScale * state.smoothedScaleChange, minScale, maxScale);
+    var bgChanged = Math.abs(bgScale - state.baseBackgroundScale) > 0.0001;
+    var ratio = bgScale / state.baseBackgroundScale;
+    var offsetX = anchorX - (anchorX - state.baseBackgroundOffsetX) * ratio;
+    var offsetY = anchorY - (anchorY - state.baseBackgroundOffsetY) * ratio;
+    state.finalBackgroundScale = bgScale;
+    state.finalBackgroundOffsetX = bgChanged ? offsetX + panX : state.baseBackgroundOffsetX;
+    state.finalBackgroundOffsetY = bgChanged ? offsetY + panY : state.baseBackgroundOffsetY;
+    applyBackgroundStyle(owner, state.finalBackgroundOffsetX, state.finalBackgroundOffsetY, state.finalBackgroundScale);
+    return;
+  }
+
+  var canvasScale = clamp(state.baseCanvasScale * state.smoothedScaleChange, minScale, maxScale);
+  var changed = Math.abs(canvasScale - state.baseCanvasScale) > 0.0001;
+  var canvasScaleRatio = canvasScale / state.baseCanvasScale;
+  var nextX = anchorX - (anchorX - state.baseCanvasOffsetX) * canvasScaleRatio;
+  var nextY = anchorY - (anchorY - state.baseCanvasOffsetY) * canvasScaleRatio;
+  state.finalCanvasScale = canvasScale;
+  state.finalCanvasOffsetX = changed ? nextX + panX : state.baseCanvasOffsetX;
+  state.finalCanvasOffsetY = changed ? nextY + panY : state.baseCanvasOffsetY;
+  applyCanvasStyle(owner, state.finalCanvasOffsetX, state.finalCanvasOffsetY, state.finalCanvasScale, boardInset);
+}
+
+function touchend(event, owner) {
+  if (state.pinching) {
+    state.pinching = false;
+    owner.callMethod('onWxsPinchEnd', {
+      canvasOffsetX: state.finalCanvasOffsetX,
+      canvasOffsetY: state.finalCanvasOffsetY,
+      canvasScale: state.finalCanvasScale,
+      backgroundOffsetX: state.finalBackgroundOffsetX,
+      backgroundOffsetY: state.finalBackgroundOffsetY,
+      backgroundScale: state.finalBackgroundScale,
+      remainingTouches: (event.touches || []).length
+    });
+    return;
+  }
+  owner.callMethod('handleTouchEnd', event);
+}
+
+module.exports = {
+  touchstart: touchstart,
+  touchmove: touchmove,
+  touchend: touchend
+};

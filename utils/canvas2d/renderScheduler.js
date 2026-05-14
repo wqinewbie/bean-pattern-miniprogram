@@ -5,11 +5,10 @@
  * 1. 区分手势中/手势后渲染模式
  * 2. 自动节流合并渲染请求
  * 3. 动态 DPR 管理
- * 4. 可视区域裁剪计算
  */
 
 const GESTURE_DEBOUNCE = 120; // 手势结束后延迟重绘时间(ms)
-const MAX_PHYSICAL_SIZE = 4096; // Canvas 物理像素上限
+const MAX_PHYSICAL_SIZE = 4096; // Canvas physical pixel limit
 const MIN_DPR = 1;
 const MAX_DPR = 12;
 
@@ -96,7 +95,7 @@ class RenderScheduler {
    * @param {string} mode - 渲染模式 'low' | 'high'
    */
   getAdaptiveDpr(baseWidth, baseHeight, scale, systemDpr, mode = 'high') {
-    const qualityFactor = mode === 'high' ? 1.25 : 1.0;
+    const qualityFactor = mode === 'high' ? 1.75 : 1.0;
     const safeWidth = Math.max(1, Number(baseWidth) || 1);
     const safeHeight = Math.max(1, Number(baseHeight) || 1);
     const safeScale = Math.max(1, Number(scale) || 1);
@@ -116,52 +115,6 @@ class RenderScheduler {
     );
     
     return Math.max(MIN_DPR, finalDpr);
-  }
-
-  /**
-   * 计算可视区域（用于裁剪渲染）
-   * @param {Object} viewport - 视口信息
-   * @param {number} gridSize - 网格尺寸
-   */
-  getVisibleRange(viewport, gridSize) {
-    const {
-      canvasWidth,
-      canvasHeight,
-      canvasOffsetX,
-      canvasOffsetY,
-      canvasScale,
-      areaWidth,
-      areaHeight
-    } = viewport;
-
-    const cellSize = canvasWidth / gridSize;
-    const scaledCellSize = cellSize * canvasScale;
-
-    // 计算可见区域在画布逻辑坐标中的范围
-    const visibleLeft = Math.max(0, -canvasOffsetX);
-    const visibleTop = Math.max(0, -canvasOffsetY);
-    const visibleRight = Math.min(
-      canvasWidth * canvasScale,
-      areaWidth - canvasOffsetX
-    );
-    const visibleBottom = Math.min(
-      canvasHeight * canvasScale,
-      areaHeight - canvasOffsetY
-    );
-
-    // 转换为格子索引（扩展1格避免边缘闪烁）
-    const minCol = Math.max(0, Math.floor(visibleLeft / scaledCellSize) - 1);
-    const minRow = Math.max(0, Math.floor(visibleTop / scaledCellSize) - 1);
-    const maxCol = Math.min(gridSize - 1, Math.ceil(visibleRight / scaledCellSize) + 1);
-    const maxRow = Math.min(gridSize - 1, Math.ceil(visibleBottom / scaledCellSize) + 1);
-
-    return {
-      minRow,
-      maxRow,
-      minCol,
-      maxCol,
-      isFullView: minRow === 0 && maxRow === gridSize - 1 && minCol === 0 && maxCol === gridSize - 1
-    };
   }
 
   /**

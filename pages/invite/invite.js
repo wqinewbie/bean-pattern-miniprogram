@@ -1,12 +1,17 @@
 const request = require('../../utils/request')
+const { getSafeAreaLayout } = require('../../utils/safe-area')
 
 Page({
   data: {
     inviteCode: '',
-    inputCode: ''
+    inputCode: '',
+    statusBarHeight: 20,
+    navHeight: 32,
+    capsuleWidth: 87
   },
 
   onLoad() {
+    this.calcNavTop()
     this.setData({
       inputCode: wx.getStorageSync('pendingInviteCode') || ''
     })
@@ -19,6 +24,20 @@ Page({
       title: '来和我一起玩拼豆，输入邀请码可解锁邀请任务进度',
       path: `/pages/home/home?inviteCode=${encodeURIComponent(code)}`
     }
+  },
+
+  calcNavTop() {
+    const layout = getSafeAreaLayout()
+    const menuButton = layout.menuButton || {}
+    this.setData({
+      statusBarHeight: menuButton.top || layout.statusBarHeight || 20,
+      navHeight: menuButton.height || 32,
+      capsuleWidth: menuButton.width || 87
+    })
+  },
+
+  onBack() {
+    wx.navigateBack()
   },
 
   loadInviteCode() {
@@ -41,8 +60,18 @@ Page({
       wx.showToast({ title: '请输入邀请码', icon: 'none' })
       return
     }
-    wx.setStorageSync('pendingInviteCode', code)
-    wx.showToast({ title: '已保存，下次登录生效', icon: 'success' })
+    wx.showLoading({ title: '绑定中...', mask: true })
+    request.post('/invite/bind', { inviteCode: code })
+      .then(() => {
+        wx.removeStorageSync('pendingInviteCode')
+        wx.hideLoading()
+        wx.showToast({ title: '绑定成功', icon: 'success' })
+        this.setData({ inputCode: '' })
+      })
+      .catch((err) => {
+        wx.hideLoading()
+        wx.showToast({ title: err.message || '绑定失败', icon: 'none' })
+      })
   },
 
   onCopyCode() {

@@ -39,7 +39,7 @@
     </view>
     <view class="stat-divider"></view>
     <view class="stat-item" bindtap="onShowGiftPanel">
-      <text class="stat-num">{{gifts.length}}</text>
+      <text class="stat-num">{{availableGiftCount}}</text>
       <view class="stat-label-row">
         <image class="stat-icon" src="/assets/icons/lucide-gift-red.svg" mode="aspectFit"/>
         <text class="stat-label">礼品包</text>
@@ -449,11 +449,7 @@
       <view wx:for="{{tasks}}" wx:key="id" class="task-item">
         <view class="task-info">
           <text class="task-name">{{item.taskName}}</text>
-          <text class="task-desc">{{item.description}}</text>
           <text class="task-reward">{{item.rewardText}}</text>
-        </view>
-        <view class="task-progress">
-          <text class="progress-text">{{item.progressDisplay || item.progressText || ((item.currentCount || 0) + '/' + (item.targetCount || 1))}}</text>
         </view>
         <view wx:if="{{item.status === 2}}" class="task-done-btn">已完成</view>
         <view wx:elif="{{item.status === 1}}" class="task-claim-btn" bindtap="onDoTask" data-task="{{item}}">{{item.actionText || '领取'}}</view>
@@ -482,7 +478,7 @@
           </view>
           <text class="settings-row-desc">非会员默认开启图纸水印</text>
         </view>
-        <switch class="settings-switch" checked="{{watermarkEnabled}}" bindchange="onWatermarkChange" color="#4CAF50"/>
+        <switch class="settings-switch" checked="{{watermarkEnabled}}" disabled="{{!isVip}}" bindchange="onWatermarkChange" color="#4CAF50"/>
       </view>
 
       <!-- 自定义水印 -->

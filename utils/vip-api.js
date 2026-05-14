@@ -28,7 +28,7 @@ function getVipPackages() {
  * 获取次卡套餐列表
  */
 function getCardPackages() {
-  return request.get('/card/packages');
+  return request.get('/vip/card-packages');
 }
 
 /**
@@ -52,7 +52,7 @@ function getVipInfo() {
  * @param {string} packageCode - 套餐代码：month/quarter/year
  */
 function purchaseVip(packageCode) {
-  return request.post('/vip/purchase', { packageCode });
+  return request.post('/orders/vip', { packageCode });
 }
 
 /**
@@ -69,7 +69,7 @@ function cancelAutoRenew() {
  * @param {string} packageCode - 套餐代码：c10/c30/c100
  */
 function purchaseCard(packageCode) {
-  return request.post('/card/purchase', { packageCode });
+  return request.post('/orders/card', { packageCode });
 }
 
 // ==================== 订单相关 ====================
@@ -99,7 +99,7 @@ function getOrderDetail(orderNo) {
  * @param {string} orderNo - 订单号
  */
 function cancelOrder(orderNo) {
-  return request.post('/orders/cancel', { orderNo });
+  return request.post(`/orders/${orderNo}/cancel`);
 }
 
 /**

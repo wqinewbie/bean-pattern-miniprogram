@@ -1,1 +1,9 @@
-<canvas id="{{canvasId}}" type="2d" class="bead-canvas2d" />
+<canvas
+  id="{{canvasId}}"
+  type="2d"
+  class="bead-canvas2d"
+  bindtouchstart="onTouchStart"
+  bindtouchmove="onTouchMove"
+  bindtouchend="onTouchEnd"
+  bindtouchcancel="onTouchCancel"
+/>

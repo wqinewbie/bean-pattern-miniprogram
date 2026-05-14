@@ -570,13 +570,23 @@ Page({
     if (hasRgbData) activeTab = 'result';
     else if (hasPatternData || hasMappedData) activeTab = 'pattern';
 
+    const memSourceType = data.sourceType || 'LOCAL';
+    const memSourceTypeMap = {
+      'LOCAL': '📷 图片转图纸',
+      'AI': '🤖 AI生成',
+      'DRAW': '🎨 画板',
+      'BOX': '📦 图纸箱',
+      'HISTORY': '⏰ 时光机',
+      'DRAFT': '📝 草稿箱'
+    };
+
     this._applyResultData({
       meta: {
         boxId: data.boxId || null,
         historyId: data.historyId || null,
         draftId: data.draftId || null,
-        sourceType: data.sourceType || 'LOCAL',
-        sourceTypeTag: '📷 图片转图纸',
+        sourceType: memSourceType,
+        sourceTypeTag: memSourceTypeMap[memSourceType] || memSourceTypeMap['LOCAL'],
         mirrorOn: !!data.mirrorOn
       },
       core: {

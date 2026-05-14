@@ -1,0 +1,35 @@
+<view class="standalone-page">
+  <view class="sub-header" style="padding-top: {{statusBarHeight}}px; min-height: {{navHeight}}px;">
+    <view class="sub-back" bindtap="onBack">←</view>
+    <view class="sub-title-wrap">
+      <text class="sub-title">帮助中心</text>
+    </view>
+    <view class="sub-action sub-add--hidden">{{''}}</view>
+  </view>
+
+  <scroll-view scroll-y class="sub-scroll">
+    <view class="help-page">
+      <view class="help-section">
+        <view class="help-section-title-row">
+          <view class="help-section-bar"></view>
+          <text class="help-section-title">常见问题</text>
+        </view>
+        <view class="help-faq-list">
+          <view wx:for="{{helpFaqs}}" wx:key="question" class="help-faq-item">
+            <view class="help-faq-header">
+              <text class="help-faq-question">{{item.question}}</text>
+              <text class="help-faq-arrow">›</text>
+            </view>
+            <text class="help-faq-answer">{{item.answer}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="help-contact-card">
+        <text class="help-contact-title">还有其他问题？</text>
+        <text class="help-contact-desc">我们的客服团队随时为您服务</text>
+        <view class="help-contact-btn" bindtap="onContactService">联系在线客服</view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

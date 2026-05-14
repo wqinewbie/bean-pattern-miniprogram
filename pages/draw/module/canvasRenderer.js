@@ -1,14 +1,29 @@
-const { drawBoard, drawPixel } = require('../../../utils/canvas2d/renderers/boardRenderer');
+const {
+  drawBoard,
+  drawPixel,
+  drawGridLineRects,
+  drawCodeLayer,
+  drawCheckerboard,
+  drawCheckerCell,
+  drawCoordinateFrame
+} = require('../../../utils/canvas2d/renderers/boardRenderer');
 
 class CanvasRenderer {
   constructor(options = {}) {
-    this._renderScheduler = options.renderScheduler || null;
     this._getColorCodeMap = options.getColorCodeMap || (() => ({}));
-    this._getViewport = options.getViewport || (() => null);
     this._getState = options.getState || (() => ({}));
+    this._getPixelColor = options.getPixelColor || null;
+    this._getPixelColorByOffset = options.getPixelColorByOffset || null;
     this._dirtyCells = new Set();
     this._codeLayerDirty = true;
     this._isLowQualityMode = false;
+    this._gridCache = null;
+    this._gridCacheKey = '';
+    this._codeCache = null;
+    this._codeCacheKey = '';
+    this._pixelCache = null;
+    this._pixelCacheKey = '';
+    this._pixelLayerDirty = true;
   }
 
   markDirty(row, col) {
@@ -26,36 +41,280 @@ class CanvasRenderer {
     this._codeLayerDirty = true;
   }
 
+  invalidatePixelLayer() {
+    this._pixelLayerDirty = true;
+    this._codeLayerDirty = true;
+  }
+
   setLowQualityMode(enabled) {
     this._isLowQualityMode = !!enabled;
   }
 
-  _renderLowQuality(ctx, gridData, state) {
+  _createCanvas(width, height) {
+    if (typeof wx !== 'undefined' && wx.createOffscreenCanvas) {
+      return wx.createOffscreenCanvas({ type: '2d', width, height });
+    }
+    if (typeof OffscreenCanvas !== 'undefined') {
+      return new OffscreenCanvas(width, height);
+    }
+    return null;
+  }
+
+  _getRenderDpr(state) {
+    return Math.max(Number(state.renderDpr || state.dpr || 1) || 1, 1);
+  }
+
+  _prepareCacheCanvas(canvas, width, height, dpr) {
+    const backingWidth = Math.max(1, Math.ceil(width * dpr));
+    const backingHeight = Math.max(1, Math.ceil(height * dpr));
+    canvas.width = backingWidth;
+    canvas.height = backingHeight;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    if (typeof ctx.setTransform === 'function') {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    } else {
+      ctx.scale(dpr, dpr);
+    }
+
+    return ctx;
+  }
+
+  _drawCacheImage(ctx, cache, state, smooth = false) {
+    if (!ctx || !cache) return;
+    const prevSmoothing = ctx.imageSmoothingEnabled;
+    const prevQuality = ctx.imageSmoothingQuality;
+    ctx.imageSmoothingEnabled = !!smooth;
+    if (smooth) ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(cache, 0, 0, state.boardCanvasWidth || state.canvasWidth, state.boardCanvasHeight || state.canvasHeight);
+    ctx.imageSmoothingEnabled = prevSmoothing;
+    ctx.imageSmoothingQuality = prevQuality;
+  }
+
+  _getCellColor(row, col, gridSize) {
+    if (this._getPixelColorByOffset && gridSize) {
+      return this._getPixelColorByOffset(row * gridSize + col);
+    }
+    return this._getPixelColor ? this._getPixelColor(row, col) : null;
+  }
+
+  _shouldRenderCodeLayer(state) {
+    if (state.renderCodes === false) return false;
+    const width = Number(state.canvasWidth) || 0;
+    const gridSize = Number(state.gridSize) || 0;
+    if (!width || !gridSize) return false;
+    const cellSize = width / gridSize;
+    const visualCell = cellSize * Math.max(Number(state.canvasScale) || 1, 1);
+    return visualCell >= 20;
+  }
+
+  _getGridCache(ctx, state) {
+    const width = Number(state.canvasWidth) || 0;
+    const height = Number(state.canvasHeight) || 0;
+    const boardWidth = Number(state.boardCanvasWidth) || width;
+    const boardHeight = Number(state.boardCanvasHeight) || height;
+    const boardInset = Number(state.boardInset) || 0;
+    const gridSize = Number(state.gridSize) || 0;
+    const viewScale = Number(state.canvasScale) || 1;
+    const dpr = this._getRenderDpr(state);
+    const cellSize = gridSize ? width / gridSize : 0;
+
+    if (!state.showGrid || !width || !height || !gridSize) return null;
+
+    const cacheKey = [width, height, boardWidth, boardHeight, boardInset, gridSize, viewScale.toFixed(4), dpr.toFixed(4)].join(':');
+    if (this._gridCache && this._gridCacheKey === cacheKey) {
+      return this._gridCache;
+    }
+
+    const canvas = this._createCanvas(boardWidth, boardHeight);
+    if (!canvas) return null;
+
+    const gridCtx = this._prepareCacheCanvas(canvas, boardWidth, boardHeight, dpr);
+    if (!gridCtx) return null;
+
+    gridCtx.clearRect(0, 0, boardWidth, boardHeight);
+    gridCtx.save();
+    gridCtx.translate(boardInset, boardInset);
+    drawGridLineRects(gridCtx, width, height, gridSize, cellSize, viewScale, dpr);
+    gridCtx.restore();
+    this._gridCache = canvas;
+    this._gridCacheKey = cacheKey;
+    return canvas;
+  }
+
+  _getCodeCache(ctx, state) {
+    const width = Number(state.canvasWidth) || 0;
+    const height = Number(state.canvasHeight) || 0;
+    const gridSize = Number(state.gridSize) || 0;
+    const viewScale = Number(state.canvasScale) || 1;
+    const dpr = this._getRenderDpr(state);
+    if (!this._shouldRenderCodeLayer(state)) return null;
+
+    const colorCodeMap = this._getColorCodeMap();
+    const colorCodeKey = JSON.stringify(colorCodeMap || {});
+    const boardWidth = Number(state.boardCanvasWidth) || width;
+    const boardHeight = Number(state.boardCanvasHeight) || height;
+    const boardInset = Number(state.boardInset) || 0;
+    const cacheKey = [width, height, boardWidth, boardHeight, boardInset, gridSize, viewScale.toFixed(4), dpr.toFixed(4), colorCodeKey].join(':');
+
+    if (!width || !height || !gridSize || !colorCodeMap) return null;
+    if (!this._codeLayerDirty && this._codeCache && this._codeCacheKey === cacheKey) {
+      return this._codeCache;
+    }
+
+    const canvas = this._createCanvas(boardWidth, boardHeight);
+    if (!canvas) return null;
+
+    const codeCtx = this._prepareCacheCanvas(canvas, boardWidth, boardHeight, dpr);
+    if (!codeCtx) return null;
+
+    codeCtx.clearRect(0, 0, boardWidth, boardHeight);
+    codeCtx.save();
+    codeCtx.translate(boardInset, boardInset);
+    drawCodeLayer(codeCtx, {
+      width,
+      gridSize,
+      viewScale,
+      colorCodeMap,
+      getCellColor: (row, col) => this._getCellColor(row, col, gridSize)
+    });
+    codeCtx.restore();
+
+    this._codeCache = canvas;
+    this._codeCacheKey = cacheKey;
+    this._codeLayerDirty = false;
+    return canvas;
+  }
+
+  _getPixelCache(state) {
+    const width = Number(state.canvasWidth) || 0;
+    const height = Number(state.canvasHeight) || 0;
+    const boardWidth = Number(state.boardCanvasWidth) || width;
+    const boardHeight = Number(state.boardCanvasHeight) || height;
+    const gridSize = Number(state.gridSize) || 0;
+    const hasBackground = !!state.backgroundImage;
+    const dpr = this._getRenderDpr(state);
+    const viewScale = Number(state.canvasScale) || 1;
+    const cacheKey = [width, height, boardWidth, boardHeight, gridSize, hasBackground ? 1 : 0, viewScale.toFixed(4), dpr.toFixed(4)].join(':');
+
+    if (!width || !height || !gridSize) return null;
+
+    if (!this._pixelCache || this._pixelCacheKey !== cacheKey) {
+      const canvas = this._createCanvas(width, height);
+      if (!canvas) return null;
+      this._pixelCache = canvas;
+      this._pixelCacheKey = cacheKey;
+      this._pixelLayerDirty = true;
+    }
+
+    if (this._pixelLayerDirty) {
+      this._rebuildPixelCache(state);
+    }
+
+    return this._pixelCache;
+  }
+
+  _rebuildPixelCache(state) {
+    if (!this._pixelCache) return;
+
+    const width = Number(state.canvasWidth) || 0;
+    const height = Number(state.canvasHeight) || 0;
+    const boardWidth = Number(state.boardCanvasWidth) || width;
+    const boardHeight = Number(state.boardCanvasHeight) || height;
+    const boardInset = Number(state.boardInset) || 0;
+    const gridSize = Number(state.gridSize) || 0;
+    const dpr = this._getRenderDpr(state);
+    const ctx = this._prepareCacheCanvas(this._pixelCache, boardWidth, boardHeight, dpr);
+    if (!ctx || !width || !height || !gridSize) return;
+
+    const cellSize = width / gridSize;
+    ctx.clearRect(0, 0, boardWidth, boardHeight);
+    drawCoordinateFrame(ctx, {
+      width,
+      height,
+      gridSize,
+      inset: boardInset,
+      viewScale: state.canvasScale || 1,
+      dpr,
+      showLabels: true
+    });
+    if (!state.backgroundImage) {
+      drawCheckerboard(ctx, width, height, gridSize, boardInset, boardInset);
+    }
+
+    for (let row = 0; row < gridSize; row++) {
+      for (let col = 0; col < gridSize; col++) {
+        const color = this._getCellColor(row, col, gridSize);
+        if (color === null || color === undefined || (state.backgroundImage && color === '#FFFFFF')) continue;
+        ctx.fillStyle = color;
+        ctx.fillRect(boardInset + col * cellSize, boardInset + row * cellSize, cellSize, cellSize);
+      }
+    }
+
+    this._pixelLayerDirty = false;
+  }
+
+  _updatePixelCacheCells(state, cells) {
+    const cache = this._getPixelCache(state);
+    if (!cache || !cells || !cells.size) return false;
+
+    const ctx = cache.getContext('2d');
+    const width = Number(state.canvasWidth) || 0;
+    const gridSize = Number(state.gridSize) || 0;
+    const boardInset = Number(state.boardInset) || 0;
+    if (!ctx || !width || !gridSize) return false;
+
+    const cellSize = width / gridSize;
+    cells.forEach((key) => {
+      const [rowStr, colStr] = key.split(',');
+      const row = parseInt(rowStr, 10);
+      const col = parseInt(colStr, 10);
+      if (Number.isNaN(row) || Number.isNaN(col)) return;
+
+      const x = boardInset + col * cellSize;
+      const y = boardInset + row * cellSize;
+      ctx.clearRect(x, y, cellSize, cellSize);
+      if (!state.backgroundImage) {
+        drawCheckerCell(ctx, x, y, cellSize);
+      }
+
+      const color = this._getCellColor(row, col, gridSize);
+      if (color === null || color === undefined || (state.backgroundImage && color === '#FFFFFF')) return;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, cellSize, cellSize);
+    });
+
+    return true;
+  }
+
+  _renderLowQuality(ctx, gridData = null, state) {
     const { canvasWidth, canvasHeight, gridSize } = state;
-    if (!canvasWidth || !canvasHeight || !gridSize || !Array.isArray(gridData)) return;
+    if (!canvasWidth || !canvasHeight || !gridSize || (!this._getPixelColor && !Array.isArray(gridData))) return;
+    const boardWidth = Number(state.boardCanvasWidth) || canvasWidth;
+    const boardHeight = Number(state.boardCanvasHeight) || canvasHeight;
+    const boardInset = Number(state.boardInset) || 0;
 
     let startRow = 0;
     let endRow = gridSize;
     let startCol = 0;
     let endCol = gridSize;
 
-    const viewport = this._getViewport ? this._getViewport() : null;
-    if (this._renderScheduler && viewport) {
-      const visibleRange = this._renderScheduler.getVisibleRange(viewport, gridSize);
-      if (visibleRange && !visibleRange.isFullView) {
-        startRow = Math.max(0, visibleRange.minRow);
-        endRow = Math.min(gridSize, visibleRange.maxRow + 1);
-        startCol = Math.max(0, visibleRange.minCol);
-        endCol = Math.min(gridSize, visibleRange.maxCol + 1);
-      }
-    }
-
     const cellSize = canvasWidth / gridSize;
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    ctx.clearRect(0, 0, boardWidth, boardHeight);
+    drawCoordinateFrame(ctx, {
+      width: canvasWidth,
+      height: canvasHeight,
+      gridSize,
+      inset: boardInset,
+      viewScale: state.canvasScale || 1,
+      dpr: state.renderDpr || state.dpr || 1,
+      showLabels: true
+    });
 
     if (!state.backgroundImage) {
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+      drawCheckerboard(ctx, canvasWidth, canvasHeight, gridSize, boardInset, boardInset);
     }
 
     for (let row = startRow; row < endRow; row += 2) {
@@ -66,8 +325,8 @@ class CanvasRenderer {
             const r = row + dr;
             const c = col + dc;
             if (r >= endRow || c >= endCol) continue;
-            const color = gridData[r] ? gridData[r][c] : null;
-            if (color !== null && color !== undefined && color !== '') {
+            const color = this._getPixelColor ? this._getCellColor(r, c, gridSize) : (gridData[r] ? gridData[r][c] : null);
+            if (color !== null && color !== undefined && color !== '' && (!state.backgroundImage || color !== '#FFFFFF')) {
               dominant = color;
               break;
             }
@@ -75,44 +334,85 @@ class CanvasRenderer {
           if (dominant) break;
         }
 
-        ctx.fillStyle = dominant || '#FFFFFF';
-        ctx.fillRect(col * cellSize, row * cellSize, cellSize * 2, cellSize * 2);
+        if (dominant) {
+          ctx.fillStyle = dominant;
+          ctx.fillRect(boardInset + col * cellSize, boardInset + row * cellSize, cellSize * 2, cellSize * 2);
+        }
       }
     }
   }
 
-  renderFull(ctx, gridData) {
+  renderFull(ctx, gridData = null) {
     const state = this._getState() || {};
-    const viewport = this._getViewport ? this._getViewport() : null;
-
     if (this._isLowQualityMode) {
       this._renderLowQuality(ctx, gridData, state);
       this._dirtyCells.clear();
       return;
     }
 
-    drawBoard(ctx, {
-      width: state.canvasWidth,
-      height: state.canvasHeight,
-      gridSize: state.gridSize,
-      gridData,
-      showGrid: state.showGrid,
-      dpr: state.renderDpr || state.dpr || 1,
-      hasBackground: !!state.backgroundImage,
-      viewScale: state.canvasScale || 1,
-      colorCodeMap: this._getColorCodeMap(),
-      visibleRange: this._renderScheduler && viewport
-        ? this._renderScheduler.getVisibleRange(viewport, state.gridSize)
-        : null
-    });
+    const pixelCache = this._getPixelCache(state);
+    if (pixelCache) {
+      ctx.clearRect(0, 0, state.boardCanvasWidth || state.canvasWidth, state.boardCanvasHeight || state.canvasHeight);
+      this._drawCacheImage(ctx, pixelCache, state);
+    } else {
+      drawBoard(ctx, {
+        width: state.canvasWidth,
+        height: state.canvasHeight,
+        gridSize: state.gridSize,
+        gridData,
+        showGrid: state.showGrid,
+        dpr: state.renderDpr || state.dpr || 1,
+        hasBackground: !!state.backgroundImage,
+        viewScale: state.canvasScale || 1,
+        colorCodeMap: this._getColorCodeMap(),
+        getCellColor: this._getPixelColor,
+        skipGridLayer: true,
+        skipCodeLayer: true,
+        boardInset: state.boardInset || 0
+      });
+    }
+
+    if (this._shouldRenderCodeLayer(state)) {
+      const codeCache = this._getCodeCache(ctx, state);
+      if (codeCache) {
+        this._drawCacheImage(ctx, codeCache, state, false);
+      } else {
+        const boardInset = Number(state.boardInset) || 0;
+        ctx.save();
+        ctx.translate(boardInset, boardInset);
+        drawCodeLayer(ctx, {
+          width: state.canvasWidth,
+          gridSize: state.gridSize,
+          viewScale: state.canvasScale || 1,
+          colorCodeMap: this._getColorCodeMap(),
+          getCellColor: (row, col) => this._getCellColor(row, col, state.gridSize)
+        });
+        ctx.restore();
+      }
+    }
+
+    const gridCache = this._getGridCache(ctx, state);
+    if (gridCache) {
+      this._drawCacheImage(ctx, gridCache, state, false);
+    } else if (state.showGrid) {
+      const cellSize = state.gridSize ? state.canvasWidth / state.gridSize : 0;
+      if (cellSize) {
+        const boardInset = Number(state.boardInset) || 0;
+        ctx.save();
+        ctx.translate(boardInset, boardInset);
+        drawGridLineRects(ctx, state.canvasWidth, state.canvasHeight, state.gridSize, cellSize, state.canvasScale || 1, state.renderDpr || state.dpr || 1);
+        ctx.restore();
+      }
+    }
 
     this._dirtyCells.clear();
-    this._codeLayerDirty = false;
   }
 
-  renderDirty(ctx, gridData) {
+  renderDirty(ctx, gridData = null) {
     const state = this._getState() || {};
     if (!this._dirtyCells.size) return;
+
+    this._updatePixelCacheCells(state, this._dirtyCells);
 
     this._dirtyCells.forEach((key) => {
       const [rowStr, colStr] = key.split(',');
@@ -120,19 +420,27 @@ class CanvasRenderer {
       const col = parseInt(colStr, 10);
       if (Number.isNaN(row) || Number.isNaN(col)) return;
 
+      const color = this._getPixelColor ? this._getPixelColor(row, col) : (gridData[row] ? gridData[row][col] : null);
       drawPixel(ctx, {
         width: state.canvasWidth,
         gridSize: state.gridSize,
         row,
         col,
-        color: gridData[row] ? gridData[row][col] : null,
-        showGrid: state.showGrid,
+        color,
+        showGrid: false,
         dpr: state.renderDpr || state.dpr || 1,
         hasBackground: !!state.backgroundImage,
         viewScale: state.canvasScale || 1,
-        colorCodeMap: this._getColorCodeMap()
+        colorCodeMap: this._getColorCodeMap(),
+        getCellColor: (r, c) => this._getCellColor(r, c, state.gridSize),
+        boardInset: state.boardInset || 0
       });
     });
+
+    const gridCache = this._getGridCache(ctx, state);
+    if (gridCache) {
+      this._drawCacheImage(ctx, gridCache, state, false);
+    }
 
     this._dirtyCells.clear();
   }

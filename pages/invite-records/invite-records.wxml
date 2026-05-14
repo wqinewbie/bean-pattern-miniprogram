@@ -1,38 +1,77 @@
-<view class="page">
-  <view class="summary-card">
-    <view class="summary-item">
-      <text class="summary-value">{{registeredCount}}</text>
-      <text class="summary-label">已邀请注册</text>
+<view class="page records-page">
+  <view class="safe-area" style="height: {{statusBarHeight}}px;"></view>
+
+  <view class="custom-nav" style="height: {{navHeight}}px;">
+    <view class="nav-back" bindtap="onBack">
+      <image class="nav-back-icon" src="/assets/icons/lucide-arrow-left-brown.svg" mode="aspectFit"/>
     </view>
-    <view class="summary-divider"></view>
-    <view class="summary-item">
-      <text class="summary-value">{{paidCount}}</text>
-      <text class="summary-label">已邀请首充</text>
+    <view class="nav-title-abs">
+      <text class="nav-title">邀请记录</text>
     </view>
+    <view class="nav-right-spacer" style="width: {{capsuleWidth}}px;"></view>
   </view>
 
-  <view class="record-card">
-    <view class="record-title-row">
-      <text class="record-title">邀请记录</text>
-      <text class="record-sub">邀请码：{{inviteCode}}</text>
-    </view>
-
-    <view wx:if="{{records.length}}" class="record-list">
-      <view wx:for="{{records}}" wx:key="id" class="record-item">
-        <image wx:if="{{item.avatarUrl}}" class="avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
-        <view wx:else class="avatar avatar-ph">友</view>
-        <view class="record-main">
-          <text class="name">{{item.nickName}}</text>
-          <text class="time">注册时间：{{item.createdAt}}</text>
-          <text wx:if="{{item.firstPaidAt}}" class="time">首充时间：{{item.firstPaidAt}}</text>
-        </view>
-        <text class="status {{item.status === 2 ? 'status-paid' : 'status-registered'}}">{{item.status === 2 ? '已首充' : '已注册'}}</text>
+  <view class="page-body">
+    <view class="hero-card warm-panel">
+      <view class="hero-badge">邀请成果看板</view>
+      <text class="hero-title">邀请记录</text>
+      <text class="hero-desc">查看你已邀请的好友与首充进度，任务完成情况会在这里持续更新。</text>
+      <view class="hero-code-box">
+        <text class="hero-code-label">当前邀请码</text>
+        <text class="hero-code-value">{{inviteCode || '暂无邀请码'}}</text>
       </view>
     </view>
 
-    <view wx:else class="empty">
-      <text class="empty-title">还没有邀请记录</text>
-      <text class="empty-desc">快去分享邀请码，邀请好友一起加入吧</text>
+    <view class="summary-card section-card">
+      <view class="section-head section-head--compact">
+        <view>
+          <text class="section-title">邀请概览</text>
+          <text class="section-subtitle">注册与首充数据会随着好友完成操作自动累计</text>
+        </view>
+        <view class="section-icon">📊</view>
+      </view>
+
+      <view class="summary-grid">
+        <view class="summary-item summary-item--gold">
+          <text class="summary-value">{{registeredCount}}</text>
+          <text class="summary-label">已邀请注册</text>
+        </view>
+        <view class="summary-item summary-item--green">
+          <text class="summary-value">{{paidCount}}</text>
+          <text class="summary-label">已邀请首充</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section-card record-card">
+      <view class="section-head section-head--compact">
+        <view>
+          <text class="section-title">好友记录</text>
+          <text class="section-subtitle">每位好友的注册与首充状态都会展示在这里</text>
+        </view>
+        <view class="section-icon section-icon--orange">👥</view>
+      </view>
+
+      <view wx:if="{{records.length}}" class="record-list">
+        <view wx:for="{{records}}" wx:key="id" class="record-item">
+          <image wx:if="{{item.avatarUrl}}" class="avatar" src="{{item.avatarUrl}}" mode="aspectFill" />
+          <view wx:else class="avatar avatar-ph">友</view>
+          <view class="record-main">
+            <view class="record-top-row">
+              <text class="name">{{item.nickName}}</text>
+              <text class="status {{item.status === 2 ? 'status-paid' : 'status-registered'}}">{{item.status === 2 ? '已首充' : '已注册'}}</text>
+            </view>
+            <text class="time">注册时间：{{item.createdAt}}</text>
+            <text wx:if="{{item.firstPaidAt}}" class="time">首充时间：{{item.firstPaidAt}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view wx:else class="empty-state">
+        <view class="empty-illustration">✨</view>
+        <text class="empty-title">还没有邀请记录</text>
+        <text class="empty-desc">快去分享邀请码，邀请好友一起加入拼豆吧。</text>
+      </view>
     </view>
   </view>
 </view>

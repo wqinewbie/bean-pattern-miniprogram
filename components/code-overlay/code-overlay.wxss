@@ -21,3 +21,17 @@
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
+
+.code-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}

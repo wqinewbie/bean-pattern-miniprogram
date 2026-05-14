@@ -1,4 +1,4 @@
-﻿const request = require('../../utils/request');
+const request = require('../../utils/request');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const { drawPatternWithAxes } = require('../../utils/pattern-canvas');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
@@ -47,6 +47,7 @@ Page({
     appName: '',
     isVip: false,
     canCustomizeWatermark: false,
+    isAiStyle: false,
   },
 
   onLoad(options) {
@@ -141,12 +142,14 @@ Page({
       const totalBeads = parsedColorPalette.reduce((sum, c) => sum + (c.count || 0), 0);
       const renderedPatternUrl = data.renderedPatternUrl || '';
       const returnedBoxId = data.boxId ? String(data.boxId) : (this.data.boxId || null);
+      const recordSourceType = String(data.sourceType || data.source || data.type || '').toUpperCase();
+      const isAiStyle = recordSourceType.includes('AI');
       const isSaved = sourceType === 'BOX' || (!!returnedBoxId && returnedBoxId !== id);
       const canEnterFocusMode = sourceType === 'BOX' || isSaved;
       let activeTab = 'pattern';
       if (sourceType === 'DRAFT') activeTab = hasPatternData ? 'result' : 'pattern';
       else { if (hasPatternData) activeTab = 'result'; else if (originalUrl) activeTab = 'original'; }
-      this.setData({ name: data.name || '', originalUrl, currentPreviewUrl: originalUrl, currentSize: data.gridSize || 64, brandName: (data.brand || 'MARD').toUpperCase(), colorCount: data.colorCount || parsedColorPalette.length, mappedPixelData: parsedMappedPixelData, gridData: parsedGridData, colorPalette: parsedColorPalette, totalBeads, hasPatternData, hasResultData: hasPatternData, renderedPatternUrl, patternRendered: !!renderedPatternUrl, activeTab, boxId: returnedBoxId, isSaved, canEnterFocusMode, loading: false, isHydrated: true, initialLoading: hasPatternData ? true : false }, () => { if (hasPatternData && !renderedPatternUrl) setTimeout(() => this._generatePatternPreview2d(), 200); });
+      this.setData({ name: data.name || '', originalUrl, currentPreviewUrl: originalUrl, currentSize: data.gridSize || 64, brandName: (data.brand || 'MARD').toUpperCase(), colorCount: data.colorCount || parsedColorPalette.length, mappedPixelData: parsedMappedPixelData, gridData: parsedGridData, colorPalette: parsedColorPalette, totalBeads, hasPatternData, hasResultData: hasPatternData, renderedPatternUrl, patternRendered: !!renderedPatternUrl, activeTab, boxId: returnedBoxId, isSaved, canEnterFocusMode, loading: false, isHydrated: true, initialLoading: hasPatternData ? true : false, isAiStyle }, () => { if (hasPatternData && !renderedPatternUrl) setTimeout(() => this._generatePatternPreview2d(), 200); });
     }).catch((err) => {
       const message = (err && err.message) ? err.message : '加载失败';
       wx.showToast({ title: message.length > 8 ? '加载失败' : message, icon: 'none' });

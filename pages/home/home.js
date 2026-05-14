@@ -81,9 +81,31 @@ Page({
       this.openLoginModal();
     } else {
       this.closeLoginModal();
+      this.refreshUserProfile();
       popupManager.setPopupComponent(this.selectComponent('#globalPopup'));
       popupManager.checkAndShowPopup();
     }
+  },
+
+  refreshUserProfile() {
+    request.get('/user/profile')
+      .then((profile) => {
+        profile = profile || {};
+        cacheProfile(profile);
+
+        const vipExpire = profile.vipExpireAt || profile.vipExpire || '';
+        const isVip = !!(vipExpire && new Date(vipExpire) > new Date());
+        const aiQuota = Number(profile.aiQuota !== undefined ? profile.aiQuota : profile.magicCount);
+        const magicCount = Number.isNaN(aiQuota) ? 0 : aiQuota;
+
+        this.setData({
+          nickName: profile.nickName || this.data.nickName,
+          avatarUrl: profile.avatarUrl || this.data.avatarUrl,
+          isVip,
+          magicCount,
+        });
+      })
+      .catch(() => {});
   },
 
   openLoginModal() {
@@ -340,10 +362,11 @@ Page({
         if (profile.avatarUrl) wx.setStorageSync('avatarUrl', profile.avatarUrl);
         cacheProfile(profile);
 
-        const vipExpire = profile.vipExpire || '';
+        const vipExpire = profile.vipExpireAt || profile.vipExpire || '';
         if (vipExpire) wx.setStorageSync('vipExpire', vipExpire);
         const isVip = vipExpire && new Date(vipExpire) > new Date();
-        const magicCount = profile.magicCount || 0;
+        const aiQuota = Number(profile.aiQuota !== undefined ? profile.aiQuota : profile.magicCount);
+        const magicCount = Number.isNaN(aiQuota) ? 0 : aiQuota;
         wx.setStorageSync('magicCount', magicCount);
 
         this.setData({

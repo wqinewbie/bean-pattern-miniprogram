@@ -27,24 +27,6 @@ class HistoryManager {
 
     this._redoStack.length = 0; // 新操作，清除重做栈
 
-    // 合并连续的同类型操作（如笔画的多个像素变更）
-    if (record.type === 'stroke' && this._undoStack.length > 0) {
-      const last = this._undoStack[this._undoStack.length - 1];
-      if (last.type === 'stroke') {
-        // 合并 cell 变更
-        if (record.cells) {
-          for (const [key, val] of Object.entries(record.cells)) {
-            if (!last.cells[key]) {
-              last.cells[key] = val;
-            } else {
-              last.cells[key] = { old: last.cells[key].old, new: val.new };
-            }
-          }
-        }
-        return;
-      }
-    }
-
     if (record.cells instanceof Map) {
       record._cells = Object.fromEntries(record.cells);
       record.cells = undefined;

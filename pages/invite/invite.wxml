@@ -1,29 +1,85 @@
-<view class="page">
-  <view class="hero-card">
-    <text class="hero-title">邀请好友一起玩拼豆</text>
-    <text class="hero-desc">好友使用你的邀请码登录后，可参与邀请注册与邀请充值任务。</text>
-  </view>
+<view class="page invite-page">
+  <view class="safe-area" style="height: {{statusBarHeight}}px;"></view>
 
-  <view class="code-card">
-    <text class="label">我的邀请码</text>
-    <text class="code">{{inviteCode || '加载中...'}}</text>
-    <view class="btn-row">
-      <button class="ghost-btn" bindtap="onCopyCode">复制邀请码</button>
-      <button class="primary-btn" bindtap="onShareInvite">立即邀请</button>
+  <view class="custom-nav" style="height: {{navHeight}}px;">
+    <view class="nav-back" bindtap="onBack">
+      <image class="nav-back-icon" src="/assets/icons/lucide-arrow-left-brown.svg" mode="aspectFit"/>
     </view>
-    <button class="ghost-btn full" bindtap="onOpenRecords">查看邀请记录</button>
+    <view class="nav-title-abs">
+      <text class="nav-title">我的邀请码</text>
+    </view>
+    <view class="nav-right-spacer" style="width: {{capsuleWidth}}px;"></view>
   </view>
 
-  <view class="manual-card">
-    <text class="label">手动填写邀请码</text>
-    <input class="input" placeholder="请输入好友邀请码" value="{{inputCode}}" bindinput="onInputCode" />
-    <button class="ghost-btn full" bindtap="onSaveInputCode">保存并下次登录生效</button>
-  </view>
+  <view class="page-body">
+    <view class="hero-card warm-panel">
+      <view class="hero-badge">好友同行计划</view>
+      <text class="hero-title">邀请好友一起玩拼豆</text>
+      <text class="hero-desc">好友使用你的邀请码登录后，可参与邀请注册与邀请充值任务，一起解锁更多奖励。</text>
+    </view>
 
-  <view class="tips-card">
-    <text class="tips-title">邀请说明</text>
-    <text class="tip">1. 好友首次登录前填写邀请码才会绑定邀请关系。</text>
-    <text class="tip">2. 邀请注册任务统计成功注册的好友人数。</text>
-    <text class="tip">3. 邀请充值任务统计好友首次支付成功人数。</text>
+    <view class="section-card code-card">
+      <view class="section-head">
+        <view>
+          <text class="section-title">分享邀请码</text>
+          <text class="section-subtitle">复制或分享给好友，绑定后即可统计邀请进度</text>
+        </view>
+        <view class="section-icon">✨</view>
+      </view>
+
+      <view class="invite-code-box">
+        <text class="invite-code-label">我的邀请码</text>
+        <text class="invite-code-value">{{inviteCode || '加载中...'}}</text>
+      </view>
+
+      <view class="btn-row">
+        <button class="ghost-btn" bindtap="onCopyCode">复制邀请码</button>
+        <button class="primary-btn" bindtap="onShareInvite">立即邀请</button>
+      </view>
+
+      <button class="outline-btn full-btn" bindtap="onOpenRecords">查看邀请记录</button>
+    </view>
+
+    <view class="section-card manual-card">
+      <view class="section-head section-head--compact">
+        <view>
+          <text class="section-title">手动填写邀请码</text>
+          <text class="section-subtitle">如果你是被邀请用户，未绑定过邀请关系时可补填邀请码</text>
+        </view>
+        <view class="section-icon section-icon--purple">🎫</view>
+      </view>
+
+      <view class="input-panel">
+        <text class="input-label">好友邀请码</text>
+        <input class="input" maxlength="12" placeholder="请输入好友邀请码" value="{{inputCode}}" bindinput="onInputCode" />
+      </view>
+
+      <button class="ghost-btn full-btn" bindtap="onSaveInputCode">立即绑定邀请码</button>
+    </view>
+
+    <view class="section-card tips-card">
+      <view class="section-head section-head--compact">
+        <view>
+          <text class="section-title">邀请说明</text>
+          <text class="section-subtitle">以下规则会影响任务统计与奖励发放</text>
+        </view>
+        <view class="section-icon section-icon--orange">📌</view>
+      </view>
+
+      <view class="tips-list">
+        <view class="tip-item">
+          <view class="tip-dot"></view>
+          <text class="tip-text">未绑定过邀请关系的用户，可通过好友分享链接或手动填写邀请码完成绑定。</text>
+        </view>
+        <view class="tip-item">
+          <view class="tip-dot"></view>
+          <text class="tip-text">邀请注册任务统计成功注册的好友人数。</text>
+        </view>
+        <view class="tip-item">
+          <view class="tip-dot"></view>
+          <text class="tip-text">邀请充值任务统计好友首次支付成功人数。</text>
+        </view>
+      </view>
+    </view>
   </view>
 </view>

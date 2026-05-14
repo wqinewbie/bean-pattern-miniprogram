@@ -1,8 +1,8 @@
 <view class="code-overlay-container" style="width: {{width}}px; height: {{height}}px; visibility: {{_visible}};">
-  <canvas 
-    type="2d" 
-    id="codeCanvas"
-    class="code-canvas"
-    style="width: {{width}}px; height: {{height}}px;"
-  ></canvas>
+  <text
+    wx:for="{{labels}}"
+    wx:key="key"
+    class="code-label"
+    style="{{item.style}}"
+  >{{item.code}}</text>
 </view>

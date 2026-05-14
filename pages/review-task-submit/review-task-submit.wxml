@@ -1,30 +1,71 @@
-<view class="page">
-  <view class="header">
-    <text class="title">任务提交</text>
-    <text class="desc">请上传两张截图作为审核凭证</text>
+<view class="page review-page">
+  <view class="safe-area" style="height: {{statusBarHeight}}px;"></view>
+
+  <view class="custom-nav" style="height: {{navHeight}}px;">
+    <view class="nav-back" bindtap="onBack">
+      <image class="nav-back-icon" src="/assets/icons/lucide-arrow-left-brown.svg" mode="aspectFit"/>
+    </view>
+    <view class="nav-title-wrap">
+      <text class="nav-title">提交审核</text>
+    </view>
+    <view class="nav-right-spacer" style="width: {{capsuleWidth}}px;"></view>
   </view>
 
-  <view class="card">
-    <view class="field">
-      <text class="label">任务名称</text>
-      <text class="value">{{taskName}}</text>
-    </view>
+  <scroll-view scroll-y class="page-scroll">
+    <view class="page-body">
+      <view class="top-banner">
+        <view class="top-badge">审核凭证提交</view>
+        <text class="top-title">完成任务后上传截图</text>
+        <text class="top-desc">请按要求上传 2 张清晰截图，方便我们尽快完成审核。</text>
+      </view>
 
-    <view class="field">
-      <text class="label">补充说明</text>
-      <textarea class="textarea" placeholder="可填写平台、帖子标题、发布时间等信息" value="{{submissionText}}" bindinput="onInputText" />
-    </view>
+      <view class="section-card upload-card">
+        <view class="section-head section-head--compact">
+          <view>
+            <text class="section-title">截图凭证</text>
+            <text class="section-subtitle">共需上传 2 张，建议包含发布内容和结果页面</text>
+          </view>
+          <view class="section-icon section-icon--orange">📷</view>
+        </view>
 
-    <view class="field">
-      <text class="label">截图凭证（2张）</text>
-      <view class="upload-list">
-        <view class="upload-box" wx:for="{{proofImages}}" wx:key="index" bindtap="onChooseImage" data-index="{{index}}">
-          <image wx:if="{{item}}" class="preview" src="{{item}}" mode="aspectFill" />
-          <text wx:else class="upload-placeholder">点击上传</text>
+        <view class="upload-grid">
+          <view class="upload-item" wx:for="{{proofImages}}" wx:key="index" bindtap="onChooseImage" data-index="{{index}}">
+            <image wx:if="{{item}}" class="upload-preview" src="{{item}}" mode="aspectFill" />
+            <view wx:else class="upload-empty">
+              <text class="upload-empty-plus">＋</text>
+              <text class="upload-empty-text">上传第{{index + 1}}张</text>
+            </view>
+            <view class="upload-tag">凭证 {{index + 1}}</view>
+            <view wx:if="{{item}}" class="upload-mask">
+              <text class="upload-mask-title">已上传</text>
+              <text class="upload-mask-desc">点击可重新选择</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="tips-box">
+          <text class="tips-title">提交前小提示</text>
+          <text class="tips-text">截图需完整、清晰，避免遮挡关键信息；若内容较多，优先上传能证明任务完成的页面。</text>
         </view>
       </view>
-    </view>
 
-    <button class="submit-btn" bindtap="onSubmit" loading="{{submitting}}">提交审核</button>
+      <view class="section-card remark-card">
+        <view class="section-head section-head--compact">
+          <view>
+            <text class="section-title">补充说明</text>
+            <text class="section-subtitle">可填写平台、帖子标题、发布时间等辅助信息</text>
+          </view>
+          <view class="section-icon section-icon--purple">💬</view>
+        </view>
+
+        <textarea class="textarea" maxlength="300" placeholder="例如：发布在小红书，标题为“豆豆拼图日常”，发布时间 20:30" value="{{submissionText}}" bindinput="onInputText" />
+      </view>
+
+      <view class="page-bottom-space"></view>
+    </view>
+  </scroll-view>
+
+  <view class="submit-bar" style="padding-bottom: calc({{bottomSafeHeight}}px + 24rpx);">
+    <button class="submit-btn {{canSubmit && !submitting ? '' : 'submit-btn--disabled'}}" bindtap="onSubmit" loading="{{submitting}}" disabled="{{!canSubmit || submitting}}">提交审核</button>
   </view>
 </view>

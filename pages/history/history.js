@@ -54,17 +54,17 @@ Page({
         loading: true
       });
     } else {
-      if (!this.data.hasMore || this.data.loadingMore) return;
+      if (!this.data.hasMore || this.data.loadingMore) return Promise.resolve();
       this.setData({ loadingMore: true });
     }
 
-    ensureProfileComplete().then((ok) => {
+    return ensureProfileComplete().then((ok) => {
       if (!ok) {
         this.setData({ loading: false, loadingMore: false });
         return;
       }
 
-      request.get('/history/list', {
+      return request.get('/history/list', {
         page: this.data.page,
         pageSize: this.data.pageSize
       })
@@ -113,8 +113,9 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadHistory(true);
-    wx.stopPullDownRefresh();
+    this.loadHistory(true).finally(() => {
+      wx.stopPullDownRefresh();
+    });
   },
 
   onItemTap(e) {

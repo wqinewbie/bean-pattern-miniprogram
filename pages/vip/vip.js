@@ -82,7 +82,7 @@ Page({
   loadVipInfo() {
     vipApi.getVipInfo()
       .then((data) => {
-        const isVip = data.isVip || false;
+        const isVip = data.isVip || data.vipLevel > 0 || false;
         const vipExpireAt = data.vipExpireAt || null;
         const aiQuota = data.aiQuota || 0;
 
@@ -244,15 +244,15 @@ Page({
       pageSize: 20
     })
       .then((data) => {
-        const newOrders = data.list || [];
-        const hasMore = newOrders.length >= 20;
+        const newOrders = Array.isArray(data) ? data : (data.list || []);
+        const hasMore = Array.isArray(data) ? newOrders.length >= 20 : !!data.hasMore;
 
         // 转换数据格式
         const formattedOrders = newOrders.map(order => ({
           id: order.id,
           orderNo: order.orderNo,
           type: this.getOrderTypeText(order.productType),
-          detail: order.productName,
+          detail: order.productName || order.planName || order.packageCode,
           validity: this.getOrderValidity(order),
           time: order.createdAt,
           amount: order.amount,
@@ -379,8 +379,30 @@ Page({
 
     vipApi.purchaseVip(selectedPackage.code)
       .then((data) => {
-        // data 包含：orderNo, payParams（微信支付参数）
-        this.callWechatPay(data.orderNo, data.payParams);
+        const orderNo = data && data.orderNo;
+        const payment = data && data.payment;
+        const payParams = (payment && payment.payParams) || data.payParams;
+        const status = (payment && payment.status) || data.status;
+        if (!orderNo) {
+          throw new Error('创建订单失败');
+        }
+        if (data.mock && status === 'PAID') {
+          this.setData({ isPaying: false });
+          wx.showToast({ title: '模拟支付成功', icon: 'success' });
+          setTimeout(() => this.loadVipInfo(), 500);
+          return;
+        }
+        if (!payParams) {
+          this.setData({ isPaying: false });
+          wx.showModal({
+            title: '订单已创建',
+            content: '当前后端尚未返回微信支付参数，请稍后在订单列表中完成支付。',
+            showCancel: false,
+            success: () => this.loadOrders(true)
+          });
+          return;
+        }
+        this.callWechatPay(orderNo, payParams);
       })
       .catch((err) => {
         this.setData({ isPaying: false });
@@ -402,8 +424,30 @@ Page({
 
     vipApi.purchaseCard(selectedPackage.code)
       .then((data) => {
-        // data 包含：orderNo, payParams（微信支付参数）
-        this.callWechatPay(data.orderNo, data.payParams);
+        const orderNo = data && data.orderNo;
+        const payment = data && data.payment;
+        const payParams = (payment && payment.payParams) || data.payParams;
+        const status = (payment && payment.status) || data.status;
+        if (!orderNo) {
+          throw new Error('创建订单失败');
+        }
+        if (data.mock && status === 'PAID') {
+          this.setData({ isPaying: false });
+          wx.showToast({ title: '模拟支付成功', icon: 'success' });
+          setTimeout(() => this.loadVipInfo(), 500);
+          return;
+        }
+        if (!payParams) {
+          this.setData({ isPaying: false });
+          wx.showModal({
+            title: '订单已创建',
+            content: '当前后端尚未返回微信支付参数，请稍后在订单列表中完成支付。',
+            showCancel: false,
+            success: () => this.loadOrders(true)
+          });
+          return;
+        }
+        this.callWechatPay(orderNo, payParams);
       })
       .catch((err) => {
         this.setData({ isPaying: false });

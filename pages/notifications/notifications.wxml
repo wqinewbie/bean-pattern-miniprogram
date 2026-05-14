@@ -1,0 +1,33 @@
+<view class="standalone-page">
+  <view class="sub-header" style="padding-top: {{statusBarHeight}}px; min-height: {{navHeight}}px;">
+    <view class="sub-back" bindtap="onBack">←</view>
+    <view class="sub-title-wrap">
+      <text class="sub-title">通知</text>
+      <text class="sub-title-badge">消息中心</text>
+    </view>
+    <view class="sub-action sub-add--hidden">{{''}}</view>
+  </view>
+
+  <scroll-view scroll-y class="sub-scroll">
+    <view wx:if="{{loading}}" class="sub-empty">加载中...</view>
+    <view wx:elif="{{notifications.length===0}}" class="notifications-empty">
+      <view class="notifications-empty-icon">🔔</view>
+      <text class="notifications-empty-title">暂无消息</text>
+    </view>
+    <view wx:else class="notifications-page">
+      <view class="notifications-list">
+        <view wx:for="{{notifications}}" wx:key="id" class="notification-card {{item.read ? '' : 'notification-card--unread'}}">
+          <view class="notification-icon notification-icon--{{item.type}}">{{item.type==='gift'?'🎁':item.type==='magic'?'🪄':'🔔'}}</view>
+          <view class="notification-content">
+            <view class="notification-title-row">
+              <text class="notification-title">{{item.title}}</text>
+              <view wx:if="{{!item.read}}" class="notification-dot"></view>
+            </view>
+            <text class="notification-text">{{item.content}}</text>
+            <text class="notification-time">{{item.time}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>
