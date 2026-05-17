@@ -1,6 +1,7 @@
 {
   "navigationStyle": "custom",
   "usingComponents": {
-    "bead-canvas2d": "/components/bead-canvas2d/index"
+    "bead-canvas2d": "/components/bead-canvas2d/index",
+    "page-nav-bar": "/components/page-nav-bar/index"
   }
 }

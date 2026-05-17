@@ -5,58 +5,10 @@
   flex-direction: column;
 }
 
-/* ─── 状态栏占位 - 使用渐变最深色 ─── */
-.status-bar-placeholder {
-  width: 100%;
-  background: #FFEBB5;
-}
-
-/* ─── Header 渐变区 ─── */
-.edit-header {
+/* ─── 导航栏渐变区 ─── */
+.edit-nav-gradient {
   background: linear-gradient(to bottom, #FFEBB5, #FFF9ED);
-  padding: 0 20rpx 48rpx;
-}
-
-.edit-nav {
-  display: flex;
-  align-items: center;
-}
-
-.edit-back {
-  width: 64rpx;
-  height: 64rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: -16rpx;
-}
-
-.edit-back-icon {
-  font-size: 56rpx;
-  color: #5D4037;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.edit-back:active {
-  transform: scale(0.95);
-}
-
-.edit-title-wrapper {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  margin-right: 48rpx;
-}
-
-.edit-title {
-  font-size: 36rpx;
-  font-weight: 800;
-  color: #5D4037;
-}
-
-.edit-nav-spacer {
-  width: 0;
+  padding-bottom: 48rpx;
 }
 
 /* ─── Content ─── */

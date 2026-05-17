@@ -56,6 +56,7 @@ Page({
     const boxId = options.boxId ? String(options.boxId) : '';
     const historyId = options.historyId ? String(options.historyId) : '';
     const draftId = options.draftId ? String(options.draftId) : '';
+    const isAi = options.isAi === '1' || options.isAi === 'true';
     let sourceType = (options.sourceType || '').toUpperCase();
     if (!sourceType) {
       if (boxId) sourceType = 'BOX';
@@ -64,7 +65,7 @@ Page({
       else sourceType = 'BOX';
     }
     const isFromBox = sourceType === 'BOX';
-    this.setData({ navTop: layout.navTop, boxId: boxId || null, historyId: historyId || null, draftId: draftId || null, sourceType, isFromBox, canEnterFocusMode: isFromBox });
+    this.setData({ navTop: layout.navTop, boxId: boxId || null, historyId: historyId || null, draftId: draftId || null, sourceType, isFromBox, canEnterFocusMode: isFromBox, isAiStyle: isAi });
     const id = boxId || historyId || draftId;
     if (!id) {
       wx.showToast({ title: '图纸不存在', icon: 'none' });
@@ -138,16 +139,16 @@ Page({
         parsedColorPalette = derived.colorPalette;
       }
       const hasPatternData = parsedGridData.length > 0 && parsedColorPalette.length > 0;
-      const originalUrl = sourceType === 'DRAFT' ? '' : (data.sourceUrl || data.coverUrl || '');
+      const recordSourceType = String(data.sourceType || data.source || data.type || '').toUpperCase();
+      const isAiStyle = recordSourceType.includes('AI');
+      const originalUrl = (sourceType === 'DRAFT' || isAiStyle) ? '' : (data.sourceUrl || data.coverUrl || '');
       const totalBeads = parsedColorPalette.reduce((sum, c) => sum + (c.count || 0), 0);
       const renderedPatternUrl = data.renderedPatternUrl || '';
       const returnedBoxId = data.boxId ? String(data.boxId) : (this.data.boxId || null);
-      const recordSourceType = String(data.sourceType || data.source || data.type || '').toUpperCase();
-      const isAiStyle = recordSourceType.includes('AI');
       const isSaved = sourceType === 'BOX' || (!!returnedBoxId && returnedBoxId !== id);
       const canEnterFocusMode = sourceType === 'BOX' || isSaved;
       let activeTab = 'pattern';
-      if (sourceType === 'DRAFT') activeTab = hasPatternData ? 'result' : 'pattern';
+      if (sourceType === 'DRAFT' || isAiStyle) activeTab = hasPatternData ? 'result' : 'pattern';
       else { if (hasPatternData) activeTab = 'result'; else if (originalUrl) activeTab = 'original'; }
       this.setData({ name: data.name || '', originalUrl, currentPreviewUrl: originalUrl, currentSize: data.gridSize || 64, brandName: (data.brand || 'MARD').toUpperCase(), colorCount: data.colorCount || parsedColorPalette.length, mappedPixelData: parsedMappedPixelData, gridData: parsedGridData, colorPalette: parsedColorPalette, totalBeads, hasPatternData, hasResultData: hasPatternData, renderedPatternUrl, patternRendered: !!renderedPatternUrl, activeTab, boxId: returnedBoxId, isSaved, canEnterFocusMode, loading: false, isHydrated: true, initialLoading: hasPatternData ? true : false, isAiStyle }, () => { if (hasPatternData && !renderedPatternUrl) setTimeout(() => this._generatePatternPreview2d(), 200); });
     }).catch((err) => {
@@ -265,6 +266,9 @@ Page({
       const newBoxId = box && box.id ? String(box.id) : null;
       this.setData({ isSaved: true, boxId: newBoxId, canEnterFocusMode: true, showNameModal: false, savingToBox: false });
       wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+      const pages = getCurrentPages();
+      const prevPage = pages.length > 1 ? pages[pages.length - 2] : null;
+      if (prevPage) prevPage._needsRefresh = true;
     }).catch(() => { this.setData({ savingToBox: false }); wx.showToast({ title: '保存失败，请重试', icon: 'none' }); });
   },
 

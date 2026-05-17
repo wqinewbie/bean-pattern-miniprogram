@@ -11,10 +11,20 @@ Page({
     // 活动信息
     title: '',
     coverImage: '',
-    contentHtml: '',
     buttonText: '立即参与',
     buttonAction: 'CLAIM',
     buttonUrl: '',
+
+    // 组件化配置
+    sections: [],
+
+    // 倒计时
+    countdown: {
+      days: '00',
+      hours: '00',
+      minutes: '00',
+      seconds: '00'
+    },
 
     // 状态
     canParticipate: true,
@@ -22,9 +32,9 @@ Page({
     remainQuota: 0,
     totalQuota: 0,
 
-    // 安全区域
-    statusBarHeight: 44
   },
+
+  countdownTimer: null,
 
   onLoad(options) {
     const { code } = options;
@@ -39,14 +49,14 @@ Page({
 
     this.setData({ activityCode: code });
     this.loadActivity();
-    this.calcSafeArea();
   },
 
-  calcSafeArea() {
-    const systemInfo = wx.getSystemInfoSync();
-    this.setData({
-      statusBarHeight: systemInfo.statusBarHeight || 44
-    });
+  onUnload() {
+    // 清理倒计时定时器
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
   },
 
   // 加载活动详情
@@ -83,7 +93,7 @@ Page({
         activity: data,
         title: data.title,
         coverImage: data.coverImage,
-        contentHtml: data.contentHtml || '',
+        sections: data.sections || [],
         buttonText: data.buttonText || '立即参与',
         buttonAction: data.buttonAction || 'CLAIM',
         buttonUrl: data.buttonUrl || '',
@@ -94,6 +104,11 @@ Page({
         errorMessage: errorMessage,
         loading: false
       });
+
+      // 启动倒计时
+      if (data.endAt) {
+        this.startCountdown(data.endAt);
+      }
 
       // 记录浏览
       this.recordView();
@@ -116,6 +131,57 @@ Page({
     } catch (err) {
       console.error('记录浏览失败', err);
     }
+  },
+
+  // 启动倒计时
+  startCountdown(endTime) {
+    // 清理旧的定时器
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+    }
+
+    const updateCountdown = () => {
+      const now = new Date().getTime();
+      const end = new Date(endTime).getTime();
+      const distance = end - now;
+
+      if (distance < 0) {
+        // 活动已结束
+        this.setData({
+          countdown: {
+            days: '00',
+            hours: '00',
+            minutes: '00',
+            seconds: '00'
+          }
+        });
+        if (this.countdownTimer) {
+          clearInterval(this.countdownTimer);
+          this.countdownTimer = null;
+        }
+        return;
+      }
+
+      const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+      this.setData({
+        countdown: {
+          days: days < 10 ? '0' + days : '' + days,
+          hours: hours < 10 ? '0' + hours : '' + hours,
+          minutes: minutes < 10 ? '0' + minutes : '' + minutes,
+          seconds: seconds < 10 ? '0' + seconds : '' + seconds
+        }
+      });
+    };
+
+    // 立即执行一次
+    updateCountdown();
+
+    // 每秒更新
+    this.countdownTimer = setInterval(updateCountdown, 1000);
   },
 
   // 点击操作按钮
@@ -149,9 +215,7 @@ Page({
         break;
       case 'EXTERNAL':
         if (buttonUrl) {
-          wx.navigateTo({
-            url: `/pages/webview/webview?url=${encodeURIComponent(buttonUrl)}`
-          });
+          wx.navigateTo({ url: buttonUrl });
         }
         break;
       default:

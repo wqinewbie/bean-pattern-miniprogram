@@ -5,7 +5,8 @@ Component({
   properties: {
     title:    { type: String, value: '' },
     subtitle: { type: String, value: '' },
-    showBack: { type: Boolean, value: true }
+    showBack: { type: Boolean, value: true },
+    bgColor:  { type: String, value: '#FFF9ED' }
   },
   data: {
     navTop: 0,

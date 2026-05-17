@@ -50,9 +50,14 @@ function getVipInfo() {
 /**
  * 购买会员
  * @param {string} packageCode - 套餐代码：month/quarter/year
+ * @param {number} couponId - 优惠券ID（可选）
  */
-function purchaseVip(packageCode) {
-  return request.post('/orders/vip', { packageCode });
+function purchaseVip(packageCode, couponId) {
+  const body = { packageCode };
+  if (couponId) {
+    body.couponId = couponId;
+  }
+  return request.post('/orders/vip', body);
 }
 
 /**
@@ -67,9 +72,14 @@ function cancelAutoRenew() {
 /**
  * 购买次卡
  * @param {string} packageCode - 套餐代码：c10/c30/c100
+ * @param {number} couponId - 优惠券ID（可选）
  */
-function purchaseCard(packageCode) {
-  return request.post('/orders/card', { packageCode });
+function purchaseCard(packageCode, couponId) {
+  const body = { packageCode };
+  if (couponId) {
+    body.couponId = couponId;
+  }
+  return request.post('/orders/card', body);
 }
 
 // ==================== 订单相关 ====================

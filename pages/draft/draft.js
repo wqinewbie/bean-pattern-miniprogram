@@ -41,7 +41,9 @@ Page({
   onShow() {
     this.calcNavTop();
     this.loadDraftRule();
-    this.loadDrafts(true);
+    if (!this._dataLoaded || this._needsRefresh) {
+      this.loadDrafts(true);
+    }
   },
 
   loadDraftRule() {
@@ -138,6 +140,8 @@ Page({
           ? drafts.filter(d => (d.name || '').toLowerCase().includes(kw))
           : [...drafts];
 
+        this._dataLoaded = true;
+        this._needsRefresh = false;
         this.setData({
           drafts,
           filteredDrafts,
@@ -262,6 +266,7 @@ Page({
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
       const { item } = e.currentTarget.dataset;
+      this._needsRefresh = true;
       wx.navigateTo({
         url: '/pages/draw/draw?draftId=' + item.id +
           '&gridSize=' + item.gridSize +

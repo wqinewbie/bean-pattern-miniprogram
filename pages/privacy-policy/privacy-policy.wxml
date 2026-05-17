@@ -1,11 +1,5 @@
 <view class="standalone-page">
-  <view class="sub-header" style="padding-top: {{statusBarHeight}}px; min-height: {{navHeight}}px;">
-    <view class="sub-back" bindtap="onBack">←</view>
-    <view class="sub-title-wrap">
-      <text class="sub-title">隐私政策</text>
-    </view>
-    <view class="sub-action sub-add--hidden">{{''}}</view>
-  </view>
+  <page-nav-bar title="隐私政策" showBack="{{true}}" bind:back="onBack" />
 
   <scroll-view scroll-y class="sub-scroll">
     <view class="privacy-page">

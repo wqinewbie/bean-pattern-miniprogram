@@ -1,6 +1,6 @@
 <view class="tab-bar-shell {{hidden ? 'tab-bar-shell--hidden' : ''}}">
   <view class="tab-bar">
-    <view class="tab-item {{selected===0?'tab-item--active':''}} {{leaving===0?'tab-item--leaving':''}}" bindtap="onTab" data-index="0" data-url="/pages/home/home">
+    <view class="tab-item {{selected===0?'tab-item--active':''}} {{leaving===0?'tab-item--leaving':''}}" bindtap="onTab" data-index="0" data-url="/pages/index/index">
       <view class="tab-icon-wrap tab-icon-wrap--orange">
         <view class="tab-glow tab-glow--orange {{selected===0?'tab-glow--show':''}} {{leaving===0?'tab-glow--hide':''}}"></view>
         <view class="tab-active-bg {{selected===0?'tab-active-bg--show tab-active-bg--orange':''}} {{leaving===0?'tab-active-bg--hide':''}}"></view>

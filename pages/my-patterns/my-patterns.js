@@ -50,7 +50,9 @@ Page({
   onShow() {
     this.calcNavTop();
     this.loadPatternRule();
-    this.loadPatterns(true);
+    if (!this._dataLoaded || this._needsRefresh) {
+      this.loadPatterns(true);
+    }
     const tab = this.selectComponent('#appTabBar');
     if (tab && tab.setSelected) tab.setSelected(3);
   },
@@ -103,7 +105,7 @@ Page({
 
     if (!hasSession()) {
       wx.showToast({ title: '请先登录', icon: 'none' });
-      wx.navigateTo({ url: '/pages/login/login' });
+      wx.switchTab({ url: '/pages/index/index' });
       this.setData({ loading: false, loadingMore: false });
       return Promise.resolve();
     }
@@ -130,6 +132,7 @@ Page({
           const isDraftSource = !hasOriginal && (item.sourceType === 'DRAW' || !!item.draftId);
           const hasMappedData = Array.isArray(mappedPixelData) && mappedPixelData.length > 0;
           const sourceType = this.getPatternSourceType(item);
+          const isAiSource = sourceType === 'ai';
 
           if (isDraftSource) {
             console.log('草稿箱来源记录:', {
@@ -156,13 +159,13 @@ Page({
             draftId: item.draftId || null,
             historyId: item.historyId || null,
             mappedPixelData,
-            sourceUrl: resolvedSourceUrl,
-            coverUrl: resolvedCoverUrl || resolvedSourceUrl,
+            sourceUrl: isAiSource ? '' : resolvedSourceUrl,
+            coverUrl: isAiSource ? '' : (resolvedCoverUrl || resolvedSourceUrl),
             createdAt: this.formatTime(item.createdAt),
             boxId: item.id,
-            hasOriginal,
+            hasOriginal: isAiSource ? false : hasOriginal,
             isDraftSource,
-            hasCanvasCover: isDraftSource && hasMappedData,
+            hasCanvasCover: (isDraftSource || isAiSource) && hasMappedData,
           };
         });
 
@@ -174,6 +177,8 @@ Page({
           ? patterns.filter(p => (p.name || '').toLowerCase().includes(kw))
           : [...patterns];
 
+        this._dataLoaded = true;
+        this._needsRefresh = false;
         this.setData({
           patterns,
           filteredPatterns,
@@ -207,8 +212,9 @@ Page({
 
   onItemTap(e) {
     const item = e.currentTarget.dataset.item;
+    const isAi = item.sourceType === 'AI' || (item.sourceLabel === 'AI生成') ? '&isAi=1' : '';
     wx.navigateTo({
-      url: '/pages/preview/preview?boxId=' + item.id
+      url: '/pages/preview/preview?boxId=' + item.id + isAi
     });
   },
 

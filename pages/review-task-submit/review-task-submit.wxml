@@ -1,15 +1,5 @@
 <view class="page review-page">
-  <view class="safe-area" style="height: {{statusBarHeight}}px;"></view>
-
-  <view class="custom-nav" style="height: {{navHeight}}px;">
-    <view class="nav-back" bindtap="onBack">
-      <image class="nav-back-icon" src="/assets/icons/lucide-arrow-left-brown.svg" mode="aspectFit"/>
-    </view>
-    <view class="nav-title-wrap">
-      <text class="nav-title">提交审核</text>
-    </view>
-    <view class="nav-right-spacer" style="width: {{capsuleWidth}}px;"></view>
-  </view>
+  <page-nav-bar title="提交审核" bind:back="onBack"></page-nav-bar>
 
   <scroll-view scroll-y class="page-scroll">
     <view class="page-body">

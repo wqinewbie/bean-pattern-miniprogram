@@ -12,67 +12,6 @@ page {
   overflow: hidden;
 }
 
-.sub-header {
-  position: relative;
-  padding: 0 28rpx 12rpx;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 2rpx solid #FFF4DC;
-  background: #FFF9ED;
-  flex-shrink: 0;
-}
-
-.sub-back {
-  font-size: 42rpx;
-  color: #8C6B4B;
-  width: 96rpx;
-  text-align: left;
-  z-index: 2;
-}
-
-.sub-title-wrap {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: calc(100% - 240rpx);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8rpx;
-}
-
-.sub-title {
-  max-width: 100%;
-  font-size: 32rpx;
-  font-weight: 800;
-  color: #5D4037;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sub-title-badge {
-  font-size: 18rpx;
-  font-weight: 800;
-  color: #FF9800;
-  background: #FFF4DC;
-  padding: 4rpx 14rpx;
-  border-radius: 999rpx;
-  line-height: 1.2;
-}
-
-.sub-action {
-  width: 96rpx;
-  text-align: right;
-  z-index: 2;
-}
-
-.sub-add--hidden {
-  visibility: hidden;
-}
 
 .sub-scroll {
   flex: 1;

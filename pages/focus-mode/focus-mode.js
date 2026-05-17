@@ -7,10 +7,6 @@ Page({
     // 基础信息
     gridSize: 32,
     canvasSize: 320,
-    statusBarHeight: 20,
-    navHeight: 32,
-    navTop: 44,
-    capsuleWidth: 87,
     
     // 网格数据
     gridData: [],
@@ -60,27 +56,12 @@ Page({
 
   onLoad(options) {
     const info = wx.getSystemInfoSync();
-    const statusBarHeight = info.statusBarHeight || 20;
-    
-    // 获取胶囊按钮位置信息
-    const menuButton = wx.getMenuButtonBoundingClientRect();
-    const navHeight = menuButton.height || 32;
-    const navTop = menuButton.top || statusBarHeight;
-    const capsuleWidth = menuButton.width || 87;
-    const capsuleRight = info.windowWidth - menuButton.right || 0;
-    
+
     // 计算画布尺寸
     const maxSize = Math.min(info.windowWidth - 48, 600);
     const canvasSize = Math.floor(maxSize);
-    
-    this.setData({
-      statusBarHeight,
-      navHeight,
-      navTop,
-      capsuleWidth,
-      capsuleRight,
-      canvasSize
-    });
+
+    this.setData({ canvasSize });
     
     // 加载数据
     this._loadData(options);

@@ -8,55 +8,6 @@
   overflow: hidden;
 }
 
-.crop-header {
-  background: #FFF9ED;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-left: 40rpx;
-  padding-right: 40rpx;
-  flex-shrink: 0;
-  box-sizing: border-box;
-}
-
-.crop-back-btn {
-  width: 68rpx;
-  height: 68rpx;
-  border-radius: 50%;
-  background: #ffffff;
-  border: 4rpx solid #FFF4DC;
-  box-shadow: 0 4rpx 12rpx rgba(140, 107, 75, 0.06);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #A1887F;
-  box-sizing: border-box;
-}
-
-.crop-back-icon {
-  height: 60rpx;
-  line-height: 56rpx;
-  font-size: 40rpx;
-  font-weight: 500;
-  text-align: center;
-}
-
-.crop-back-btn:active {
-  transform: scale(0.95);
-}
-
-.crop-title {
-  font-size: 36rpx;
-  line-height: 1.2;
-  font-weight: 800;
-  color: #5D4037;
-}
-
-.crop-header-spacer {
-  width: 68rpx;
-  height: 68rpx;
-}
-
 .reselect-bar {
   padding: 18rpx 40rpx 8rpx;
   background: #FFF9ED;

@@ -1,12 +1,5 @@
 <view class="activity-page">
-  <!-- 顶部导航栏 -->
-  <view class="nav-bar" style="padding-top: {{statusBarHeight}}px;">
-    <view class="nav-back" bindtap="onBack">
-      <text class="icon-back">‹</text>
-    </view>
-    <view class="nav-title">活动详情</view>
-    <view class="nav-placeholder"></view>
-  </view>
+  <page-nav-bar title="活动详情" bgColor="#FFEBB5" showBack="{{true}}" bind:back="onBack" />
 
   <!-- 加载中 -->
   <view wx:if="{{loading}}" class="loading-container">
@@ -37,9 +30,97 @@
       </view>
     </view>
 
-    <!-- 富文本内容 -->
-    <view class="rich-content">
-      <rich-text nodes="{{contentHtml}}"></rich-text>
+    <!-- 组件化内容渲染 -->
+    <view class="sections-container">
+      <block wx:for="{{sections}}" wx:key="id">
+
+          <!-- 1. 头部Banner组件 -->
+          <view wx:if="{{item.type === 'hero'}}" class="hero-banner" style="background: {{item.bgColor}};">
+            <text class="peas-icon">{{item.icon}}</text>
+            <text class="hero-title">{{item.title}}</text>
+            <text class="hero-sub">{{item.subtitle}}</text>
+            <view wx:if="{{item.badges && item.badges.length > 0}}" class="badge-row">
+              <view class="badge" wx:for="{{item.badges}}" wx:for-item="badge" wx:key="idx">
+                <text class="badge-icon">{{badge.icon}}</text>
+                <text class="badge-text">{{badge.text}}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 2. 图片组件 -->
+          <image wx:elif="{{item.type === 'image'}}"
+            class="section-image"
+            src="{{item.url}}"
+            mode="{{item.mode || 'widthFix'}}">
+          </image>
+
+          <!-- 3. 标题组件 -->
+          <view wx:elif="{{item.type === 'title'}}" class="section-title">
+            <text wx:if="{{item.icon}}" class="title-icon">{{item.icon}}</text>
+            <text class="title-text">{{item.text}}</text>
+          </view>
+
+          <!-- 4. 文本组件 -->
+          <view wx:elif="{{item.type === 'text'}}" class="section-text">
+            {{item.content}}
+          </view>
+
+          <!-- 5. 规则列表组件 -->
+          <view wx:elif="{{item.type === 'rule-list'}}" class="rule-list-container">
+            <view class="rule-list">
+              <view class="rule-item" wx:for="{{item.rules}}" wx:for-item="rule" wx:key="idx">
+                <text class="rule-num">{{idx + 1}}</text>
+                <text class="rule-text">{{rule}}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 6. 奖品网格组件 -->
+          <view wx:elif="{{item.type === 'prize-grid'}}" class="prize-grid-container">
+            <view class="prize-grid">
+              <view class="prize-item" wx:for="{{item.prizes}}" wx:for-item="prize" wx:key="idx">
+                <text class="prize-emoji">{{prize.emoji}}</text>
+                <text class="prize-name">{{prize.name}}</text>
+                <text class="prize-desc">{{prize.desc}}</text>
+              </view>
+            </view>
+          </view>
+
+          <!-- 7. 倒计时组件 -->
+          <view wx:elif="{{item.type === 'countdown'}}" class="countdown-wrap">
+            <text class="countdown-label">{{item.label || '⏳ 活动倒计时 ⏳'}}</text>
+            <view class="countdown-timer">
+              <view class="time-block">
+                <text class="time-num">{{countdown.days}}</text>
+                <text class="time-unit">天</text>
+              </view>
+              <view class="time-block">
+                <text class="time-num">{{countdown.hours}}</text>
+                <text class="time-unit">时</text>
+              </view>
+              <view class="time-block">
+                <text class="time-num">{{countdown.minutes}}</text>
+                <text class="time-unit">分</text>
+              </view>
+              <view class="time-block">
+                <text class="time-num">{{countdown.seconds}}</text>
+                <text class="time-unit">秒</text>
+              </view>
+            </view>
+            <text wx:if="{{item.tip}}" class="countdown-tip">{{item.tip}}</text>
+          </view>
+
+          <!-- 8. 图标画廊组件 -->
+          <view wx:elif="{{item.type === 'icon-gallery'}}" class="gallery-container">
+            <view class="gallery-preview">
+              <view class="bean-dot" wx:for="{{item.icons}}" wx:for-item="icon" wx:key="idx">
+                {{icon}}
+              </view>
+            </view>
+            <text wx:if="{{item.tip}}" class="gallery-tip">{{item.tip}}</text>
+          </view>
+
+        </block>
     </view>
 
     <!-- 底部操作栏 -->

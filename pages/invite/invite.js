@@ -22,7 +22,7 @@ Page({
     const code = this.data.inviteCode || wx.getStorageSync('myInviteCode') || ''
     return {
       title: '来和我一起玩拼豆，输入邀请码可解锁邀请任务进度',
-      path: `/pages/home/home?inviteCode=${encodeURIComponent(code)}`
+      path: `/pages/index/index?inviteCode=${encodeURIComponent(code)}`
     }
   },
 

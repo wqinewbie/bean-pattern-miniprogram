@@ -33,7 +33,7 @@ function openProfileGuardModal(message) {
     content: message || '请先完善昵称和头像后再继续操作',
     confirmText: '去完善',
     success: (res) => {
-      if (res.confirm) wx.navigateTo({ url: '/pages/login/login' });
+      if (res.confirm) wx.switchTab({ url: '/pages/index/index' });
     }
   });
 }

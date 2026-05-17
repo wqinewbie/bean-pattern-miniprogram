@@ -1,10 +1,5 @@
 <view class="generate-page">
-  <!-- Header -->
-  <view class="crop-header" style="padding-top:{{navTop}}px;height:{{navHeaderHeight}}px">
-    <view class="crop-back-btn" bindtap="onBack"><text class="crop-back-icon">×</text></view>
-    <text class="crop-title">魔法参数设置</text>
-    <view class="crop-header-spacer"></view>
-  </view>
+  <page-nav-bar title="魔法参数设置" showBack="{{true}}" bind:back="onBack" />
 
   <!-- 重新选择图片 -->
   <view class="reselect-bar">

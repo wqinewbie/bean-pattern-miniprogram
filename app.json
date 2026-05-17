@@ -1,6 +1,6 @@
 {
   "pages": [
-    "pages/home/home",
+    "pages/index/index",
     "pages/tutorial-play/tutorial-play",
     "pages/generate/generate",
     "pages/history/history",
@@ -40,7 +40,7 @@
     "borderStyle": "white",
     "list": [
       {
-        "pagePath": "pages/home/home",
+        "pagePath": "pages/index/index",
         "text": "首页"
       },
       {

@@ -5,48 +5,6 @@
   padding-bottom: 120rpx;
 }
 
-/* 顶部导航栏 */
-.nav-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 88rpx;
-  background: #FFEBB5;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 32rpx;
-  z-index: 100;
-  border-bottom: 2rpx solid #FFD54F;
-}
-
-.nav-back {
-  width: 72rpx;
-  height: 72rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.icon-back {
-  font-size: 48rpx;
-  color: #5D4037;
-  font-weight: bold;
-}
-
-.nav-title {
-  flex: 1;
-  text-align: center;
-  font-size: 32rpx;
-  font-weight: 800;
-  color: #5D4037;
-}
-
-.nav-placeholder {
-  width: 72rpx;
-}
-
 /* 加载中 */
 .loading-container {
   display: flex;
@@ -115,7 +73,6 @@
 
 /* 活动内容 */
 .activity-content {
-  padding-top: 132rpx;
 }
 
 .cover-image {
@@ -159,59 +116,291 @@
   color: #FF9800;
 }
 
-/* 富文本内容 */
-.rich-content {
-  padding: 32rpx;
+/* 组件容器 */
+.sections-container {
   background: white;
-  min-height: 400rpx;
 }
 
-.rich-content p {
-  margin: 16rpx 0;
-  line-height: 1.8;
-  color: #5D4037;
-  font-size: 28rpx;
+/* ========== 组件样式 ========== */
+
+/* 1. 头部Banner组件 */
+.hero-banner {
+  position: relative;
+  padding: 64rpx 48rpx 80rpx;
+  text-align: center;
+  overflow: hidden;
+  background: linear-gradient(135deg, #FFB347 0%, #FF8C42 100%);
 }
 
-.rich-content h1,
-.rich-content h2,
-.rich-content h3 {
-  margin: 24rpx 0 16rpx;
-  font-weight: 800;
-  color: #5D4037;
-}
-
-.rich-content h1 {
-  font-size: 40rpx;
-}
-
-.rich-content h2 {
-  font-size: 36rpx;
-}
-
-.rich-content h3 {
-  font-size: 32rpx;
-}
-
-.rich-content ul,
-.rich-content ol {
-  padding-left: 40rpx;
-  margin: 16rpx 0;
-}
-
-.rich-content li {
-  margin: 8rpx 0;
-  line-height: 1.8;
-  color: #5D4037;
-  font-size: 28rpx;
-}
-
-.rich-content img {
-  max-width: 100%;
-  height: auto;
+.peas-icon {
+  font-size: 112rpx;
   display: block;
-  margin: 24rpx 0;
-  border-radius: 16rpx;
+  margin-bottom: 24rpx;
+  filter: drop-shadow(4rpx 12rpx 24rpx rgba(0,0,0,0.2));
+}
+
+.hero-title {
+  font-size: 72rpx;
+  font-weight: 800;
+  letter-spacing: -1rpx;
+  color: #FFFFFF;
+  text-shadow: 6rpx 6rpx 0 rgba(201, 90, 15, 0.8);
+  display: block;
+  margin-bottom: 16rpx;
+}
+
+.hero-sub {
+  font-size: 28rpx;
+  background: rgba(0,0,0,0.2);
+  display: inline-block;
+  padding: 12rpx 32rpx;
+  border-radius: 120rpx;
+  color: #FFF8E7;
+  font-weight: 500;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 24rpx;
+  margin-top: 40rpx;
+}
+
+.badge {
+  background: #FFEED6;
+  padding: 12rpx 28rpx;
+  border-radius: 80rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #C25D00;
+  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.05);
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.badge-icon {
+  font-size: 28rpx;
+}
+
+.badge-text {
+  font-size: 24rpx;
+}
+
+/* 2. 图片组件 */
+.section-image {
+  width: 100%;
+  display: block;
+}
+
+/* 3. 标题组件 */
+.section-title {
+  font-size: 48rpx;
+  font-weight: 700;
+  margin: 32rpx 32rpx 24rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  border-left: 16rpx solid #FF914D;
+  padding-left: 28rpx;
+  color: #4B2E14;
+}
+
+.title-icon {
+  font-size: 48rpx;
+}
+
+.title-text {
+  font-size: 48rpx;
+}
+
+/* 4. 文本组件 */
+.section-text {
+  padding: 16rpx 32rpx;
+  font-size: 28rpx;
+  line-height: 1.8;
+  color: #5D4037;
+}
+
+/* 5. 规则列表组件 */
+.rule-list-container {
+  padding: 0 32rpx 32rpx;
+}
+
+.rule-list {
+  background: #FFF8F0;
+  border-radius: 32rpx;
+  padding: 32rpx 40rpx;
+  box-shadow: 0 8rpx 20rpx rgba(0, 0, 0, 0.03);
+}
+
+.rule-item {
+  margin-bottom: 28rpx;
+  display: flex;
+  align-items: flex-start;
+  gap: 24rpx;
+}
+
+.rule-item:last-child {
+  margin-bottom: 0;
+}
+
+.rule-num {
+  background: #FFB347;
+  width: 48rpx;
+  height: 48rpx;
+  border-radius: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 28rpx;
+  flex-shrink: 0;
+  margin-top: 2rpx;
+}
+
+.rule-text {
+  flex: 1;
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #4A3724;
+  line-height: 1.6;
+}
+
+/* 6. 奖品网格组件 */
+.prize-grid-container {
+  padding: 0 32rpx 32rpx;
+}
+
+.prize-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24rpx;
+  justify-content: space-between;
+}
+
+.prize-item {
+  background: white;
+  flex: 1;
+  min-width: 150rpx;
+  max-width: 48%;
+  border-radius: 32rpx;
+  padding: 32rpx 16rpx;
+  text-align: center;
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.08);
+  border: 2rpx solid #FFE1B3;
+}
+
+.prize-emoji {
+  font-size: 80rpx;
+  display: block;
+  margin-bottom: 16rpx;
+}
+
+.prize-name {
+  font-weight: 800;
+  font-size: 28rpx;
+  color: #3A2C1F;
+  display: block;
+  margin-bottom: 8rpx;
+}
+
+.prize-desc {
+  font-size: 24rpx;
+  color: #a0815c;
+}
+
+/* 7. 倒计时组件 */
+.countdown-wrap {
+  background: #FFEEDB;
+  border-radius: 32rpx;
+  padding: 32rpx 36rpx;
+  text-align: center;
+  margin: 32rpx;
+}
+
+.countdown-label {
+  font-size: 28rpx;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 2rpx;
+  color: #BA6A2C;
+  display: block;
+  margin-bottom: 24rpx;
+}
+
+.countdown-timer {
+  display: flex;
+  justify-content: center;
+  gap: 24rpx;
+  font-weight: 800;
+}
+
+.time-block {
+  background: rgba(255, 255, 255, 0.85);
+  padding: 16rpx 24rpx;
+  border-radius: 40rpx;
+  min-width: 100rpx;
+  box-shadow: inset 0 2rpx 0 white, 0 4rpx 12rpx rgba(0,0,0,0.05);
+}
+
+.time-num {
+  font-size: 56rpx;
+  font-weight: 800;
+  color: #D45A1C;
+  line-height: 1;
+  display: block;
+}
+
+.time-unit {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #794F26;
+  display: block;
+  margin-top: 4rpx;
+}
+
+.countdown-tip {
+  font-size: 24rpx;
+  color: #8C6B4B;
+  margin-top: 24rpx;
+  display: block;
+}
+
+/* 8. 图标画廊组件 */
+.gallery-container {
+  padding: 0 32rpx 32rpx;
+}
+
+.gallery-preview {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+  background: #FDF2E3;
+  border-radius: 48rpx;
+  padding: 32rpx 40rpx;
+}
+
+.bean-dot {
+  background: #F7C56E;
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56rpx;
+  box-shadow: 0 8rpx 16rpx rgba(0,0,0,0.05);
+}
+
+.gallery-tip {
+  font-size: 24rpx;
+  text-align: center;
+  margin-top: 24rpx;
+  color: #AF8A60;
+  display: block;
 }
 
 /* 底部操作栏 */

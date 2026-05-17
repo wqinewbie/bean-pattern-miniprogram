@@ -39,10 +39,6 @@ Page({
     showModeSheet: false,
     showSizeSheet: false,
     showBrandSheet: false,
-    statusBarHeight: 20,
-    navTop: 20,
-    navBarHeight: 44,
-    navHeaderHeight: 64,
     previewX: 0,
     previewY: 0,
     previewScale: 1,
@@ -58,17 +54,6 @@ Page({
   },
 
   onLoad(options) {
-    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
-    const appBaseInfo = wx.getAppBaseInfo ? wx.getAppBaseInfo() : {};
-    const statusBarHeight = windowInfo.statusBarHeight || appBaseInfo.statusBarHeight || 20;
-    const menuButton = wx.getMenuButtonBoundingClientRect ? wx.getMenuButtonBoundingClientRect() : null;
-    let navTop = statusBarHeight + 8;
-    let navBarHeight = 44;
-    if (menuButton) {
-      navTop = menuButton.top;
-      navBarHeight = menuButton.height;
-    }
-    this.setData({ statusBarHeight, navTop, navBarHeight, navHeaderHeight: navTop + navBarHeight });
     if (options && options.imageUrl) {
       const url = decodeURIComponent(options.imageUrl);
       this.setData({ imageUrl: url });

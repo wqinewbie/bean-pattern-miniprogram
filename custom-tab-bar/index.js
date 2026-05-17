@@ -27,7 +27,7 @@ Component({
 
     routeToIndex(route) {
       const map = {
-        'pages/home/home': 0,
+        'pages/index/index': 0,
         'pages/convert/convert': 1,
         'pages/ai-generate/ai-generate': 2,
         'pages/profile/profile': 3,

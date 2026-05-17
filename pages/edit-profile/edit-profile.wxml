@@ -1,18 +1,7 @@
 <view class="edit-profile-page">
-  <!-- 状态栏占位 - 渐变色 -->
-  <view class="status-bar-placeholder" style="height: {{statusBarHeight}}px;"></view>
-
-  <!-- Header 渐变区 -->
-  <view class="edit-header">
-    <view class="edit-nav">
-      <view class="edit-back" bindtap="onBack">
-        <text class="edit-back-icon">‹</text>
-      </view>
-      <view class="edit-title-wrapper">
-        <text class="edit-title">个人资料</text>
-      </view>
-      <view class="edit-nav-spacer"></view>
-    </view>
+  <!-- 渐变导航栏 -->
+  <view class="edit-nav-gradient">
+    <page-nav-bar title="个人资料" bgColor="transparent" showBack="{{true}}" bind:back="onBack" />
   </view>
 
   <!-- Content -->

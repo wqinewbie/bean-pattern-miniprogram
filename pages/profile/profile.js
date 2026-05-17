@@ -48,13 +48,6 @@ Page({
     watermarkEnabled: true,
     watermarkText: '',
     
-    // 子页
-    subPage: '',
-    subPageLoading: false,
-    subPagePatterns: [],
-    subPagePatternAll: [],
-    patternSearchKeyword: '',
-
     // VIP状态
     isVip: false,
     
@@ -92,7 +85,7 @@ Page({
   updateTabBarVisibility() {
     const tabBar = this.getTabBar && this.getTabBar();
     if (tabBar && typeof tabBar.setHidden === 'function') {
-      tabBar.setHidden(!!(this.data.showMagicPanel || this.data.showGiftPanel || this.data.showTaskPanel || this.data.showSettingsPanel || this.data.subPage));
+      tabBar.setHidden(!!(this.data.showMagicPanel || this.data.showGiftPanel || this.data.showTaskPanel || this.data.showSettingsPanel));
     }
   },
 
@@ -247,10 +240,24 @@ Page({
     const status = Number((config.status !== undefined ? config.status : progress && progress.status) || 0);
     const currentCount = Number((config.currentCount !== undefined ? config.currentCount : progress && progress.currentCount) || 0);
     const targetCount = Number((config.targetCount !== undefined ? config.targetCount : progress && progress.targetCount) || 1);
-    const rewardValue = Number(config.rewardValue || 1);
-    const rewardText = config.handlerType === 'CHECKIN'
-      ? '奖励礼品包'
-      : '奖励礼包';
+
+    // 优先使用新的 rewardItems 字段
+    let rewardValue = 1;
+    let rewardText = '奖励礼包';
+    let rewardType = config.rewardType;
+
+    if (config.rewardItems && config.rewardItems.length > 0) {
+      // 使用第一个奖励项的信息
+      const firstReward = config.rewardItems[0];
+      rewardValue = Number(firstReward.value || 1);
+      rewardText = firstReward.displayText || '奖励礼包';
+      rewardType = firstReward.type;
+    } else {
+      // 向后兼容：使用旧字段
+      rewardValue = Number(config.rewardValue || 1);
+      rewardText = config.handlerType === 'CHECKIN' ? '奖励礼品包' : '奖励礼包';
+    }
+
     const actionText = config.handlerType === 'CHECKIN'
       ? (status === 1 ? '领取奖励' : '去签到')
       : (config.handlerType === 'FIRST_RECHARGE_GIFT' || config.handlerType === 'REGISTER_GIFT')
@@ -267,9 +274,10 @@ Page({
       taskCode: config.taskCode,
       taskName: config.taskName,
       description: config.description || '',
-      rewardType: config.rewardType,
+      rewardType,
       rewardValue,
       rewardText,
+      rewardItems: config.rewardItems || [],
       actionText,
       progressDisplay,
       handlerType: config.handlerType || 'GENERIC_PROGRESS',
@@ -552,14 +560,38 @@ Page({
     if (source === 'GIFT_PACKAGE') return '来自礼包兑换';
     if (source === 'TASK') return '来自任务奖励';
     if (source === 'PURCHASE') return '来自购买赠送';
-    return gift?.giftCategory === 'PACKAGE' ? '来自礼包奖励' : (gift?.giftCategory || '系统发放');
+    if (gift?.giftCategory === 'PACKAGE') return '来自礼包奖励';
+    if (gift?.giftCategory === 'COUPON') return '优惠券';
+    return gift?.giftCategory || '系统发放';
   },
 
   onUseGift(e) {
     const gift = e.currentTarget.dataset.gift;
     if (!gift) return;
 
-    const redeemNow = gift.giftCode === 'GIFT_PACKAGE';
+    const giftCode = String(gift.giftCode || '').toUpperCase();
+    const usageMode = String(gift.usageMode || '').toUpperCase();
+    const targetTab = String(gift.targetTab || '').toLowerCase();
+
+    // 优先使用后端明确返回的使用方式
+    if (usageMode === 'JUMP_VIP' && (targetTab === 'vip' || targetTab === 'cards')) {
+      wx.navigateTo({
+        url: `/pages/vip/vip?tab=${targetTab}&couponId=${gift.id}`
+      });
+      return;
+    }
+
+    // 兜底：兼容老数据
+    if (giftCode === 'VIP_COUPON' || giftCode === 'CARD_COUPON' || giftCode === 'VIP_CARD_COUPON') {
+      const fallbackTab = giftCode === 'VIP_COUPON' ? 'vip' : 'cards';
+      wx.navigateTo({
+        url: `/pages/vip/vip?tab=${fallbackTab}&couponId=${gift.id}`
+      });
+      return;
+    }
+
+    // 其他礼品统一走后端使用逻辑
+    const redeemNow = giftCode === 'GIFT_PACKAGE';
     request.post('/gift/use', { giftId: gift.id, redeemNow })
       .then(() => {
         wx.showToast({ title: redeemNow ? '兑换成功' : '使用成功', icon: 'success' });
@@ -906,7 +938,7 @@ Page({
     request.post('/feedback/submit', { content: text, category: 'SUGGESTION' })
       .then(() => {
         wx.showToast({ title: '小豆已经收到你的建议啦！', icon: 'success' });
-        this.setData({ feedbackText: '', subPage: '' });
+        this.setData({ feedbackText: '' });
       })
       .catch(() => {
         wx.showToast({ title: '发送失败，请重试', icon: 'none' });
@@ -934,157 +966,8 @@ Page({
     wx.navigateTo({ url: '/pages/draft/draft' });
   },
 
-  onAddPattern() {
-    const maxCapacity = this.data.isVip ? 100 : 10;
-    const current = (this.data.subPagePatternAll || []).length;
-    if (current >= maxCapacity) {
-      wx.showModal({
-        title: '图纸箱容量已满',
-        content: this.data.isVip ? '您的图纸箱已达到100张上限，请先清理一些不用的图纸。' : '普通学徒最多保存10张图纸，清理或者升级会员即可获取更多容量。',
-        confirmText: this.data.isVip ? '我知道了' : '去升级',
-        cancelText: '取消',
-        success: (res) => {
-          if (res.confirm && !this.data.isVip) {
-            this.onVip();
-          }
-        }
-      });
-      return;
-    }
-    wx.showToast({ title: '请前往画板或通过AI生成新图纸', icon: 'none' });
-  },
-
-  onPatternSearchInput(e) {
-    const keyword = (e.detail.value || '').trim();
-    this.setData({ patternSearchKeyword: keyword }, () => this.filterPatterns());
-  },
-
-  filterPatterns() {
-    const keyword = (this.data.patternSearchKeyword || '').trim().toLowerCase();
-    const all = this.data.subPagePatternAll || [];
-    if (!keyword) {
-      this.setData({ subPagePatterns: all });
-      return;
-    }
-    const filtered = all.filter((item) => {
-      const name = String(item.name || '').toLowerCase();
-      const brand = String(item.brand || '').toLowerCase();
-      return name.includes(keyword) || brand.includes(keyword);
-    });
-    this.setData({ subPagePatterns: filtered });
-  },
-
   onGoMyPatterns() {
     wx.navigateTo({ url: '/pages/my-patterns/my-patterns' });
-  },
-
-  onCloseSubPage() {
-    this.setData({ subPage: '' }, () => this.updateTabBarVisibility());
-  },
-
-  // ─── 加载子页数据 ───
-  loadPatterns() {
-    const sessionId = wx.getStorageSync('sessionId');
-    if (!sessionId) {
-      this.setData({ subPagePatterns: [], subPagePatternAll: [], subPageLoading: false });
-      return;
-    }
-    request.get('/box/list')
-      .then(data => {
-        // 与 my-patterns.js 保持一致的数据处理
-        const patterns = (Array.isArray(data) ? data : []).map(item => ({
-          id: item.id,
-          name: item.name || ('图纸#' + item.id),
-          gridSize: item.gridSize,
-          colorCount: item.colorCount,
-          brand: item.brand,
-          gridData: item.gridData,
-          colorPalette: item.colorPalette,
-          sourceUrl: item.sourceUrl,
-          sourceType: item.sourceType || item.source || item.type || '',
-          sourceLabel: this.getPatternSourceLabel(item),
-          sourceClass: this.getPatternSourceClass(item),
-          boxId: item.id,
-          createdAt: this.formatTime(item.createdAt),
-        }));
-        this.setData({ subPagePatternAll: patterns, subPagePatterns: patterns, subPageLoading: false });
-      })
-      .catch(() => {
-        this.setData({ subPagePatterns: [], subPagePatternAll: [], subPageLoading: false });
-      });
-  },
-
-  formatTime(timeStr) {
-    if (!timeStr) return '';
-    const d = new Date(timeStr);
-    if (isNaN(d.getTime())) return timeStr;
-    const pad = (n) => String(n).padStart(2, '0');
-    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
-           ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-  },
-
-  getPatternSourceType(item) {
-    return String(item.sourceType || item.source || item.type || '').toLowerCase();
-  },
-
-  getPatternSourceLabel(item) {
-    const sourceType = this.getPatternSourceType(item);
-    if (sourceType.includes('ai')) return 'AI生成';
-    if (sourceType.includes('draft')) return '草稿箱';
-    if (sourceType.includes('free') || sourceType.includes('convert') || sourceType.includes('image')) return '图片转换';
-    return '';
-  },
-
-  getPatternSourceClass(item) {
-    const sourceType = this.getPatternSourceType(item);
-    if (sourceType.includes('ai')) return 'ai';
-    if (sourceType.includes('draft')) return 'draft';
-    if (sourceType.includes('free') || sourceType.includes('convert') || sourceType.includes('image')) return 'free';
-    return '';
-  },
-
-  onSubClearHistory() {
-    wx.showToast({ title: '已下线清空入口', icon: 'none' });
-  },
-
-  onSubItemTap(e) {
-    const item = e.currentTarget.dataset.item;
-    if (!item) return;
-    if (this.data.subPage === 'history') {
-      wx.navigateTo({
-        url: '/pages/result/result?historyId=' + item.id + '&sourceType=HISTORY'
-      });
-    } else {
-      wx.navigateTo({
-        url: '/pages/result/result?boxId=' + item.id + '&sourceType=BOX'
-      });
-    }
-  },
-
-  onSubDelete(e) {
-    const id = e.currentTarget.dataset.id;
-    if (!id) return;
-    request.delete('/box/delete/' + id)
-      .then(() => {
-        this.loadPatterns();
-        wx.showToast({ title: '已删除', icon: 'success' });
-      })
-      .catch(() => {
-        wx.showToast({ title: '删除失败', icon: 'none' });
-      });
-  },
-
-  onSubRestore(e) {
-    const id = e.currentTarget.dataset.id;
-    if (!id) return;
-    request.post('/box/restore/' + id)
-      .then(() => {
-        this.loadRecycle();
-        wx.showToast({ title: '已恢复', icon: 'success' });
-      })
-      .catch(() => {
-        wx.showToast({ title: '恢复失败', icon: 'none' });
-      });
   },
 
   onLogout() {
@@ -1103,7 +986,6 @@ Page({
             stats: EMPTY_STATS,
             isVip: false,
             phone: '',
-            subPage: '',
             pendingTaskCount: 0,
           });
           wx.showToast({ title: '已退出登录', icon: 'success' });
@@ -1112,7 +994,4 @@ Page({
     });
   },
 
-  onContactService() {
-    wx.showToast({ title: '客服功能开发中', icon: 'none' });
-  },
 });

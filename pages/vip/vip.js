@@ -23,6 +23,13 @@ Page({
     cardPackages: [],
     cardPackagesLoading: false,
 
+    // 优惠券
+    selectedCouponId: null,
+    availableCoupons: [],
+    couponsLoading: false,
+    couponRange: ['不使用优惠券'],
+    selectedCouponDescription: '不使用优惠券',
+
     // 订单列表
     orders: [],
     ordersLoading: false,
@@ -38,6 +45,9 @@ Page({
 
     // 当前选中套餐价格
     currentPrice: 0,
+    originalPrice: 0,
+    discountedPrice: 0,
+    selectedCardHasVipPrice: false,
   },
 
   onLoad(options) {
@@ -47,6 +57,11 @@ Page({
     // 如果有传入 tab 参数
     if (options && options.tab) {
       this.setData({ vipTab: options.tab });
+    }
+
+    // 如果有传入 couponId 参数（从礼品包跳转）
+    if (options && options.couponId) {
+      this.setData({ selectedCouponId: parseInt(options.couponId) });
     }
 
     // 处理分享参数（好友点击分享链接）
@@ -82,7 +97,7 @@ Page({
   loadVipInfo() {
     vipApi.getVipInfo()
       .then((data) => {
-        const isVip = data.isVip || data.vipLevel > 0 || false;
+        const isVip = data.isVip || data.vip || data.vipLevel > 0 || false;
         const vipExpireAt = data.vipExpireAt || null;
         const aiQuota = data.aiQuota || 0;
 
@@ -120,20 +135,26 @@ Page({
         const packages = data || [];
 
         // 转换数据格式以适配现有UI
-        const vipPackages = packages.map(pkg => ({
-          id: pkg.packageCode,
-          code: pkg.packageCode,
-          name: pkg.packageName,
-          price: pkg.price,
-          originalPrice: pkg.originalPrice,
-          tag: pkg.tag || '',
-          durationDays: pkg.durationDays,
-          aiQuotaGift: pkg.aiQuotaGift,
-        }));
+        const vipPackages = packages.map(pkg => {
+          const remainingPurchaseCount = pkg.remainingPurchaseCount ?? pkg.remainingBuyCount ?? pkg.purchaseRemaining ?? null;
+          return {
+            id: pkg.packageCode,
+            code: pkg.packageCode,
+            name: pkg.packageName,
+            price: pkg.price,
+            originalPrice: pkg.originalPrice,
+            tag: pkg.tag || '',
+            durationDays: pkg.durationDays,
+            aiQuotaGift: pkg.aiQuotaGift,
+            remainingPurchaseCount,
+            soldOut: remainingPurchaseCount !== null && remainingPurchaseCount <= 0,
+          };
+        });
 
-        // 默认选中第一个
-        const selectedVipId = vipPackages.length > 0 ? vipPackages[0].id : null;
-        const currentPrice = vipPackages.length > 0 ? vipPackages[0].price : 0;
+        // 默认选中第一个可购买套餐
+        const defaultVip = vipPackages.find(p => !p.soldOut) || null;
+        const selectedVipId = defaultVip ? defaultVip.id : null;
+        const currentPrice = defaultVip ? defaultVip.price : 0;
 
         this.setData({
           vipPackages,
@@ -162,25 +183,34 @@ Page({
         const packages = data || [];
 
         // 转换数据格式以适配现有UI
-        const cardPackages = packages.map(pkg => ({
-          id: pkg.packageCode,
-          code: pkg.packageCode,
-          name: pkg.packageName,
-          count: pkg.aiQuota,
-          price: pkg.price,
-          originalPrice: pkg.originalPrice,
-          isVipPrice: pkg.vipPrice,
-          tag: pkg.tag || '',
-        }));
+        const cardPackages = packages.map(pkg => {
+          const remainingPurchaseCount = pkg.remainingPurchaseCount ?? pkg.remainingBuyCount ?? pkg.purchaseRemaining ?? null;
+          return {
+            id: pkg.packageCode,
+            code: pkg.packageCode,
+            name: pkg.packageName,
+            count: pkg.aiQuota,
+            price: pkg.price,
+            originalPrice: pkg.originalPrice,
+            isVipPrice: pkg.vipPrice,
+            tag: pkg.tag || '',
+            remainingPurchaseCount,
+            soldOut: remainingPurchaseCount !== null && remainingPurchaseCount <= 0,
+          };
+        });
 
-        // 默认选中第一个
-        const selectedCardId = cardPackages.length > 0 ? cardPackages[0].id : null;
-        const currentPrice = cardPackages.length > 0 ? (this.data.isVip ? cardPackages[0].isVipPrice : cardPackages[0].price) : 0;
+        // 默认选中第一个可购买套餐
+        const defaultCard = cardPackages.find(p => !p.soldOut) || null;
+        const selectedCardId = defaultCard ? defaultCard.id : null;
+        const currentPrice = defaultCard ? (this.data.isVip && defaultCard.isVipPrice ? defaultCard.isVipPrice : defaultCard.price) : 0;
+
+        const selectedCardHasVipPrice = this.data.isVip && !!(defaultCard && defaultCard.isVipPrice);
 
         this.setData({
           cardPackages,
           selectedCardId,
           currentPrice,
+          selectedCardHasVipPrice,
           cardPackagesLoading: false
         });
       })
@@ -188,6 +218,59 @@ Page({
         console.error('加载次卡套餐失败', err);
         this.setData({ cardPackagesLoading: false });
         wx.showToast({ title: '加载套餐失败', icon: 'none' });
+      });
+  },
+
+  /**
+   * 加载可用优惠券
+   */
+  loadAvailableCoupons(category) {
+    if (this.data.couponsLoading) return;
+
+    this.setData({ couponsLoading: true });
+
+    const url = category ? `/gift/coupons/available?category=${category}` : '/gift/coupons/available';
+
+    request.get(url)
+      .then((data) => {
+        const coupons = data || [];
+
+        // 格式化优惠券数据
+        const formattedCoupons = coupons.map(coupon => ({
+          id: coupon.id,
+          name: coupon.giftName,
+          value: coupon.value,
+          expireAt: coupon.expireAt,
+          description: `${coupon.value}折优惠券`,
+        }));
+
+        // 预计算 picker range（WXML 不支持 .map/.concat）
+        const couponRange = ['不使用优惠券'].concat(
+          formattedCoupons.map(c => c.description)
+        );
+
+        // 预计算当前选中优惠券的描述
+        let selectedCouponDescription = '不使用优惠券';
+        if (this.data.selectedCouponId) {
+          const found = formattedCoupons.find(c => c.id === this.data.selectedCouponId);
+          if (found) {
+            selectedCouponDescription = found.description;
+          }
+        }
+
+        this.setData({
+          availableCoupons: formattedCoupons,
+          couponRange,
+          selectedCouponDescription,
+          couponsLoading: false
+        });
+
+        // 重新计算价格（如果已选中优惠券）
+        this.recalculatePrice();
+      })
+      .catch((err) => {
+        console.error('加载优惠券失败', err);
+        this.setData({ couponsLoading: false });
       });
   },
 
@@ -329,13 +412,15 @@ Page({
    */
   onSwitchTab(e) {
     const tab = e.currentTarget.dataset.tab;
-    this.setData({ vipTab: tab });
+    this.setData({ vipTab: tab, selectedCouponId: null, selectedCouponDescription: '不使用优惠券' });
 
     if (tab === 'vip') {
       this.loadVipPackages();
       this.loadPrivileges();
+      this.loadAvailableCoupons('VIP');
     } else if (tab === 'cards') {
       this.loadCardPackages();
+      this.loadAvailableCoupons('CARD');
     } else if (tab === 'orders') {
       this.loadOrders(true);
     }
@@ -347,8 +432,17 @@ Page({
   onSelectVipPlan(e) {
     const id = e.currentTarget.dataset.id;
     const selectedPackage = this.data.vipPackages.find(p => p.id === id);
-    const currentPrice = selectedPackage ? selectedPackage.price : 0;
-    this.setData({ selectedVipId: id, currentPrice });
+    if (!selectedPackage || selectedPackage.soldOut) {
+      wx.showToast({ title: '该套餐已达购买上限', icon: 'none' });
+      return;
+    }
+    const currentPrice = selectedPackage.price;
+    this.setData({
+      selectedVipId: id,
+      currentPrice,
+      originalPrice: currentPrice
+    });
+    this.recalculatePrice();
   },
 
   /**
@@ -357,8 +451,71 @@ Page({
   onSelectCardPlan(e) {
     const id = e.currentTarget.dataset.id;
     const selectedPackage = this.data.cardPackages.find(p => p.id === id);
-    const currentPrice = this.data.isVip ? selectedPackage.isVipPrice : selectedPackage.price;
-    this.setData({ selectedCardId: id, currentPrice });
+    if (!selectedPackage || selectedPackage.soldOut) {
+      wx.showToast({ title: '该套餐已达购买上限', icon: 'none' });
+      return;
+    }
+    const currentPrice = this.data.isVip && selectedPackage.isVipPrice ? selectedPackage.isVipPrice : selectedPackage.price;
+    this.setData({
+      selectedCardId: id,
+      currentPrice,
+      originalPrice: currentPrice,
+      selectedCardHasVipPrice: this.data.isVip && !!selectedPackage.isVipPrice
+    });
+    this.recalculatePrice();
+  },
+
+  /**
+   * 选择优惠券
+   */
+  onSelectCoupon(e) {
+    const index = parseInt(e.detail.value);
+
+    // index 为 0 表示"不使用优惠券"
+    if (index === 0) {
+      this.setData({ selectedCouponId: null, selectedCouponDescription: '不使用优惠券' });
+      this.recalculatePrice();
+      return;
+    }
+
+    // index - 1 是实际的优惠券索引（因为第一个是"不使用优惠券"）
+    const couponIndex = index - 1;
+    if (couponIndex < 0 || couponIndex >= this.data.availableCoupons.length) {
+      this.setData({ selectedCouponId: null, selectedCouponDescription: '不使用优惠券' });
+      this.recalculatePrice();
+      return;
+    }
+
+    const selectedCoupon = this.data.availableCoupons[couponIndex];
+    this.setData({
+      selectedCouponId: selectedCoupon.id,
+      selectedCouponDescription: selectedCoupon.description
+    });
+    this.recalculatePrice();
+  },
+
+  /**
+   * 重新计算价格（应用优惠券折扣）
+   */
+  recalculatePrice() {
+    const { selectedCouponId, availableCoupons, originalPrice } = this.data;
+
+    if (!selectedCouponId || !originalPrice) {
+      this.setData({ discountedPrice: 0 });
+      return;
+    }
+
+    const selectedCoupon = availableCoupons.find(c => c.id === selectedCouponId);
+    if (!selectedCoupon) {
+      this.setData({ discountedPrice: 0 });
+      return;
+    }
+
+    // 计算折扣后的价格
+    const discount = selectedCoupon.value / 100;
+    const discountedPrice = (originalPrice * discount).toFixed(2);
+
+    this.setData({ discountedPrice: parseFloat(discountedPrice) });
   },
 
   /**
@@ -368,6 +525,16 @@ Page({
     if (!requireLogin({ mode: 'page' })) return;
 
     if (this.data.isPaying) return;
+
+    if (this.data.vipTab === 'vip' && !this.data.selectedVipId) {
+      wx.showToast({ title: '暂无可购套餐', icon: 'none' });
+      return;
+    }
+
+    if (this.data.vipTab === 'cards' && !this.data.selectedCardId) {
+      wx.showToast({ title: '暂无可购套餐', icon: 'none' });
+      return;
+    }
 
     if (this.data.vipTab === 'vip') {
       this.purchaseVip();
@@ -388,7 +555,7 @@ Page({
 
     this.setData({ isPaying: true });
 
-    vipApi.purchaseVip(selectedPackage.code)
+    vipApi.purchaseVip(selectedPackage.code, this.data.selectedCouponId)
       .then((data) => {
         const orderNo = data && data.orderNo;
         const payment = data && data.payment;
@@ -433,7 +600,7 @@ Page({
 
     this.setData({ isPaying: true });
 
-    vipApi.purchaseCard(selectedPackage.code)
+    vipApi.purchaseCard(selectedPackage.code, this.data.selectedCouponId)
       .then((data) => {
         const orderNo = data && data.orderNo;
         const payment = data && data.payment;

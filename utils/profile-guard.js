@@ -28,7 +28,7 @@ function cacheProfile(profile) {
 }
 
 function openProfilePage() {
-  wx.navigateTo({ url: '/pages/login/login' });
+  wx.switchTab({ url: '/pages/index/index' });
 }
 
 function requireLogin(options = {}) {

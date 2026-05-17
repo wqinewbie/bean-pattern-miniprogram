@@ -5,7 +5,7 @@
   padding-bottom: 10px;
   padding-left: 16px;
   padding-right: 16px;
-  background: #FFF9ED;
+  /* background via bgColor prop */
   flex-shrink: 0;
   z-index: 10;
   height: 32px;
@@ -22,9 +22,9 @@
   z-index: 2;
 }
 
-.nav-back-arrow {
-  font-size: 20px;
-  color: #A1887F;
+.nav-back-icon {
+  width: 22px;
+  height: 22px;
 }
 
 .nav-placeholder {

@@ -1,4 +1,7 @@
 {
   "navigationStyle": "custom",
-  "navigationBarTitleText": "魔法参数设置"
+  "navigationBarTitleText": "魔法参数设置",
+  "usingComponents": {
+    "page-nav-bar": "/components/page-nav-bar/index"
+  }
 }

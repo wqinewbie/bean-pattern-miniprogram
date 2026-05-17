@@ -43,7 +43,7 @@
 
       <!-- Tab 切换 -->
       <view class="tab-bar">
-        <view wx:if="{{originalUrl && sourceType !== 'DRAFT'}}" class="tab {{activeTab==='original'?'tab--active':''}}" bindtap="onTabChange" data-tab="original">原图</view>
+        <view wx:if="{{originalUrl && sourceType !== 'DRAFT' && !isAiStyle}}" class="tab {{activeTab==='original'?'tab--active':''}}" bindtap="onTabChange" data-tab="original">原图</view>
         <view wx:if="{{hasResultData}}" class="tab {{activeTab==='result'?'tab--active':''}}" bindtap="onTabChange" data-tab="result">效果图</view>
         <view wx:if="{{hasPatternData}}" class="tab {{activeTab==='pattern'?'tab--active':''}}" bindtap="onTabChange" data-tab="pattern">色号图</view>
       </view>

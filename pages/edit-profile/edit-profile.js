@@ -1,9 +1,7 @@
 const request = require('../../utils/request');
-const { getSafeAreaLayout } = require('../../utils/safe-area');
 
 Page({
   data: {
-    statusBarHeight: 44,
     avatarUrl: '',
     nickName: '',
     phone: '',
@@ -17,19 +15,7 @@ Page({
   },
 
   onLoad() {
-    this.calcSafeAreas();
     this.loadProfileDraft();
-  },
-
-  calcSafeAreas() {
-    try {
-      const layout = getSafeAreaLayout();
-      this.setData({ statusBarHeight: layout.statusBarHeight || 44 });
-    } catch (e) {
-      const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
-      const appBaseInfo = wx.getAppBaseInfo ? wx.getAppBaseInfo() : {};
-      this.setData({ statusBarHeight: windowInfo.statusBarHeight || appBaseInfo.statusBarHeight || 44 });
-    }
   },
 
   loadProfileDraft() {

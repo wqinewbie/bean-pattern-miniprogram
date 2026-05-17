@@ -1,19 +1,10 @@
 <view class="patterns-page">
-  <view class="safe-area" style="height: {{statusBarHeight}}px;"></view>
-
-  <view class="patterns-header" style="height: {{navHeight}}px;">
-    <view class="header-back" bindtap="onBack">
-      <image class="header-icon" src="/assets/icons/lucide-arrow-left-brown.svg" mode="aspectFit"/>
+  <page-nav-bar title="草稿箱" bind:back="onBack">
+    <view slot="right" class="header-badge">
+      <image class="header-badge-icon" src="/assets/icons/lucide-file-text-orange.svg" mode="aspectFit"/>
+      <text>{{draftRuleLoaded ? draftRuleText : drafts.length}}</text>
     </view>
-    <view class="header-title-wrap">
-      <text class="header-title">草稿箱</text>
-      <view class="header-badge">
-        <image class="header-badge-icon" src="/assets/icons/lucide-file-text-orange.svg" mode="aspectFit"/>
-        <text>{{draftRuleLoaded ? draftRuleText : drafts.length}}</text>
-      </view>
-    </view>
-    <view class="header-right-spacer" style="width: {{capsuleWidth}}px;"></view>
-  </view>
+  </page-nav-bar>
 
   <scroll-view scroll-y class="patterns-scroll">
     <view class="patterns-toolbar">

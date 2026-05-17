@@ -31,7 +31,9 @@ Page({
   },
   onShow() {
     this.calcNavTop();
-    this.loadHistory(true);
+    if (!this._dataLoaded || this._needsRefresh) {
+      this.loadHistory(true);
+    }
   },
 
   calcNavTop() {
@@ -69,20 +71,34 @@ Page({
         pageSize: this.data.pageSize
       })
         .then((res) => {
-          const newItems = (Array.isArray(res.list) ? res.list : []).map((item) => ({
-            id: item.id,
-            name: item.name || ('记录#' + item.id),
-            gridSize: item.gridSize,
-            colorCount: item.colorCount,
-            brand: item.brand,
-            gridData: item.gridData,
-            colorPalette: item.colorPalette,
-            sourceUrl: item.sourceUrl,
-            boxId: item.boxId,
-            createdAt: this.formatTime(item.createdAt),
-            expiresAt: this.formatTime(item.expiresAt),
-            expireText: item.expiresAt ? ('到期 ' + this.formatTime(item.expiresAt)) : '',
-          }));
+          const newItems = (Array.isArray(res.list) ? res.list : []).map((item) => {
+            const sourceType = String(item.sourceType || '').toUpperCase();
+            const isAiSource = sourceType === 'AI' || sourceType.includes('AI');
+            let mappedPixelData = [];
+            try {
+              mappedPixelData = item.mappedPixelData
+                ? (typeof item.mappedPixelData === 'string' ? JSON.parse(item.mappedPixelData) : item.mappedPixelData)
+                : [];
+            } catch (e) { mappedPixelData = []; }
+            const hasMappedData = Array.isArray(mappedPixelData) && mappedPixelData.length > 0;
+            return {
+              id: item.id,
+              name: item.name || ('记录#' + item.id),
+              gridSize: item.gridSize,
+              colorCount: item.colorCount,
+              brand: item.brand,
+              gridData: item.gridData,
+              colorPalette: item.colorPalette,
+              sourceUrl: isAiSource ? '' : (item.sourceUrl || ''),
+              mappedPixelData,
+              isAiSource,
+              hasCanvasCover: isAiSource && hasMappedData,
+              boxId: item.boxId,
+              createdAt: this.formatTime(item.createdAt),
+              expiresAt: this.formatTime(item.expiresAt),
+              expireText: item.expiresAt ? ('到期 ' + this.formatTime(item.expiresAt)) : '',
+            };
+          });
 
           const history = reset ? newItems : [...this.data.history, ...newItems];
 
@@ -92,6 +108,8 @@ Page({
             ? history.filter(h => (h.name || '').toLowerCase().includes(kw))
             : [...history];
 
+          this._dataLoaded = true;
+          this._needsRefresh = false;
           this.setData({
             history,
             filteredHistory,
@@ -100,6 +118,8 @@ Page({
             total: res.total || 0,
             loading: false,
             loadingMore: false
+          }, () => {
+            setTimeout(() => this.renderThumbnails(), 60);
           });
         })
         .catch(() => {
@@ -122,9 +142,10 @@ Page({
 
   onItemTap(e) {
     const item = e.currentTarget.dataset.item;
+    const isAi = item.isAiSource ? '&isAi=1' : '';
     // 跳转到预加载页面，先渲染再显示预览
     wx.navigateTo({
-      url: '/pages/preview/preview?historyId=' + item.id + '&sourceType=HISTORY'
+      url: '/pages/preview/preview?historyId=' + item.id + '&sourceType=HISTORY' + isAi
     });
   },
 
@@ -154,6 +175,43 @@ Page({
     const nextMode = this.data.viewMode === 'thumb' ? 'list' : 'thumb';
     this.closeSwipe();
     this.setData({ viewMode: nextMode });
+  },
+
+  renderThumbnails() {
+    if (this.data.viewMode !== 'thumb') return;
+    const history = this.data.filteredHistory || [];
+    history.forEach(item => {
+      if (!item.hasCanvasCover) return;
+      const query = wx.createSelectorQuery();
+      query.select('#histThumbCanvas' + item.id)
+        .fields({ node: true, size: true })
+        .exec((res) => {
+          if (!res || !res[0] || !res[0].node) return;
+          const canvas = res[0].node;
+          const ctx = canvas.getContext('2d');
+          const deviceInfo = wx.getDeviceInfo ? wx.getDeviceInfo() : {};
+          const dpr = Math.min(deviceInfo.pixelRatio || 2, 2);
+          const size = Math.min(res[0].width, res[0].height) || 200;
+          canvas.width = size * dpr;
+          canvas.height = size * dpr;
+          ctx.scale(dpr, dpr);
+          const gridSize = item.gridSize || 64;
+          const cellSize = size / gridSize;
+          const mappedPixelData = item.mappedPixelData || [];
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, size, size);
+          if (mappedPixelData.length > 0) {
+            for (let y = 0; y < gridSize; y++) {
+              for (let x = 0; x < gridSize; x++) {
+                const cell = mappedPixelData[y] && mappedPixelData[y][x];
+                if (!cell || cell.isExternal) continue;
+                ctx.fillStyle = 'rgb(' + cell.r + ', ' + cell.g + ', ' + cell.b + ')';
+                ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+              }
+            }
+          }
+        });
+    });
   },
 
   applyFilter() {

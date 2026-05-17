@@ -1,24 +1,10 @@
 <view class="page">
-  <!-- 顶部导航栏 - Figma 风格 -->
-  <view class="top-bar" style="padding-top: {{statusBarHeight}}px;">
-    <view class="top-bar-inner" style="height: {{navHeight}}px; padding-top: {{navTop - statusBarHeight}}px;">
-      <view class="top-bar-left">
-        <view class="back-btn" bindtap="onBack">
-          <text class="back-icon">←</text>
-        </view>
-        <view class="title-group">
-          <text class="title-text">沉浸式拼豆</text>
-          <view class="size-badge">{{gridSize}}²</view>
-        </view>
-      </view>
-      <view class="top-bar-right" style="margin-right: {{capsuleWidth + capsuleRight * 2 + 16}}px;">
-        <view class="action-btn" bindtap="onResetAll">
-          <text class="action-icon">↻</text>
-          <text class="action-text">重置</text>
-        </view>
-      </view>
+  <page-nav-bar title="沉浸式拼豆" subtitle="{{gridSize}}²" bgColor="rgba(255,235,181,0.9)" showBack="{{true}}" bind:back="onBack">
+    <view slot="right" class="focus-reset-btn" bindtap="onResetAll">
+      <text class="action-icon">↻</text>
+      <text class="action-text">重置</text>
     </view>
-  </view>
+  </page-nav-bar>
 
   <!-- 主内容区 -->
   <view class="main-area">

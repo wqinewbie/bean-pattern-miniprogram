@@ -1,0 +1,114 @@
+{
+  "activityCode": "bean-carnival-2026",
+  "title": "拼豆嘉年华",
+  "coverImage": "https://via.placeholder.com/750x400/FFB347/FFFFFF?text=拼豆嘉年华",
+  "startAt": "2026-05-20T00:00:00Z",
+  "endAt": "2026-06-20T23:59:59Z",
+  "buttonText": "✧ 立即报名参加 ✧",
+  "buttonAction": "CLAIM",
+  "buttonUrl": "",
+  "totalQuota": 100,
+  "remainQuota": 50,
+  "participated": false,
+  "sections": [
+    {
+      "id": "hero-1",
+      "type": "hero",
+      "icon": "🎨🧩✨",
+      "title": "拼豆嘉年华",
+      "subtitle": "✨ 像素创意 · 热融豆趣 ✨",
+      "bgColor": "linear-gradient(135deg, #FFB347 0%, #FF8C42 100%)",
+      "badges": [
+        {
+          "icon": "🏆",
+          "text": "百人创意赛"
+        },
+        {
+          "icon": "🎁",
+          "text": "限定豆礼包"
+        },
+        {
+          "icon": "📸",
+          "text": "作品展出机会"
+        }
+      ]
+    },
+    {
+      "id": "title-1",
+      "type": "title",
+      "icon": "🧩",
+      "text": "活动玩法"
+    },
+    {
+      "id": "rules-1",
+      "type": "rule-list",
+      "rules": [
+        "使用拼豆模板自由创作主题 "夏日幻想" 或 "萌宠伙伴"",
+        "拍照上传作品至"拼豆圈"，带活动话题 #拼豆狂欢节#",
+        "点赞 + 官方评审团打分，角逐"最佳创意匠人"",
+        "活动期间内累计上传作品 ≥2 件，即可获得抽奖机会"
+      ]
+    },
+    {
+      "id": "title-2",
+      "type": "title",
+      "icon": "🎁",
+      "text": "超甜奖品池"
+    },
+    {
+      "id": "prizes-1",
+      "type": "prize-grid",
+      "prizes": [
+        {
+          "emoji": "🌈",
+          "name": "全色系豆桶",
+          "desc": "144色豪华装"
+        },
+        {
+          "emoji": "🖼️",
+          "name": "创意模板书",
+          "desc": "50+ 全新像素图"
+        },
+        {
+          "emoji": "🏅",
+          "name": "金豆奖杯",
+          "desc": "定制荣誉徽章"
+        },
+        {
+          "emoji": "🧸",
+          "name": "豆豆玩偶包",
+          "desc": "定制公仔材料"
+        }
+      ]
+    },
+    {
+      "id": "title-3",
+      "type": "title",
+      "icon": "🎨",
+      "text": "人气拼豆角"
+    },
+    {
+      "id": "gallery-1",
+      "type": "icon-gallery",
+      "icons": [
+        "🐱",
+        "🍕",
+        "🚀",
+        "🌸",
+        "🌟"
+      ],
+      "tip": "「 更多脑洞作品等你解锁，上传即有机会登上首页展览 」"
+    },
+    {
+      "id": "countdown-1",
+      "type": "countdown",
+      "label": "⏳ 活动倒计时 ⏳",
+      "tip": "🔥 每日前50名上传作品额外奖励拼豆小工具 🔥"
+    },
+    {
+      "id": "text-1",
+      "type": "text",
+      "content": "💡 活动时间：2026年5月20日 - 6月20日\n🧩 全国拼豆爱好者均可参与 | 最终解释权归主办方所有"
+    }
+  ]
+}
