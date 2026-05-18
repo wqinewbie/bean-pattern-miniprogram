@@ -1,8 +1,8 @@
 const request = require('../../utils/request');
 const { requireLogin, cacheProfile, hasSession } = require('../../utils/profile-guard');
 const popupManager = require('../../utils/popup-manager');
+const storage = require('../../utils/storage');
 
-const CATEGORIES = ['推荐', '卡通', '动物', '字母', '简约', '节日'];
 
 Page({
   syncTabBar() {
@@ -35,11 +35,6 @@ Page({
       linkType: 'NONE',
       linkValue: ''
     },
-    categories: CATEGORIES,
-    activeCategory: '推荐',
-    templates: [],
-    allTemplates: [],
-    templatesLoading: true,
     tutorials: [],
     currentPopup: {},
   },
@@ -57,7 +52,6 @@ Page({
     }
     this.setData({ statusBarHeight, bannerTop });
     this.loadBanners();
-    this.loadTemplates();
     this.loadTutorials();
   },
 
@@ -65,11 +59,11 @@ Page({
     this.syncTabBar();
     // 更新登录状态
     const loggedIn = hasSession();
-    const nickName = wx.getStorageSync('nickName') || '';
-    const avatarUrl = wx.getStorageSync('avatarUrl') || '';
-    const vipExpire = wx.getStorageSync('vipExpire') || '';
+    const nickName = storage.get(storage.KEYS.NICK_NAME, '');
+    const avatarUrl = storage.get(storage.KEYS.AVATAR_URL, '');
+    const vipExpire = storage.get(storage.KEYS.VIP_EXPIRE, '');
     const isVip = vipExpire && new Date(vipExpire) > new Date();
-    const magicCount = wx.getStorageSync('magicCount') || 0;
+    const magicCount = storage.get(storage.KEYS.MAGIC_COUNT, 0);
     this.setData({
       isLoggedIn: loggedIn,
       nickName,
@@ -110,7 +104,7 @@ Page({
 
   openLoginModal() {
     if (this._loginModalTimer) clearTimeout(this._loginModalTimer);
-    const everRegistered = wx.getStorageSync('everRegistered');
+    const everRegistered = storage.get(storage.KEYS.EVER_REGISTERED, '');
     this._loginModalTimer = setTimeout(() => {
       this._loginModalTimer = null;
       if (hasSession()) return;
@@ -306,33 +300,6 @@ Page({
     }
   },
 
-  loadTemplates() {
-    // 创作者中心已废弃，模板功能暂不开放
-    this.setData({
-      allTemplates: [],
-      templates: [],
-      activeCategory: '推荐',
-      templatesLoading: false,
-    });
-  },
-
-  onCategoryTap(e) {
-    const cat = e.currentTarget.dataset.cat;
-    const all = this.data.allTemplates;
-    const filtered = cat === '推荐' ? all : all.filter(t => t.category === cat);
-    this.setData({ activeCategory: cat, templates: filtered });
-  },
-
-  onTemplateTap(e) {
-    const item = e.currentTarget.dataset.item;
-    const url = item.coverUrl || '';
-    if (!this.checkLogin()) {
-      this._loginCallback = () => wx.navigateTo({ url: '/pages/generate/generate?imageUrl=' + encodeURIComponent(url) });
-      return;
-    }
-    wx.navigateTo({ url: '/pages/generate/generate?imageUrl=' + encodeURIComponent(url) });
-  },
-
   onQuickWxLogin() {
     if (this.data.loginSubmitting) return;
     this.setData({ loginSubmitting: true });
@@ -354,20 +321,20 @@ Page({
         const sessionId = ret && ret.sessionId;
         if (!sessionId) throw new Error('NO_SESSION');
 
-        wx.setStorageSync('sessionId', sessionId);
-        wx.setStorageSync('everRegistered', true);
+        storage.set(storage.KEYS.SESSION_ID, sessionId);
+        storage.set(storage.KEYS.EVER_REGISTERED, true);
 
         const profile = ret.profile || {};
-        if (profile.nickName) wx.setStorageSync('nickName', profile.nickName);
-        if (profile.avatarUrl) wx.setStorageSync('avatarUrl', profile.avatarUrl);
+        if (profile.nickName) storage.set(storage.KEYS.NICK_NAME, profile.nickName);
+        if (profile.avatarUrl) storage.set(storage.KEYS.AVATAR_URL, profile.avatarUrl);
         cacheProfile(profile);
 
         const vipExpire = profile.vipExpireAt || profile.vipExpire || '';
-        if (vipExpire) wx.setStorageSync('vipExpire', vipExpire);
+        if (vipExpire) storage.set(storage.KEYS.VIP_EXPIRE, vipExpire);
         const isVip = vipExpire && new Date(vipExpire) > new Date();
         const aiQuota = Number(profile.aiQuota !== undefined ? profile.aiQuota : profile.magicCount);
         const magicCount = Number.isNaN(aiQuota) ? 0 : aiQuota;
-        wx.setStorageSync('magicCount', magicCount);
+        storage.set(storage.KEYS.MAGIC_COUNT, magicCount);
 
         this.setData({
           nickName: profile.nickName || this.data.nickName,
@@ -435,7 +402,6 @@ Page({
 
   onPullDownRefresh() {
     this.loadBanners();
-    this.loadTemplates();
     this.loadTutorials();
     setTimeout(() => wx.stopPullDownRefresh(), 400);
   },

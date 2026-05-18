@@ -1,4 +1,6 @@
 const request = require('./utils/request');
+const storage = require('./utils/storage');
+const store = require('./utils/store');
 
 App({
   globalData: {
@@ -12,13 +14,12 @@ App({
       spacingXRatio: 0.22,
       spacingYRatio: 0.18
     },
-    watermarkConfigLoaded: false, // 标记是否已加载水印配置
+    watermarkConfigLoaded: false,
     prefetch: {
       profile: null,
       stats: null,
       profileAt: 0,
     },
-    // 结果页数据缓存：key = resultToken
     resultDataMap: {}
   },
 
@@ -26,7 +27,7 @@ App({
 
   onLaunch(options) {
     this.captureInviteCode(options);
-    const sessionId = wx.getStorageSync('sessionId');
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) {
       this.silentLogin();
     }
@@ -39,7 +40,7 @@ App({
 
   onShow(options) {
     this.captureInviteCode(options);
-    const sessionId = wx.getStorageSync('sessionId');
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) {
       this.silentLogin();
       return;
@@ -57,7 +58,7 @@ App({
   },
 
   prefetchProfileData() {
-    const sessionId = wx.getStorageSync('sessionId');
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) return;
     Promise.all([
       request.get('/user/profile'),
@@ -75,12 +76,12 @@ App({
     const query = (options && options.query) || {};
     const inviteCode = query.inviteCode || query.invite_code || '';
     if (inviteCode) {
-      wx.setStorageSync('pendingInviteCode', inviteCode);
+      storage.set(storage.KEYS.PENDING_INVITE_CODE, inviteCode);
     }
   },
 
   ensureSession() {
-    const cached = wx.getStorageSync('sessionId');
+    const cached = storage.get(storage.KEYS.SESSION_ID, '');
     if (cached) return Promise.resolve(cached);
     if (this._silentLoginPromise) return this._silentLoginPromise;
 
@@ -91,7 +92,7 @@ App({
             reject(new Error('wx.login no code'));
             return;
           }
-          const inviteCode = wx.getStorageSync('pendingInviteCode') || '';
+          const inviteCode = storage.get(storage.KEYS.PENDING_INVITE_CODE, '');
           request.post('/auth/login', { code: res.code, inviteCode })
             .then((data) => {
               const sessionId = data.sessionId || data.token;
@@ -99,9 +100,9 @@ App({
                 reject(new Error('no session id'));
                 return;
               }
-              wx.setStorageSync('sessionId', sessionId);
-              if (data.inviteCode) wx.setStorageSync('myInviteCode', data.inviteCode);
-              wx.removeStorageSync('pendingInviteCode');
+              storage.set(storage.KEYS.SESSION_ID, sessionId);
+              if (data.inviteCode) storage.set(storage.KEYS.MY_INVITE_CODE, data.inviteCode);
+              storage.remove(storage.KEYS.PENDING_INVITE_CODE);
               this.prefetchProfileData();
               resolve(sessionId);
             })
@@ -113,51 +114,32 @@ App({
           reject(err || new Error('wx.login failed'));
         }
       });
-    }).finally(() => {
-      this._silentLoginPromise = null;
     });
 
     return this._silentLoginPromise;
   },
 
-  // 静默登录：只换取 sessionId，不强制用户填资料
-  silentLogin() {
-    this.ensureSession().catch(() => {
-      console.warn('silentLogin failed');
-    });
-  },
-
-  // 获取水印配置（包含用户个人配置）
-  fetchWatermarkConfig() {
-    request.get('/watermark/user-config')
-      .then((config) => {
-        this.updateWatermarkConfig(config);
-      })
-      .catch((err) => {
-        console.warn('[app] 获取水印配置失败', err);
-      });
-  },
-
-  // 更新水印配置到 globalData
   updateWatermarkConfig(config) {
     if (!config) return;
+    store.set('appName', config.appName || this.globalData.appName);
+    if (config.watermark) {
+      store.set('watermarkConfig', { ...this.globalData.watermarkConfig, ...config.watermark });
+    }
+    store.set('watermarkConfigLoaded', true);
+  },
 
-    this.globalData.appName = config.appName || this.globalData.appName;
-    this.globalData.watermarkConfig = {
-      enabled: config.watermark?.enabled ?? true,
-      text: config.watermark?.text || config.appName || this.globalData.appName,
-      fontSize: config.watermark?.fontSize || 36,
-      color: config.watermark?.color || 'rgba(100,100,100,0.15)',
-      angle: config.watermark?.angle || -30,
-      spacingXRatio: config.watermark?.spacingXRatio || 0.22,
-      spacingYRatio: config.watermark?.spacingYRatio || 0.18
-    };
-    this.globalData.watermarkConfigLoaded = true;
+  fetchWatermarkConfig() {
+    request.get('/watermark/user-config')
+      .then(config => this.updateWatermarkConfig(config))
+      .catch(() => {});
+  },
 
-    console.log('[app] 水印配置已更新', {
-      appName: this.globalData.appName,
-      watermarkEnabled: this.globalData.watermarkConfig.enabled,
-      watermarkText: this.globalData.watermarkConfig.text
-    });
-  }
+  silentLogin() {
+    if (this._silentLoginPromise) return this._silentLoginPromise;
+    this._silentLoginPromise = this.ensureSession()
+      .catch(() => {
+        this._silentLoginPromise = null;
+      });
+    return this._silentLoginPromise;
+  },
 });

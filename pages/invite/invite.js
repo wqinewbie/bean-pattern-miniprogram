@@ -1,5 +1,6 @@
 const request = require('../../utils/request')
 const { getSafeAreaLayout } = require('../../utils/safe-area')
+const storage = require('../../utils/storage')
 
 Page({
   data: {
@@ -13,13 +14,13 @@ Page({
   onLoad() {
     this.calcNavTop()
     this.setData({
-      inputCode: wx.getStorageSync('pendingInviteCode') || ''
+      inputCode: storage.get(storage.KEYS.PENDING_INVITE_CODE, '')
     })
     this.loadInviteCode()
   },
 
   onShareAppMessage() {
-    const code = this.data.inviteCode || wx.getStorageSync('myInviteCode') || ''
+    const code = this.data.inviteCode || storage.get(storage.KEYS.MY_INVITE_CODE, '')
     return {
       title: '来和我一起玩拼豆，输入邀请码可解锁邀请任务进度',
       path: `/pages/index/index?inviteCode=${encodeURIComponent(code)}`
@@ -45,7 +46,7 @@ Page({
       .then((data) => {
         const inviteCode = data && data.inviteCode ? data.inviteCode : ''
         this.setData({ inviteCode })
-        if (inviteCode) wx.setStorageSync('myInviteCode', inviteCode)
+        if (inviteCode) storage.set(storage.KEYS.MY_INVITE_CODE, inviteCode)
       })
       .catch(() => {})
   },
@@ -63,7 +64,7 @@ Page({
     wx.showLoading({ title: '绑定中...', mask: true })
     request.post('/invite/bind', { inviteCode: code })
       .then(() => {
-        wx.removeStorageSync('pendingInviteCode')
+        storage.remove(storage.KEYS.PENDING_INVITE_CODE)
         wx.hideLoading()
         wx.showToast({ title: '绑定成功', icon: 'success' })
         this.setData({ inputCode: '' })

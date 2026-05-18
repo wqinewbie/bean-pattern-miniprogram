@@ -1,6 +1,7 @@
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { API_BASE_URL } = require('../../utils/config');
+const previewGesture = require('../../mixins/preview-gesture');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const core = require('../../utils/canvas2d/core');
 const vipApi = require('../../utils/vip-api');
@@ -144,9 +145,9 @@ Page({
       });
     }).catch(() => {
       this.setData({
-        brands: ['MARD'],
+        brands: [],
         brandIndex: 0,
-        colorSets: ['全部色号', '24色', '48色', '72色', '96色'],
+        colorSets: [],
         colorSetIndex: 0
       });
     });
@@ -742,7 +743,8 @@ Page({
         size: finalSize,
         brand,
         colorCount,
-        mirror: isMirrored
+        mirror: isMirrored,
+        instruction: this.data.aiInstruction || ''
       };
 
       // 立即跳转到生成页面
@@ -753,32 +755,7 @@ Page({
   },
 
   uploadImage(filePath) {
-    return new Promise((resolve, reject) => {
-      const sessionId = wx.getStorageSync('sessionId') || '';
-
-      wx.uploadFile({
-        url: require('../../utils/config').API_BASE_URL + '/api/image/upload',
-        filePath: filePath,
-        name: 'file',
-        header: { 'X-Session-Id': sessionId },
-        success: (res) => {
-          try {
-            const data = JSON.parse(res.data);
-            if (res.statusCode === 200 && data.code === 0) {
-              const imageUrl = data.data.imageUrl || data.data.originalUrl;
-              resolve(imageUrl);
-            } else {
-              reject(new Error(data.message || '上传失败'));
-            }
-          } catch (e) {
-            reject(new Error('上传失败'));
-          }
-        },
-        fail: (err) => {
-          reject(new Error('网络错误'));
-        }
-      });
-    });
+    return request.uploadImage(filePath).then(data => data.imageUrl || data.originalUrl);
   },
 
   callAiGenerate(params) {

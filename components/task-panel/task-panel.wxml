@@ -1,0 +1,50 @@
+<view class="bottom-sheet task-panel {{show ? 'bottom-sheet--show' : ''}}">
+  <view class="sheet-handle"></view>
+  <text class="sheet-title">任务中心</text>
+
+  <view class="checkin-section">
+    <view class="checkin-header">
+      <text class="checkin-title">每日签到</text>
+      <text class="checkin-desc">连续签到{{checkinStatus.requiredDays}}天可领取奖励</text>
+    </view>
+    <view class="checkin-summary-card">
+      <view class="checkin-main-row">
+        <view class="checkin-main-block">
+          <text class="checkin-main-value">{{checkinStatus.continuousDays || 0}}</text>
+          <text class="checkin-main-label">已连续签到（天）</text>
+        </view>
+        <view class="checkin-main-divider"></view>
+        <view class="checkin-main-block">
+          <text class="checkin-main-value">{{checkinStatus.canClaim ? 0 : ((checkinStatus.requiredDays || 3) - (checkinStatus.continuousDays || 0))}}</text>
+          <text class="checkin-main-label">距离领奖还差（天）</text>
+        </view>
+      </view>
+      <view class="checkin-tips-row">
+        <text class="checkin-tip-text">累计签到 {{checkinStatus.totalDays || 0}} 天</text>
+        <text wx:if="{{checkinStatus.canClaim}}" class="checkin-tip-text checkin-tip-text--highlight">已达标，可领取奖励</text>
+        <text wx:elif="{{checkinStatus.checkedInToday}}" class="checkin-tip-text">今天已签到，继续保持</text>
+        <text wx:else class="checkin-tip-text">今天还没签到，记得打卡</text>
+      </view>
+    </view>
+    <view class="checkin-actions">
+      <button wx:if="{{!checkinStatus.checkedInToday}}" class="checkin-btn" bindtap="onCheckin">立即签到</button>
+      <button wx:else class="checkin-btn checkin-btn--disabled" disabled>今日已签到</button>
+      <button wx:if="{{checkinStatus.canClaim}}" class="claim-btn" bindtap="onClaim">领取奖励 +{{checkinStatus.rewardValue}}次AI</button>
+    </view>
+  </view>
+
+  <view class="task-list">
+    <view class="task-section-title">每日任务</view>
+    <view wx:for="{{tasks}}" wx:key="id" class="task-item">
+      <view class="task-info">
+        <text class="task-name">{{item.taskName}}</text>
+        <text class="task-reward">{{item.rewardText}}</text>
+      </view>
+      <view wx:if="{{item.status === 2}}" class="task-done-btn">已完成</view>
+      <view wx:elif="{{item.status === 1}}" class="task-claim-btn" bindtap="onDoTask" data-task="{{item}}">{{item.actionText || '领取'}}</view>
+      <view wx:else class="task-do-btn" bindtap="onDoTask" data-task="{{item}}">{{item.actionText || '去完成'}}</view>
+    </view>
+  </view>
+
+  <view class="sheet-close-btn" bindtap="onClose">关闭</view>
+</view>

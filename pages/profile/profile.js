@@ -1,6 +1,8 @@
 const request = require('../../utils/request');
 const { API_BASE_URL } = require('../../utils/config');
 const { cacheProfile } = require('../../utils/profile-guard');
+const storage = require('../../utils/storage');
+const store = require('../../utils/store');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 
 const DEFAULT_NICKNAME = '魔法师小豆';
@@ -137,12 +139,12 @@ Page({
 
   loadLocalData() {
     // 加载本地存储的数据
-    const checkedIn = wx.getStorageSync('checkedIn') || false;
-    const magicCount = wx.getStorageSync('magicCount') || 0;
-    const gifts = wx.getStorageSync('gifts') || this.getDefaultGifts();
-    const watermarkText = wx.getStorageSync('watermarkText') || '';
+    const checkedIn = storage.get(storage.KEYS.CHECKED_IN, false);
+    const magicCount = storage.get(storage.KEYS.MAGIC_COUNT, 0);
+    const gifts = storage.getJSON(storage.KEYS.GIFTS, null) || this.getDefaultGifts();
+    const watermarkText = storage.get(storage.KEYS.WATERMARK_TEXT, '');
     const draftCount = this.getDraftCount();
-    const inviteCode = wx.getStorageSync('myInviteCode') || '';
+    const inviteCode = storage.get(storage.KEYS.MY_INVITE_CODE, '');
     
     this.setData({
       checkedIn,
@@ -177,7 +179,7 @@ Page({
   },
 
   getDraftCount() {
-    const drafts = wx.getStorageSync('drafts') || wx.getStorageSync('draftPatterns') || [];
+    const drafts = storage.getJSON(storage.KEYS.DRAFTS, null) || storage.getJSON('draftPatterns', null) || [];
     return Array.isArray(drafts) ? drafts.length : 0;
   },
 
@@ -189,7 +191,7 @@ Page({
   },
 
   loadTasksFromServer() {
-    const sessionId = wx.getStorageSync('sessionId');
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) return Promise.resolve([]);
 
     return request.get('/task/list')
@@ -309,7 +311,7 @@ Page({
   },
 
   loadNotifications() {
-    const sessionId = wx.getStorageSync('sessionId');
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) {
       this.setData({ notifications: [], unreadCount: 0 });
       return;
@@ -352,7 +354,7 @@ Page({
   },
 
   markNotificationsRead() {
-    const sessionId = wx.getStorageSync('sessionId');
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) return;
 
     // 调用后端接口标记所有通知为已读
@@ -367,10 +369,10 @@ Page({
   },
 
   loadProfile() {
-    const nickName = wx.getStorageSync('nickName') || '';
-    const avatarUrl = wx.getStorageSync('avatarUrl') || '';
-    const phone = wx.getStorageSync('phone') || '';
-    const vipExpire = wx.getStorageSync('vipExpire') || '';
+    const nickName = storage.get(storage.KEYS.NICK_NAME, '');
+    const avatarUrl = storage.get(storage.KEYS.AVATAR_URL, '');
+    const phone = storage.get(storage.KEYS.PHONE, '');
+    const vipExpire = storage.get(storage.KEYS.VIP_EXPIRE, '');
     const isVip = vipExpire && new Date(vipExpire) > new Date();
 
     this.setData({
@@ -379,7 +381,7 @@ Page({
       isVip,
     });
 
-    const sessionId = wx.getStorageSync('sessionId');
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) return;
 
     this.setData({ loading: true });
@@ -392,9 +394,9 @@ Page({
     ])
       .then(([profile, stats, gifts, tasks, inviteData]) => {
         if (profile && profile.nickName) {
-          wx.setStorageSync('nickName', profile.nickName);
-          wx.setStorageSync('avatarUrl', profile.avatarUrl || '');
-          wx.setStorageSync('phone', profile.phone || '');
+          storage.set(storage.KEYS.NICK_NAME, profile.nickName);
+          storage.set(storage.KEYS.AVATAR_URL, profile.avatarUrl || '');
+          storage.set(storage.KEYS.PHONE, profile.phone || '');
         }
 
         const pendingTaskCount = this.calcPendingTaskCountFromServer(tasks || []);
@@ -404,7 +406,7 @@ Page({
         const giftTabs = this.buildGiftTabs(normalizedGifts);
         const visibleGifts = this.filterGiftsByTab(normalizedGifts, this.data.giftTab);
 
-        const inviteCode = inviteData && inviteData.inviteCode ? inviteData.inviteCode : (wx.getStorageSync('myInviteCode') || '');
+        const inviteCode = inviteData && inviteData.inviteCode ? inviteData.inviteCode : storage.get(storage.KEYS.MY_INVITE_CODE, '');
 
         this.setData({
           userInfo: {
@@ -425,7 +427,7 @@ Page({
         });
 
         if (inviteCode) {
-          wx.setStorageSync('myInviteCode', inviteCode);
+          storage.set(storage.KEYS.MY_INVITE_CODE, inviteCode);
         }
       })
       .catch(() => {
@@ -605,13 +607,13 @@ Page({
   activateVipTrial() {
     const expireDate = new Date();
     expireDate.setDate(expireDate.getDate() + 3);
-    wx.setStorageSync('vipExpire', expireDate.toISOString());
+    storage.set(storage.KEYS.VIP_EXPIRE, expireDate.toISOString());
     this.setData({ isVip: true });
   },
 
   removeGift(giftId) {
     const gifts = this.data.gifts.filter(g => g.id !== giftId);
-    wx.setStorageSync('gifts', gifts);
+    storage.setJSON(storage.KEYS.GIFTS, gifts);
     this.setData({
       gifts,
       availableGiftCount: this.calcAvailableGiftCount(gifts),
@@ -624,7 +626,7 @@ Page({
 
   // 加载签到状态
   loadCheckinStatus() {
-    const sessionId = wx.getStorageSync('sessionId');
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) return;
 
     request.get('/checkin/status')
@@ -811,7 +813,7 @@ Page({
 
   addMagicCount(count) {
     const magicCount = this.data.magicCount + count;
-    wx.setStorageSync('magicCount', magicCount);
+    storage.set(storage.KEYS.MAGIC_COUNT, magicCount);
     this.setData({ magicCount });
   },
 
@@ -831,7 +833,7 @@ Page({
       return;
     }
     this.setData({ watermarkEnabled: enabled });
-    wx.setStorageSync('watermarkEnabled', enabled);
+    storage.set(storage.KEYS.WATERMARK_ENABLED, enabled);
   },
 
   onWatermarkTextChange(e) {
@@ -854,8 +856,8 @@ Page({
     const { watermarkEnabled, watermarkText, isVip } = this.data;
 
     // 保存到本地存储（用于离线场景）
-    wx.setStorageSync('watermarkEnabled', watermarkEnabled);
-    wx.setStorageSync('watermarkText', watermarkText);
+    storage.set(storage.KEYS.WATERMARK_ENABLED, watermarkEnabled);
+    storage.set(storage.KEYS.WATERMARK_TEXT, watermarkText);
 
     // 如果是VIP，同步到服务器
     if (isVip) {
@@ -867,12 +869,12 @@ Page({
           customText: watermarkText
         });
 
-        // 保存成功后，立即更新 app.globalData
-        const app = getApp();
-        if (app && app.globalData && app.globalData.watermarkConfig) {
-          app.globalData.watermarkConfig.enabled = watermarkEnabled;
-          app.globalData.watermarkConfig.text = watermarkText || app.globalData.appName;
-          console.log('[profile] 已更新 globalData 水印配置');
+        // 保存成功后，立即更新全局状态
+        const wmConfig = store.get('watermarkConfig', null);
+        if (wmConfig) {
+          wmConfig.enabled = watermarkEnabled;
+          wmConfig.text = watermarkText || store.get('appName', '');
+          store.set('watermarkConfig', wmConfig);
         }
 
         wx.hideLoading();
@@ -890,8 +892,8 @@ Page({
   },
 
   loadWatermarkSetting() {
-    const enabled = wx.getStorageSync('watermarkEnabled');
-    const text = wx.getStorageSync('watermarkText') || '';
+    const enabled = storage.get(storage.KEYS.WATERMARK_ENABLED, null);
+    const text = storage.get(storage.KEYS.WATERMARK_TEXT, '');
     this.setData({ 
       watermarkEnabled: enabled !== false,
       watermarkText: text,
@@ -976,11 +978,8 @@ Page({
       content: '确认退出登录？',
       success: (res) => {
         if (res.confirm) {
-          wx.removeStorageSync('sessionId');
-          wx.removeStorageSync('nickName');
-          wx.removeStorageSync('avatarUrl');
-          wx.removeStorageSync('phone');
-          wx.removeStorageSync('vipExpire');
+          storage.clearSession();
+          storage.remove(storage.KEYS.VIP_EXPIRE);
           this.setData({
             userInfo: null,
             stats: EMPTY_STATS,

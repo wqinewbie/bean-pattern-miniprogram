@@ -1,0 +1,20 @@
+<view class="bottom-sheet magic-panel {{show ? 'bottom-sheet--show' : ''}}">
+  <text class="panel-title">AI魔法次数</text>
+  <text class="panel-sub-title">当前剩余魔法 {{magicCount}} 次，请及时使用</text>
+  <view class="magic-info-box">
+    <text class="magic-info-icon">ℹ</text>
+    <text class="magic-info-text">所有途径获取的AI次数即时到账，除特殊情况外不可退款。</text>
+  </view>
+  <view class="magic-link-list">
+    <view class="magic-link-row" bindtap="onTask">
+      <text class="magic-link-text">做任务领取AI魔法次数奖励</text><text class="magic-link-arrow">›</text>
+    </view>
+    <view class="magic-link-row" bindtap="onVip">
+      <text class="magic-link-text">{{isVip ? '续费会员得AI魔法次数' : '充值会员得AI魔法次数'}}</text><text class="magic-link-arrow">›</text>
+    </view>
+    <view class="magic-link-row" bindtap="onCards">
+      <text class="magic-link-text">{{isVip ? '会员享折扣购AI魔法次卡' : '购买AI魔法次卡'}}</text><text class="magic-link-arrow">›</text>
+    </view>
+  </view>
+  <view class="sheet-close-btn" bindtap="onClose">关闭</view>
+</view>

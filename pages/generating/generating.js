@@ -172,32 +172,7 @@ Page({
 
   // ========== AI 生成相关方法 ==========
   uploadImage(filePath) {
-    return new Promise((resolve, reject) => {
-      const sessionId = wx.getStorageSync('sessionId') || '';
-
-      wx.uploadFile({
-        url: require('../../utils/config').API_BASE_URL + '/api/image/upload',
-        filePath: filePath,
-        name: 'file',
-        header: { 'X-Session-Id': sessionId },
-        success: (res) => {
-          try {
-            const data = JSON.parse(res.data);
-            if (res.statusCode === 200 && data.code === 0) {
-              const imageUrl = data.data.imageUrl || data.data.originalUrl;
-              resolve(imageUrl);
-            } else {
-              reject(new Error(data.message || '上传失败'));
-            }
-          } catch (e) {
-            reject(new Error('上传失败'));
-          }
-        },
-        fail: (err) => {
-          reject(new Error('网络错误'));
-        }
-      });
-    });
+    return request.uploadImage(filePath).then(data => data.imageUrl || data.originalUrl);
   },
 
   callAiGenerate(params) {

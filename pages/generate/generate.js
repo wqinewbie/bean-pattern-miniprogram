@@ -1,6 +1,7 @@
 const { API_BASE_URL } = require('../../utils/config');
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
+const previewGesture = require('../../mixins/preview-gesture');
 const { init2dCanvas, resize2dCanvas } = require('../../utils/canvas2d/core');
 const { exportCanvasToTempFilePath } = require('../../utils/canvas2d/export');
 

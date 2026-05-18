@@ -1,6 +1,7 @@
 const request = require('../../utils/request');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const { drawPatternWithAxes } = require('../../utils/pattern-canvas');
+const storage = require('../../utils/storage');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { generatePatternName } = require('../../utils/name-helper');
 const { renderResult } = require('../../utils/canvas2d/renderers/resultRenderer');
@@ -292,7 +293,7 @@ Page({
     }
 
     const storageKey = 'draw_edit_' + Date.now();
-    wx.setStorageSync(storageKey, {
+    storage.setJSON(storageKey, {
       gridSize: currentSize,
       gridData,
       colorPalette,

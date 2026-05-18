@@ -1,9 +1,8 @@
+const storage = require('../../utils/storage');
+
 Component({
   properties: {
-    config: {
-      type: Object,
-      value: {}
-    }
+    config: { type: Object, value: {} }
   },
 
   data: {
@@ -14,12 +13,10 @@ Component({
 
   methods: {
     show(popupKey, config) {
-      const hidden = wx.getStorageSync('popupHidden') || {};
-      if (hidden[popupKey]) {
-        return;
-      }
-      
-      this.setData({ 
+      const hidden = storage.getJSON(storage.KEYS.POPUP_HIDDEN, {});
+      if (hidden[popupKey]) return;
+
+      this.setData({
         visible: true,
         neverShowKey: popupKey,
         config: config || {}
@@ -45,11 +42,9 @@ Component({
 
     onConfirm() {
       const { config } = this.properties;
-      
       if (config.buttonUrl) {
         wx.navigateTo({ url: config.buttonUrl });
       }
-      
       this.hide();
       this.triggerEvent('confirm');
     },
@@ -58,13 +53,13 @@ Component({
       const checked = e.detail.value && e.detail.value.length > 0;
       if (checked) {
         const popupKey = this.data.neverShowKey;
-        const hidden = wx.getStorageSync('popupHidden') || {};
+        const hidden = storage.getJSON(storage.KEYS.POPUP_HIDDEN, {});
         hidden[popupKey] = true;
-        wx.setStorageSync('popupHidden', hidden);
-        
-        const lastShown = wx.getStorageSync('popupLastShown') || {};
+        storage.setJSON(storage.KEYS.POPUP_HIDDEN, hidden);
+
+        const lastShown = storage.getJSON(storage.KEYS.POPUP_LAST_SHOWN, {});
         lastShown[popupKey] = Date.now();
-        wx.setStorageSync('popupLastShown', lastShown);
+        storage.setJSON(storage.KEYS.POPUP_LAST_SHOWN, lastShown);
       }
     }
   }

@@ -1,6 +1,7 @@
 ﻿// 拼豆画板 - Canvas 2D 版本
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
+const storage = require('../../utils/storage');
 const { drawBoard, drawPixel } = require('../../utils/canvas2d/renderers/boardRenderer');
 const { getScheduler } = require('../../utils/canvas2d/renderScheduler');
 const { resize2dCanvas } = require('../../utils/canvas2d/core');
@@ -11,13 +12,8 @@ const ColorBarManager = require('./module/colorBarManager');
 const Magnifier = require('./module/magnifier');
 const ToolEngine = require('./module/toolEngine');
 
-// 默认颜色
-const DEFAULT_COLORS = [
-  '#FFFFFF', '#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00',
-  '#FF6B35', '#FF69B4', '#00CED1', '#9370DB', '#FFA500', '#008B8B',
-  '#DC143C', '#32CD32', '#4169E1', '#FFD700', '#808080', '#2F4F4F',
-  '#FF6B6B', '#90EE90', '#87CEEB', '#DDA0DD', '#F0E68C', '#E6E6FA'
-];
+// 画板内置基础色板（工具层默认，非拼豆品牌色）
+const DEFAULT_COLORS = ['#FFFFFF','#000000','#FF0000','#00FF00','#0000FF','#FFFF00','#FF6B35','#FF69B4','#00CED1','#9370DB','#FFA500','#008B8B','#DC143C','#32CD32','#4169E1','#FFD700','#808080','#2F4F4F','#FF6B6B','#90EE90','#87CEEB','#DDA0DD','#F0E68C','#E6E6FA'];
 const MAX_GRID_SIZE = 200;
 const MIN_GRID_SIZE = 16;
 const BASE_PRESET_SIZES = [24, 36, 50, 52, 64, 78, 104, 200];
@@ -70,7 +66,7 @@ Page({
     source: 'blank',
     storageKey: '',
     brand: 'MARD',
-    brandList: ['MARD', 'Hama', 'Perler', 'Artkal'],
+    brandList: [],
     brandIndex: 0,
     presetSizes: BASE_PRESET_SIZES.filter((size) => size <= MAX_GRID_SIZE),
     isPresetSize: true,
@@ -1034,7 +1030,7 @@ Page({
       // 失败时使用默认值
       console.error('加载品牌列表失败，使用默认值');
       this.setData({
-        brandList: ['MARD', 'Hama', 'Perler', 'Artkal'],
+        brandList: [],
         brand: 'MARD',
         brandIndex: 0,
         colors: DEFAULT_COLORS
@@ -1215,7 +1211,7 @@ Page({
         data: payload,
         fail: (e) => {
           // 异步失败时回退到同步
-          try { wx.setStorageSync(LOCAL_RECOVERY_KEY, payload); } catch (e2) {}
+          try { storage.set(LOCAL_RECOVERY_KEY, payload); } catch (e2) {}
         }
       });
     } catch (e) {
@@ -1251,7 +1247,7 @@ Page({
 
   _clearLocalRecoveryDraft() {
     try {
-      wx.removeStorageSync(LOCAL_RECOVERY_KEY);
+      storage.remove(LOCAL_RECOVERY_KEY);
     } catch (e) {
       console.warn('清理本地恢复缓存失败:', e);
     }
@@ -1260,7 +1256,7 @@ Page({
   _tryRestoreLocalDraft() {
     let payload = null;
     try {
-      payload = wx.getStorageSync(LOCAL_RECOVERY_KEY);
+      payload = storage.get(LOCAL_RECOVERY_KEY, null);
     } catch (e) {
       payload = null;
     }
@@ -1332,7 +1328,7 @@ Page({
 
   _loadDrawData(storageKey) {
     try {
-      const drawData = wx.getStorageSync(storageKey);
+      const drawData = storage.getJSON(storageKey, null);
       if (!drawData) { wx.showToast({ title: '数据加载失败', icon: 'none' }); this._initData(); return; }
       const { gridSize, gridData, colorPalette, brand, backgroundState } = drawData;
 
@@ -1413,7 +1409,7 @@ Page({
         this._updateBackgroundImageInfo(bgState.backgroundImage);
       }
       
-      wx.removeStorageSync(storageKey);
+      storage.remove(storageKey);
     } catch (e) {
       console.error('加载绘图数据失败:', e);
       wx.showToast({ title: '数据加载失败', icon: 'none' });
@@ -3619,7 +3615,7 @@ Page({
         const editResult = { updated: true, gridData, colorPalette, gridSize, brand: brand || 'MARD',
           colorCount: colorStats.length, totalBeads: colorStats.reduce((a, c) => a + c.count, 0) };
         const resultStorageKey = 'editResult_' + Date.now();
-        wx.setStorageSync(resultStorageKey, editResult);
+        storage.setJSON(resultStorageKey, editResult);
         setTimeout(() => {
           const pages = getCurrentPages();
           const prevPage = pages[pages.length - 2];

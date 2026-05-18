@@ -1,4 +1,5 @@
 const { API_BASE_URL: API_BASE_URL_RAW } = require('./config');
+const storage = require('./storage');
 const API_BASE_URL = `${API_BASE_URL_RAW}/api`;
 
 const DEBUG_REQUEST = (() => {
@@ -21,10 +22,7 @@ const ERROR_MESSAGES = {
 };
 
 function clearSessionCache() {
-  wx.removeStorageSync('sessionId');
-  wx.removeStorageSync('nickName');
-  wx.removeStorageSync('avatarUrl');
-  wx.removeStorageSync('phone');
+  storage.clearSession();
 }
 
 function openProfileGuardModal(message) {
@@ -48,7 +46,7 @@ function rejectProfileGuard(body, reject) {
 
 function request(url, method, data, headers) {
   return new Promise((resolve, reject) => {
-    const sessionId = wx.getStorageSync('sessionId') || '';
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     const fullUrl = `${API_BASE_URL}${url}`;
 
     if (DEBUG_REQUEST) {
@@ -135,4 +133,33 @@ function del(url, headers) {
   return request(url, 'DELETE', undefined, headers);
 }
 
-module.exports = { request, get, post, put, delete: del, ERROR_CODES, ERROR_MESSAGES };
+function uploadImage(filePath) {
+  return new Promise((resolve, reject) => {
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
+    const fullUrl = `${API_BASE_URL}/image/upload`;
+
+    wx.uploadFile({
+      url: fullUrl,
+      filePath,
+      name: 'file',
+      header: { 'X-Session-Id': sessionId },
+      success: (res) => {
+        try {
+          const body = JSON.parse(res.data);
+          if (body && body.code === 0) {
+            resolve(body.data);
+          } else {
+            reject(new Error((body && body.message) || '上传失败'));
+          }
+        } catch (e) {
+          reject(new Error('解析上传结果失败'));
+        }
+      },
+      fail: (err) => {
+        reject(new Error(err.errMsg || '网络错误'));
+      }
+    });
+  });
+}
+
+module.exports = { request, get, post, put, delete: del, uploadImage, ERROR_CODES, ERROR_MESSAGES };

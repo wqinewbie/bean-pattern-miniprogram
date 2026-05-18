@@ -104,25 +104,6 @@ Page({
   },
 
   uploadImage(filePath) {
-    const sessionId = wx.getStorageSync('sessionId') || '';
-    return new Promise((resolve, reject) => {
-      wx.uploadFile({
-        url: `${API_BASE_URL}/api/image/upload`,
-        filePath,
-        name: 'file',
-        header: { 'X-Session-Id': sessionId },
-        success: (res) => {
-          try {
-            const body = JSON.parse(res.data || '{}');
-            if (res.statusCode === 200 && body.code === 0) {
-              resolve(body.data.imageUrl || body.data.originalUrl);
-              return;
-            }
-          } catch (e) {}
-          reject(new Error('图片上传失败'));
-        },
-        fail: () => reject(new Error('图片上传失败'))
-      });
-    });
+    return request.uploadImage(filePath).then(data => data.imageUrl || data.originalUrl);
   }
 });

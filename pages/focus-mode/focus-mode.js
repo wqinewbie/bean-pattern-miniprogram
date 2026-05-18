@@ -1,6 +1,7 @@
 // 沉浸式拼豆页面 - Canvas 2D 版本（Figma 样式移植）
 const request = require('../../utils/request');
 const { drawImmersiveGrid, getTextColor } = require('../../utils/canvas2d/renderers/immersiveRenderer');
+const storage = require('../../utils/storage');
 
 Page({
   data: {
@@ -92,7 +93,7 @@ Page({
 
   _loadFromStorage(storageKey) {
     try {
-      const data = wx.getStorageSync(storageKey);
+      const data = storage.getJSON(storageKey, null);
       if (!data) throw new Error('数据不存在');
       
       this._initWithData(data);

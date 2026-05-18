@@ -1,6 +1,7 @@
 const request = require('../../utils/request');
 const vipApi = require('../../utils/vip-api');
 const { requireLogin } = require('../../utils/profile-guard');
+const storage = require('../../utils/storage');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 
 Page({
@@ -105,7 +106,7 @@ Page({
 
         // 更新本地缓存
         if (vipExpireAt) {
-          wx.setStorageSync('vipExpire', vipExpireAt);
+          storage.set(storage.KEYS.VIP_EXPIRE, vipExpireAt);
         }
 
         // 根据当前tab加载对应数据

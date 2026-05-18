@@ -1,7 +1,9 @@
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { drawPatternWithAxes } = require('../../utils/pattern-canvas');
+const storage = require('../../utils/storage');
 const { waitCanvas2dReady } = require('../../utils/canvas2d/controller');
+const colorMatcher = require('../../utils/color-matcher');
 const { patternBoardSize } = require('../../utils/canvas2d/size-strategies');
 const { getWatermarkConfig } = require('../../utils/watermark-helper');
 
@@ -213,229 +215,37 @@ Page({
 
   // 采样网格（从 generating.js 复制）
   _sampleGrid(data, sw, sh, gridSize) {
-    const aspect = sw / sh;
-    let gw, gh;
-
-    if (aspect >= 1) {
-      gw = gridSize;
-      gh = Math.max(1, Math.round(gridSize / aspect));
-    } else {
-      gh = gridSize;
-      gw = Math.max(1, Math.round(gridSize * aspect));
-    }
-
-    const cw = sw / gw;
-    const ch = sh / gh;
-    const grid = [];
-
-    for (let gy = 0; gy < gh; gy++) {
-      const row = [];
-      for (let gx = 0; gx < gw; gx++) {
-        const x0 = Math.floor(gx * cw), x1 = Math.min(Math.ceil((gx+1)*cw), sw);
-        const y0 = Math.floor(gy * ch), y1 = Math.min(Math.ceil((gy+1)*ch), sh);
-        const pixels = [];
-
-        for (let py = y0; py < y1; py++) {
-          for (let px = x0; px < x1; px++) {
-            const i = (py * sw + px) * 4;
-            const a = data[i + 3];
-            if (a < 128) continue;
-            pixels.push([data[i], data[i + 1], data[i + 2]]);
-          }
-        }
-
-        if (!pixels.length) {
-          row.push([255, 255, 255]);
-          continue;
-        }
-
-        // 使用 average 模式（卡通模式）
-        let rSum = 0, gSum = 0, bSum = 0;
-        pixels.forEach((rgb) => {
-          rSum += rgb[0];
-          gSum += rgb[1];
-          bSum += rgb[2];
-        });
-        const total = pixels.length;
-        row.push([
-          Math.round(rSum / total),
-          Math.round(gSum / total),
-          Math.round(bSum / total)
-        ]);
-      }
-      grid.push(row);
-    }
-
-    return grid;
+    return colorMatcher.sampleGrid(data, sw, sh, gridSize, 'average');
   },
 
   // 调用后端 API 匹配颜色（从 generating.js 复制）
   _matchColors(rgbGrid, brand) {
-    return new Promise((resolve, reject) => {
-      request.post('/bead/match-colors', {
-        brand: brand.toLowerCase(),
-        colorCount: 0,
-        grid: rgbGrid,
-        algo: 'standard',
-        similarityThreshold: 0,
-      })
-        .then((res) => {
-          resolve(res.data || res);
-        })
-        .catch(reject);
-    });
+    return colorMatcher.matchColors(rgbGrid, brand, 0, 'standard');
   },
 
   // 转换数据格式（从 generating.js 复制）
   _convertToMappedPixelData(matchedGrid) {
-    if (!matchedGrid || !matchedGrid.length) {
-      return { mappedPixelData: [], colorStats: [], gridData: [], colorPalette: [] };
-    }
-
-    const mappedData = [];
-    const colorStatsMap = {};
-    const gridData = [];
-    const colorPaletteMap = {};
-    let colorIndex = 0;
-
-    for (let y = 0; y < matchedGrid.length; y++) {
-      const row = [];
-      const gridRow = [];
-      const matchedRow = matchedGrid[y];
-
-      if (!matchedRow) continue;
-
-      for (let x = 0; x < matchedRow.length; x++) {
-        const cell = matchedRow[x];
-        if (!cell) continue;
-
-        const colorObj = {
-          id: cell.id || '',
-          name: cell.name || cell.id || '',
-          hex: this._rgbToHex(cell.r, cell.g, cell.b),
-          r: cell.r,
-          g: cell.g,
-          b: cell.b
-        };
-        row.push(colorObj);
-
-        const id = colorObj.id;
-        if (!colorStatsMap[id]) {
-          colorStatsMap[id] = {
-            id: id,
-            name: colorObj.name,
-            hex: colorObj.hex,
-            r: colorObj.r,
-            g: colorObj.g,
-            b: colorObj.b,
-            count: 0
-          };
-        }
-        colorStatsMap[id].count++;
-
-        // 构建 gridData 和 colorPalette
-        if (!colorPaletteMap[id]) {
-          colorPaletteMap[id] = {
-            id: id,
-            name: colorObj.name,
-            hex: colorObj.hex,
-            r: colorObj.r,
-            g: colorObj.g,
-            b: colorObj.b,
-            count: 0,
-            index: colorIndex
-          };
-          colorIndex++;
-        }
-        colorPaletteMap[id].count++;
-        gridRow.push(colorPaletteMap[id].index);
-      }
-      mappedData.push(row);
-      gridData.push(gridRow);
-    }
-
-    const colorStats = Object.values(colorStatsMap).sort((a, b) => b.count - a.count);
-    const colorPalette = Object.values(colorPaletteMap).sort((a, b) => a.index - b.index);
-
-    return { mappedPixelData: mappedData, colorStats, gridData, colorPalette };
+    return colorMatcher.convertToMappedPixelData(matchedGrid);
   },
 
   // RGB转Hex
   _rgbToHex(r, g, b) {
-    return '#' + [r, g, b].map(function(x) {
-      return ('0' + Math.max(0, Math.min(255, x)).toString(16)).slice(-2);
-    }).join('').toUpperCase();
+    return colorMatcher.rgbToHex(r, g, b);
   },
 
   // 合并相近色号（从 result.js 复制）
   _mergeSimilarMappedColors(mappedResult, threshold) {
-    return new Promise((resolve) => {
-      const mapped = mappedResult && mappedResult.mappedPixelData ? mappedResult.mappedPixelData : [];
-      const th = Math.max(0, Math.min(100, Number(threshold || 0)));
-      if (!mapped.length || th <= 0) {
-        resolve({ mappedPixelData: mapped, colorStats: mappedResult && mappedResult.colorStats ? mappedResult.colorStats : this._calcColorStats(mapped) });
-        return;
-      }
-
-      const counts = {};
-      const colorMap = {};
-      mapped.forEach((row) => (row || []).forEach((cell) => {
-        if (!cell || cell.isExternal || !cell.id) return;
-        counts[cell.id] = (counts[cell.id] || 0) + 1;
-        if (!colorMap[cell.id]) colorMap[cell.id] = { id: cell.id, name: cell.name, hex: cell.hex, r: cell.r, g: cell.g, b: cell.b };
-      }));
-
-      const ids = Object.entries(counts).sort((a, b) => b[1] - a[1]).map((it) => it[0]);
-      const merged = mapped.map((row) => (row || []).map((cell) => Object.assign({}, cell, { isExternal: !!(cell && cell.isExternal) })));
-      const replaced = {};
-      for (let i = 0; i < ids.length; i++) {
-        const aId = ids[i];
-        if (replaced[aId]) continue;
-        const a = colorMap[aId];
-        if (!a) continue;
-        for (let j = i + 1; j < ids.length; j++) {
-          const bId = ids[j];
-          if (replaced[bId]) continue;
-          const b = colorMap[bId];
-          if (!b) continue;
-          if (this._colorDistance(a, b) < th) {
-            replaced[bId] = true;
-            for (let y = 0; y < merged.length; y++) {
-              const row = merged[y] || [];
-              for (let x = 0; x < row.length; x++) {
-                if (row[x] && row[x].id === bId) row[x] = { id: a.id, name: a.name, hex: a.hex, r: a.r, g: a.g, b: a.b, isExternal: false };
-              }
-            }
-          }
-        }
-      }
-      resolve({ mappedPixelData: merged, colorStats: this._calcColorStats(merged) });
-    });
+    return colorMatcher.mergeSimilarColors(mappedResult, threshold);
   },
 
   // 计算颜色距离（从 result.js 复制）
   _colorDistance(colorA, colorB) {
-    const dr = Number(colorA.r || 0) - Number(colorB.r || 0);
-    const dg = Number(colorA.g || 0) - Number(colorB.g || 0);
-    const db = Number(colorA.b || 0) - Number(colorB.b || 0);
-    return Math.sqrt(dr * dr + dg * dg + db * db);
+    return colorMatcher.colorDistance(colorA, colorB);
   },
 
   // 计算颜色统计（从 result.js 复制）
   _calcColorStats(mappedPixelData) {
-    const colorStatsMap = {};
-    for (let y = 0; y < mappedPixelData.length; y++) {
-      const row = mappedPixelData[y] || [];
-      for (let x = 0; x < row.length; x++) {
-        const cell = row[x];
-        if (!cell || cell.isExternal) continue;
-        if (!colorStatsMap[cell.id]) {
-          colorStatsMap[cell.id] = { id: cell.id, name: cell.name, hex: cell.hex, r: cell.r, g: cell.g, b: cell.b, count: 0 };
-        }
-        colorStatsMap[cell.id].count++;
-      }
-    }
-    return Object.values(colorStatsMap).sort((a, b) => b.count - a.count);
+    return colorMatcher.calcColorStats(mappedPixelData);
   },
 
   // 将 mappedPixelData 转换回 matchedGrid 格式（用于重新生成 gridData 和 colorPalette）
@@ -671,7 +481,7 @@ Page({
     }
 
     const storageKey = 'draw_edit_' + Date.now();
-    wx.setStorageSync(storageKey, {
+    storage.setJSON(storageKey, {
       gridSize,
       gridData,
       colorPalette,

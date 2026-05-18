@@ -1,11 +1,12 @@
 const request = require('./request');
+const storage = require('./storage');
 
 function hasText(v) {
   return !!(v && String(v).trim());
 }
 
 function hasSession() {
-  return hasText(wx.getStorageSync('sessionId') || '');
+  return hasText(storage.get(storage.KEYS.SESSION_ID, ''));
 }
 
 function isLoggedAndBound() {
@@ -14,16 +15,16 @@ function isLoggedAndBound() {
 
 function cacheProfile(profile) {
   if (!profile || typeof profile !== 'object') return;
-  wx.setStorageSync('nickName', profile.nickName || '');
-  wx.setStorageSync('avatarUrl', profile.avatarUrl || '');
-  wx.setStorageSync('phone', profile.phone || '');
+  storage.set(storage.KEYS.NICK_NAME, profile.nickName || '');
+  storage.set(storage.KEYS.AVATAR_URL, profile.avatarUrl || '');
+  storage.set(storage.KEYS.PHONE, profile.phone || '');
 
   const vipExpire = profile.vipExpireAt || profile.vipExpire || '';
-  wx.setStorageSync('vipExpire', vipExpire);
+  storage.set(storage.KEYS.VIP_EXPIRE, vipExpire);
 
   const aiQuota = Number(profile.aiQuota !== undefined ? profile.aiQuota : profile.magicCount);
   if (!Number.isNaN(aiQuota)) {
-    wx.setStorageSync('magicCount', aiQuota);
+    storage.set(storage.KEYS.MAGIC_COUNT, aiQuota);
   }
 }
 

@@ -1,0 +1,26 @@
+<view class="bottom-sheet gift-panel {{show ? 'bottom-sheet--show' : ''}}">
+  <view class="sheet-handle"></view>
+  <text class="sheet-title">我的礼品包</text>
+  <view class="gift-tabs">
+    <view wx:for="{{giftTabs}}" wx:key="key" class="gift-tab {{giftTab === item.key ? 'gift-tab--active' : ''}}" bindtap="onTabChange" data-tab="{{item.key}}">
+      <text class="gift-tab-text">{{item.label}}</text><text class="gift-tab-count">{{item.count}}</text>
+    </view>
+  </view>
+  <view class="gift-list" wx:if="{{visibleGifts.length > 0}}">
+    <view wx:for="{{visibleGifts}}" wx:key="id" class="gift-item {{item.itemClass}}">
+      <view class="gift-info">
+        <view class="gift-title-row">
+          <text class="gift-title">{{item.giftName || item.title}}</text>
+          <text class="gift-status gift-status--{{item.statusClass}}">{{item.statusText}}</text>
+          <text wx:if="{{item.expiringSoon}}" class="gift-soon-tag">即将过期</text>
+        </view>
+        <text wx:if="{{item.expireText}}" class="gift-expire">有效期至：{{item.expireText}}</text>
+      </view>
+      <view wx:if="{{item.canUse}}" class="gift-use-btn" bindtap="onUse" data-gift="{{item}}">使用</view>
+    </view>
+  </view>
+  <view wx:else class="gift-empty">
+    <text class="gift-empty-icon">🎁</text><text class="gift-empty-text">当前分类下暂无礼品</text>
+  </view>
+  <view class="sheet-close-btn" bindtap="onClose">关闭</view>
+</view>

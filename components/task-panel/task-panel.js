@@ -1,0 +1,13 @@
+Component({
+  properties: {
+    show: { type: Boolean, value: false },
+    checkinStatus: { type: Object, value: {} },
+    tasks: { type: Array, value: [] },
+  },
+  methods: {
+    onClose() { this.triggerEvent('close'); },
+    onCheckin() { this.triggerEvent('checkin'); },
+    onClaim() { this.triggerEvent('claim'); },
+    onDoTask(e) { this.triggerEvent('dotask', { task: e.currentTarget.dataset.task }); },
+  }
+});

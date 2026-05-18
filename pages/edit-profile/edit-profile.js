@@ -1,4 +1,5 @@
 const request = require('../../utils/request');
+const storage = require('../../utils/storage');
 
 Page({
   data: {
@@ -19,9 +20,9 @@ Page({
   },
 
   loadProfileDraft() {
-    const nickName = wx.getStorageSync('nickName') || '';
-    const avatarUrl = wx.getStorageSync('avatarUrl') || '';
-    const phone = wx.getStorageSync('phone') || '';
+    const nickName = storage.get(storage.KEYS.NICK_NAME, '');
+    const avatarUrl = storage.get(storage.KEYS.AVATAR_URL, '');
+    const phone = storage.get(storage.KEYS.PHONE, '');
     this.setData({
       nickName,
       avatarUrl,
@@ -75,9 +76,9 @@ Page({
         }).then(() => finalAvatarUrl);
       })
       .then((finalAvatarUrl) => {
-        wx.setStorageSync('nickName', nickName.trim());
-        wx.setStorageSync('avatarUrl', finalAvatarUrl || avatarUrl || '');
-        wx.setStorageSync('phone', phone.trim());
+        storage.set(storage.KEYS.NICK_NAME, nickName.trim());
+        storage.set(storage.KEYS.AVATAR_URL, finalAvatarUrl || avatarUrl || '');
+        storage.set(storage.KEYS.PHONE, phone.trim());
         this.setData({
           submitting: false,
           isEditing: false,
@@ -99,26 +100,9 @@ Page({
       return Promise.resolve(avatarUrl);
     }
     const { API_BASE_URL } = require('../../utils/config');
-    const sessionId = wx.getStorageSync('sessionId') || '';
-    return new Promise((resolve) => {
-      wx.uploadFile({
-        url: `${API_BASE_URL}/api/image/upload`,
-        filePath: avatarUrl,
-        name: 'file',
-        header: { 'X-Session-Id': sessionId },
-        success: (res) => {
-          try {
-            const body = JSON.parse(res.data);
-            if (res.statusCode === 200 && body.code === 0) {
-              resolve(body.data.imageUrl || body.data.originalUrl);
-              return;
-            }
-          } catch (e) {}
-          resolve(avatarUrl);
-        },
-        fail: () => resolve(avatarUrl)
-      });
-    });
+    return request.uploadImage(avatarUrl)
+      .then(data => data.imageUrl || data.originalUrl || avatarUrl)
+      .catch(() => avatarUrl);
   },
 
   onBack() {

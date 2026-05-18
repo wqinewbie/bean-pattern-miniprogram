@@ -1,4 +1,5 @@
 const request = require('../../utils/request');
+const storage = require('../../utils/storage');
 
 Page({
   data: {
@@ -12,7 +13,7 @@ Page({
   },
 
   loadNotifications() {
-    const sessionId = wx.getStorageSync('sessionId');
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) {
       this.setData({ notifications: [], loading: false });
       return;
@@ -34,7 +35,7 @@ Page({
   },
 
   markNotificationsRead() {
-    const sessionId = wx.getStorageSync('sessionId');
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) return;
 
     request.post('/notification/mark-all-read')

@@ -1,0 +1,29 @@
+<view class="bottom-sheet settings-panel {{show ? 'bottom-sheet--show' : ''}}">
+  <view class="settings-header">
+    <text class="settings-title">魔法设置</text>
+    <view class="settings-close" bindtap="onClose">✕</view>
+  </view>
+  <view class="settings-body">
+    <view class="settings-row">
+      <view class="settings-row-left">
+        <view class="settings-row-title-row">
+          <text class="settings-row-title">图纸水印</text>
+          <text class="settings-vip-tag">VIP</text>
+        </view>
+        <text class="settings-row-desc">非会员默认开启图纸水印</text>
+      </view>
+      <switch class="settings-switch" checked="{{watermarkEnabled}}" disabled="{{!isVip}}" bindchange="onWatermarkChange" color="#4CAF50"/>
+    </view>
+    <view class="settings-row" bindtap="onCustomTap">
+      <view class="settings-row-left">
+        <view class="settings-row-title-row">
+          <text class="settings-row-title">自定义水印内容</text>
+          <text class="settings-vip-tag">VIP</text>
+        </view>
+        <input class="settings-input {{isVip ? '' : 'settings-input-disabled'}}" type="text" value="{{watermarkText}}" placeholder="输入您的专属印记" maxlength="15" disabled="{{!isVip}}" bindinput="onWatermarkTextChange"/>
+        <text class="settings-row-hint">最多15个字符</text>
+      </view>
+    </view>
+  </view>
+  <view class="settings-confirm-btn" bindtap="onConfirm">完成设置</view>
+</view>

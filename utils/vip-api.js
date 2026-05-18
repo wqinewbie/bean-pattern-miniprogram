@@ -177,7 +177,7 @@ function getAiQuotaLogs(params = {}) {
  */
 function getNotifications(params = {}) {
   const query = buildQueryString(params);
-  return request.get(`/notifications/list${query ? '?' + query : ''}`);
+  return request.get(`/notification/list${query ? '?' + query : ''}`);
 }
 
 /**
@@ -185,14 +185,14 @@ function getNotifications(params = {}) {
  * @param {number} notificationId - 消息ID
  */
 function markNotificationRead(notificationId) {
-  return request.post('/notifications/read', { notificationId });
+  return request.post('/notification/mark-read/' + notificationId);
 }
 
 /**
  * 获取未读消息数量
  */
 function getUnreadCount() {
-  return request.get('/notifications/unread-count');
+  return request.get('/notification/unread-count');
 }
 
 // ==================== 活动相关 ====================
