@@ -163,15 +163,17 @@ Page({
           magicStyles: data,
           selectedStyle: data[0].name
         });
+      } else {
+        this.setData({
+          magicStyles: [],
+          selectedStyle: ''
+        });
       }
     }).catch((err) => {
       console.error('加载魔法风格失败', err);
-      // 使用默认风格（兜底）
       this.setData({
-        magicStyles: [
-          { name: '人物特化', icon: null, tag: '适用人物' }
-        ],
-        selectedStyle: '人物特化'
+        magicStyles: [],
+        selectedStyle: ''
       });
     });
   },
@@ -299,7 +301,7 @@ Page({
     if (!box || !baseW || !baseH) return;
 
     let scale = nextScale;
-    if (scale < 1) scale = 1;
+    if (scale < 0.5) scale = 0.5;
     if (scale > 5) scale = 5;
 
     const scaledW = baseW * scale;
@@ -308,21 +310,13 @@ Page({
     let x = nextX;
     let y = nextY;
 
-    if (scaledW <= box) {
-      x = 0;
-    } else {
-      const maxX = (scaledW - box) / 2;
-      if (x > maxX) x = maxX;
-      if (x < -maxX) x = -maxX;
-    }
+    const maxX = scaledW > box ? (scaledW - box) / 2 : (box + scaledW) / 2;
+    if (x > maxX) x = maxX;
+    if (x < -maxX) x = -maxX;
 
-    if (scaledH <= box) {
-      y = 0;
-    } else {
-      const maxY = (scaledH - box) / 2;
-      if (y > maxY) y = maxY;
-      if (y < -maxY) y = -maxY;
-    }
+    const maxY = scaledH > box ? (scaledH - box) / 2 : (box + scaledH) / 2;
+    if (y > maxY) y = maxY;
+    if (y < -maxY) y = -maxY;
 
     this.setData({ adjustX: x, adjustY: y, adjustScale: scale });
   },
@@ -591,7 +585,7 @@ Page({
     if (!box || !baseW || !baseH) return;
 
     let scale = nextScale;
-    if (scale < 1) scale = 1;
+    if (scale < 0.5) scale = 0.5;
     if (scale > 5) scale = 5;
 
     const scaledW = baseW * scale;
@@ -600,21 +594,13 @@ Page({
     let x = nextX;
     let y = nextY;
 
-    if (scaledW <= box) {
-      x = 0;
-    } else {
-      const maxX = (scaledW - box) / 2;
-      if (x > maxX) x = maxX;
-      if (x < -maxX) x = -maxX;
-    }
+    const maxX = scaledW > box ? (scaledW - box) / 2 : (box + scaledW) / 2;
+    if (x > maxX) x = maxX;
+    if (x < -maxX) x = -maxX;
 
-    if (scaledH <= box) {
-      y = 0;
-    } else {
-      const maxY = (scaledH - box) / 2;
-      if (y > maxY) y = maxY;
-      if (y < -maxY) y = -maxY;
-    }
+    const maxY = scaledH > box ? (scaledH - box) / 2 : (box + scaledH) / 2;
+    if (y > maxY) y = maxY;
+    if (y < -maxY) y = -maxY;
 
     this.setData({ previewX: x, previewY: y, previewScale: scale });
   },
@@ -723,33 +709,38 @@ Page({
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
 
-      // 准备参数
-      const finalSize = sizeMode === 'small' ? 36 : 64;
       const brand = brands[brandIndex];
       const colorSet = colorSets[colorSetIndex];
 
-      // 解析色号数量
       let colorCount = 0;
       if (colorSet !== '全部色号') {
         const match = colorSet.match(/(\d+)/);
         if (match) colorCount = parseInt(match[1]);
       }
 
-      // 将参数存储到全局，供generating页面使用
-      const app = getApp();
-      app.globalData.aiGenerateParams = {
-        uploadedImage,
-        style: selectedStyle,
-        size: finalSize,
-        brand,
-        colorCount,
-        mirror: isMirrored,
-        instruction: this.data.aiInstruction || ''
-      };
+      wx.showLoading({ title: '正在上传图片...', mask: true });
 
-      // 立即跳转到生成页面
-      wx.navigateTo({
-        url: `/pages/generating/generating?mode=ai&fromAiGenerate=1`
+      this.uploadImage(uploadedImage).then(imageUrl => {
+        wx.showLoading({ title: 'AI 正在施展魔法...' });
+
+        return this.callAiGenerate({
+          imageUrl,
+          style: selectedStyle,
+          prompt: this.data.aiInstruction || '',
+          sizeMode: sizeMode,
+          brand: brand,
+          colorCount: colorCount,
+          mirror: isMirrored
+        });
+      }).then(taskId => {
+        wx.hideLoading();
+        wx.navigateTo({
+          url: `/pages/generating/generating?taskId=${taskId}&fromAiGenerate=1`
+        });
+      }).catch(err => {
+        wx.hideLoading();
+        console.error('生成失败', err);
+        wx.showToast({ title: err.message || '生成失败', icon: 'none' });
       });
     });
   },

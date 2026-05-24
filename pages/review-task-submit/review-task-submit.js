@@ -1,6 +1,7 @@
 const request = require('../../utils/request');
 const { API_BASE_URL } = require('../../utils/config');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
+const { requestReviewTaskResultSubscribe } = require('../../utils/subscribe-message');
 
 Page({
   data: {
@@ -86,7 +87,8 @@ Page({
     }
 
     this.setData({ submitting: true });
-    Promise.all(proofImages.map((filePath) => this.uploadImage(filePath)))
+    requestReviewTaskResultSubscribe()
+      .then(() => Promise.all(proofImages.map((filePath) => this.uploadImage(filePath))))
       .then((urls) => request.post('/review-task/submit', {
         taskCode,
         submissionText,

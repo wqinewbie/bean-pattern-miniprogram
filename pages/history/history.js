@@ -292,8 +292,13 @@ Page({
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
       request.post('/history/to-box', { historyId: item.id })
-        .then(() => {
+        .then((result) => {
           wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+          if (result && result.capacityFull) {
+            setTimeout(() => {
+              wx.showToast({ title: result.capacityMessage || '图纸箱容量已满', icon: 'none', duration: 2200 });
+            }, 1200);
+          }
           this.loadHistory();
         })
         .catch((err) => {

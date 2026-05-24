@@ -45,10 +45,13 @@ Page({
     tasks: [],
     draftCount: 0,
     
-    // 设置
+    // 设置（实际生效值）
     cloudProcess: true,
     watermarkEnabled: true,
     watermarkText: '',
+    // 设置面板草稿（面板内操作只改草稿，确认后才同步到实际值）
+    draftWatermarkEnabled: true,
+    draftWatermarkText: '',
     
     // VIP状态
     isVip: false,
@@ -74,6 +77,10 @@ Page({
 
     // 帮助中心
     helpFaqs: [],
+
+    // 防重复点击
+    processing: false,
+    pendingShareTaskCode: '',
   },
 
   syncTabBar() {
@@ -120,13 +127,13 @@ Page({
     this.loadProfile();
     this.loadLocalData();
     this.loadNotifications();
-    this.loadTasksFromServer();
+    this.setData({ processing: false });
   },
 
   onHide() {
     const tabBar = this.getTabBar && this.getTabBar();
     if (tabBar && typeof tabBar.setHidden === 'function') {
-      tabBar.setHidden(false);
+      tabBar.setHidden(!!(this.data.showMagicPanel || this.data.showGiftPanel || this.data.showTaskPanel || this.data.showSettingsPanel));
     }
   },
 
@@ -140,17 +147,20 @@ Page({
   loadLocalData() {
     // 加载本地存储的数据
     const checkedIn = storage.get(storage.KEYS.CHECKED_IN, false);
-    const magicCount = storage.get(storage.KEYS.MAGIC_COUNT, 0);
-    const gifts = storage.getJSON(storage.KEYS.GIFTS, null) || this.getDefaultGifts();
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
+    const gifts = sessionId
+      ? (this.data.gifts || [])
+      : (storage.getJSON(storage.KEYS.GIFTS, null) || this.getDefaultGifts());
     const watermarkText = storage.get(storage.KEYS.WATERMARK_TEXT, '');
     const draftCount = this.getDraftCount();
     const inviteCode = storage.get(storage.KEYS.MY_INVITE_CODE, '');
     
     this.setData({
       checkedIn,
-      magicCount,
-      gifts,
-      availableGiftCount: this.calcAvailableGiftCount(gifts),
+      ...(sessionId ? {} : {
+        gifts,
+        availableGiftCount: this.calcAvailableGiftCount(gifts),
+      }),
       watermarkText,
       draftCount,
       inviteCode,
@@ -178,6 +188,11 @@ Page({
     return count;
   },
 
+  formatLocalDate(date) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  },
+
   getDraftCount() {
     const drafts = storage.getJSON(storage.KEYS.DRAFTS, null) || storage.getJSON('draftPatterns', null) || [];
     return Array.isArray(drafts) ? drafts.length : 0;
@@ -200,11 +215,12 @@ Page({
         const needsLegacyProgress = taskConfigs.some((task) => task.status === undefined && task.progressId === undefined);
 
         if (!needsLegacyProgress) {
-          const tasks = taskConfigs.map((task) => this.normalizeTaskCenterItem(task));
+          const tasks = this.filterVisibleTasks(
+            taskConfigs.map((task) => this.normalizeTaskCenterItem(task))
+          );
           this.setData({
             tasks,
-            pendingTaskCount: this.calcPendingTaskCountFromServer(tasks),
-            checkedIn: false
+            pendingTaskCount: this.calcPendingTaskCountFromServer(tasks)
           });
           return tasks;
         }
@@ -218,15 +234,14 @@ Page({
             });
           }
 
-          const tasks = taskConfigs.map((config) => {
+          const tasks = this.filterVisibleTasks(taskConfigs.map((config) => {
             const progress = progressMap[config.taskCode] || null;
             return this.normalizeTaskCenterItem(config, progress);
-          });
+          }));
 
           this.setData({
             tasks,
-            pendingTaskCount: this.calcPendingTaskCountFromServer(tasks),
-            checkedIn: false
+            pendingTaskCount: this.calcPendingTaskCountFromServer(tasks)
           });
 
           return tasks;
@@ -239,6 +254,7 @@ Page({
   },
 
   normalizeTaskCenterItem(config, progress) {
+    if (!config) return this.normalizeTaskCenterItem({}, progress);
     const status = Number((config.status !== undefined ? config.status : progress && progress.status) || 0);
     const currentCount = Number((config.currentCount !== undefined ? config.currentCount : progress && progress.currentCount) || 0);
     const targetCount = Number((config.targetCount !== undefined ? config.targetCount : progress && progress.targetCount) || 1);
@@ -275,6 +291,7 @@ Page({
       id: config.taskCode,
       taskCode: config.taskCode,
       taskName: config.taskName,
+      taskType: config.taskType || '',
       description: config.description || '',
       rewardType,
       rewardValue,
@@ -292,6 +309,14 @@ Page({
       done: config.done !== undefined ? !!config.done : status === 2,
       canClaim: config.canClaim !== undefined ? !!config.canClaim : status === 1
     };
+  },
+
+  filterVisibleTasks(tasks) {
+    return (tasks || []).filter((task) => {
+      const isOnceTask = task && task.taskType === 'ONCE';
+      const isFinished = task && (task.done || Number(task.status || 0) === 2);
+      return !(isOnceTask && isFinished);
+    });
   },
 
   getDefaultGifts() {
@@ -368,7 +393,8 @@ Page({
       });
   },
 
-  loadProfile() {
+  loadProfile(options = {}) {
+    const showLoading = !!options.showLoading;
     const nickName = storage.get(storage.KEYS.NICK_NAME, '');
     const avatarUrl = storage.get(storage.KEYS.AVATAR_URL, '');
     const phone = storage.get(storage.KEYS.PHONE, '');
@@ -384,7 +410,7 @@ Page({
     const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) return;
 
-    this.setData({ loading: true });
+    if (showLoading) this.setData({ loading: true });
     Promise.all([
       request.get('/user/profile'),
       request.get('/user/stats'),
@@ -417,13 +443,13 @@ Page({
           phone: (profile && profile.phone) || phone || '',
           inviteCode,
           isVip: (profile && profile.vipExpireAt && new Date(profile.vipExpireAt) > new Date()) || isVip,
-          magicCount: (profile && profile.aiQuota) || 0,
+          magicCount: profile && profile.aiQuota !== undefined ? Number(profile.aiQuota || 0) : this.data.magicCount,
           gifts: normalizedGifts,
           availableGiftCount,
           giftTabs,
           visibleGifts,
           pendingTaskCount: pendingTaskCount,
-          loading: false
+          ...(showLoading ? { loading: false } : {})
         });
 
         if (inviteCode) {
@@ -431,8 +457,13 @@ Page({
         }
       })
       .catch(() => {
-        this.setData({ loading: false });
+        if (showLoading) this.setData({ loading: false });
       });
+  },
+
+  refreshProfileQuietly() {
+    this.loadProfile();
+    this.loadTasksFromServer();
   },
 
   // ─── 弹框控制 ───
@@ -458,10 +489,16 @@ Page({
 
   onShowTaskPanelFromMagic() {
     this.setData({ showMagicPanel: false, showTaskPanel: true }, () => this.updateTabBarVisibility());
+    this.loadCheckinStatus();
+    this.loadTasksFromServer();
   },
 
   onShowSettings() {
-    this.setData({ showSettingsPanel: true }, () => this.updateTabBarVisibility());
+    this.setData({
+      showSettingsPanel: true,
+      draftWatermarkEnabled: this.data.watermarkEnabled,
+      draftWatermarkText: this.data.watermarkText,
+    }, () => this.updateTabBarVisibility());
   },
 
   onShowFeedback() {
@@ -523,7 +560,8 @@ Page({
   },
 
   buildGiftTabs(gifts) {
-    const count = (status) => gifts.filter((gift) => gift.tabStatus === status).length;
+    const arr = Array.isArray(gifts) ? gifts : [];
+    const count = (status) => arr.filter((gift) => gift && gift.tabStatus === status).length;
     return [
       { key: 'available', label: '可使用', count: count('available') },
       { key: 'used', label: '已使用', count: count('used') },
@@ -532,11 +570,11 @@ Page({
   },
 
   filterGiftsByTab(gifts, tab) {
-    return (gifts || []).filter((gift) => gift.tabStatus === tab);
+    return (gifts || []).filter((gift) => gift && gift.tabStatus === tab);
   },
 
   onGiftTabChange(e) {
-    const tab = e.currentTarget.dataset.tab || 'available';
+    const tab = e.detail.tab || 'available';
     this.setData({
       giftTab: tab,
       visibleGifts: this.filterGiftsByTab(this.data.gifts, tab)
@@ -568,14 +606,15 @@ Page({
   },
 
   onUseGift(e) {
-    const gift = e.currentTarget.dataset.gift;
+    if (this.data.processing) return;
+    const gift = e.detail.gift;
     if (!gift) return;
 
     const giftCode = String(gift.giftCode || '').toUpperCase();
     const usageMode = String(gift.usageMode || '').toUpperCase();
     const targetTab = String(gift.targetTab || '').toLowerCase();
 
-    // 优先使用后端明确返回的使用方式
+    // 优先使用后端明确返回的使用方式（纯跳转，不需防重复）
     if (usageMode === 'JUMP_VIP' && (targetTab === 'vip' || targetTab === 'cards')) {
       wx.navigateTo({
         url: `/pages/vip/vip?tab=${targetTab}&couponId=${gift.id}`
@@ -583,7 +622,7 @@ Page({
       return;
     }
 
-    // 兜底：兼容老数据
+    // 兜底：兼容老数据（纯跳转，不需防重复）
     if (giftCode === 'VIP_COUPON' || giftCode === 'CARD_COUPON' || giftCode === 'VIP_CARD_COUPON') {
       const fallbackTab = giftCode === 'VIP_COUPON' ? 'vip' : 'cards';
       wx.navigateTo({
@@ -593,14 +632,61 @@ Page({
     }
 
     // 其他礼品统一走后端使用逻辑
+    this.setData({ processing: true });
     const redeemNow = giftCode === 'GIFT_PACKAGE';
     request.post('/gift/use', { giftId: gift.id, redeemNow })
       .then(() => {
         wx.showToast({ title: redeemNow ? '兑换成功' : '使用成功', icon: 'success' });
-        this.loadProfile();
+        this.markGiftUsedLocally(gift.id);
+        this.refreshGiftState();
       })
       .catch((err) => {
         wx.showToast({ title: err.message || (redeemNow ? '兑换失败' : '使用失败'), icon: 'none' });
+      })
+      .finally(() => {
+        this.setData({ processing: false });
+      });
+  },
+
+  markGiftUsedLocally(giftId) {
+    const gifts = (this.data.gifts || []).map((gift) => (
+      gift.id === giftId
+        ? { ...gift, status: 1, usedAt: new Date().toISOString() }
+        : gift
+    ));
+    const normalizedGifts = this.normalizeGifts(gifts);
+    this.setData({
+      gifts: normalizedGifts,
+      availableGiftCount: this.calcAvailableGiftCount(normalizedGifts),
+      giftTabs: this.buildGiftTabs(normalizedGifts),
+      visibleGifts: this.filterGiftsByTab(normalizedGifts, this.data.giftTab)
+    });
+  },
+
+  refreshGiftState() {
+    Promise.all([
+      request.get('/user/profile').catch(() => null),
+      request.get('/user/stats').catch(() => null),
+      request.get('/gift/my').catch(() => null)
+    ])
+      .then(([profile, stats, gifts]) => {
+        const normalizedGifts = Array.isArray(gifts) ? this.normalizeGifts(gifts) : this.data.gifts;
+        const nextData = {
+          gifts: normalizedGifts,
+          availableGiftCount: this.calcAvailableGiftCount(normalizedGifts),
+          giftTabs: this.buildGiftTabs(normalizedGifts),
+          visibleGifts: this.filterGiftsByTab(normalizedGifts, this.data.giftTab)
+        };
+
+        if (profile) {
+          nextData.isVip = (profile.vipExpireAt && new Date(profile.vipExpireAt) > new Date()) || this.data.isVip;
+          nextData.magicCount = profile.aiQuota !== undefined ? Number(profile.aiQuota || 0) : this.data.magicCount;
+        }
+        if (stats) {
+          nextData.stats = stats;
+        }
+
+        this.setData(nextData);
       });
   },
 
@@ -632,6 +718,15 @@ Page({
     request.get('/checkin/status')
       .then((data) => {
         if (data) {
+          // 如果刚刚完成签到或领取，服务器数据可能还未同步
+          // 保留本地已更新的关键状态，避免按钮闪烁
+          if (this.data._checkinStateDirty) {
+            data.canClaim = this.data.checkinStatus.canClaim;
+            data.checkedInToday = this.data.checkinStatus.checkedInToday;
+            data.continuousDays = this.data.checkinStatus.continuousDays;
+            this.setData({ _checkinStateDirty: false });
+          }
+
           // 处理签到日历数据，转换为数组格式方便渲染
           const calendar = data.calendar || {};
           const calendarArray = [];
@@ -641,7 +736,7 @@ Page({
           for (let i = 6; i >= 0; i--) {
             const date = new Date(today);
             date.setDate(date.getDate() - i);
-            const dateStr = date.toISOString().split('T')[0];
+            const dateStr = this.formatLocalDate(date);
             calendarArray.push({
               date: dateStr,
               day: date.getDate(),
@@ -649,9 +744,15 @@ Page({
             });
           }
 
+          const requiredDays = Number(data.requiredDays || this.data.checkinStatus.requiredDays || 3);
+          const continuousDays = Number(data.continuousDays || 0);
+          const remainingDays = data.canClaim ? 0 : Math.max(requiredDays - continuousDays, 0);
+
           this.setData({
             checkinStatus: {
+              ...this.data.checkinStatus,
               ...data,
+              remainingDays,
               calendarArray: calendarArray
             }
           });
@@ -664,6 +765,8 @@ Page({
 
   // 执行签到
   onCheckin() {
+    if (this.data.processing) return;
+    this.setData({ processing: true });
     request.post('/checkin/do')
       .then((result) => {
         if (result && result.success) {
@@ -671,9 +774,59 @@ Page({
             title: result.message || '签到成功',
             icon: 'success'
           });
-          // 刷新签到状态和用户信息
+          // 立即更新本地状态，使按钮即时变化
+          const newContinuousDays = result.continuousDays || 0;
+          const canClaim = result.canClaim || false;
+          this.setData({
+            _checkinStateDirty: true,
+            'checkinStatus.checkedInToday': true,
+            'checkinStatus.continuousDays': newContinuousDays,
+            'checkinStatus.canClaim': canClaim
+          });
+          // 如果签到后达到领取条件，更新任务列表中的签到任务状态
+          if (canClaim) {
+            const tasks = (this.data.tasks || []).map(task => {
+              if (task.handlerType === 'CHECKIN') {
+                return {
+                  ...task,
+                  status: 1,
+                  done: false,
+                  canClaim: true,
+                  actionText: '领取奖励',
+                  currentCount: newContinuousDays,
+                  progressDisplay: `连续签到${newContinuousDays}/${task.targetCount || 3}天`
+                };
+              }
+              return task;
+            });
+            this.setData({
+              tasks,
+              pendingTaskCount: this.calcPendingTaskCountFromServer(tasks)
+            });
+          } else {
+            // 签到后未达领取条件，更新任务状态为"已签到"
+            const tasks = (this.data.tasks || []).map(task => {
+              if (task.handlerType === 'CHECKIN') {
+                return {
+                  ...task,
+                  status: 2,
+                  done: true,
+                  canClaim: false,
+                  actionText: '已完成',
+                  currentCount: newContinuousDays,
+                  progressDisplay: `连续签到${newContinuousDays}/${task.targetCount || 3}天`
+                };
+              }
+              return task;
+            });
+            this.setData({
+              tasks,
+              pendingTaskCount: this.calcPendingTaskCountFromServer(tasks)
+            });
+          }
+          // 异步刷新，确保服务端数据一致
           this.loadCheckinStatus();
-          this.loadProfile();
+          this.refreshProfileQuietly();
         }
       })
       .catch((err) => {
@@ -681,11 +834,16 @@ Page({
           title: err.message || '签到失败',
           icon: 'none'
         });
+      })
+      .finally(() => {
+        this.setData({ processing: false });
       });
   },
 
   // 领取签到奖励
   onClaimCheckinReward() {
+    if (this.data.processing) return;
+    this.setData({ processing: true });
     request.post('/checkin/claim')
       .then((result) => {
         if (result && result.success) {
@@ -693,9 +851,34 @@ Page({
             title: result.message || '领取成功',
             icon: 'success'
           });
-          // 刷新签到状态和用户信息
+          // 立即更新 checkinStatus，确保按钮即时变化
+          this.setData({
+            _checkinStateDirty: true,
+            'checkinStatus.canClaim': false,
+            'checkinStatus.continuousDays': 0,
+            'checkinStatus.checkedInToday': true
+          });
+          // 立即更新任务列表中的签到任务状态
+          const tasks = (this.data.tasks || []).map(task => {
+            if (task.handlerType === 'CHECKIN') {
+              return {
+                ...task,
+                status: 2,
+                done: true,
+                canClaim: false,
+                actionText: '已完成',
+                currentCount: task.targetCount || task.currentCount
+              };
+            }
+            return task;
+          });
+          this.setData({
+            tasks,
+            pendingTaskCount: this.calcPendingTaskCountFromServer(tasks)
+          });
+          // 异步刷新，确保服务端数据一致
           this.loadCheckinStatus();
-          this.loadProfile();
+          this.refreshProfileQuietly();
         }
       })
       .catch((err) => {
@@ -703,6 +886,9 @@ Page({
           title: err.message || '领取失败',
           icon: 'none'
         });
+      })
+      .finally(() => {
+        this.setData({ processing: false });
       });
   },
 
@@ -711,7 +897,8 @@ Page({
   },
 
   onDoTask(e) {
-    const task = e.currentTarget.dataset.task;
+    if (this.data.processing) return;
+    const task = (e.detail && e.detail.task) || e.currentTarget.dataset.task;
     if (!task) return;
 
     if (task.handlerType === 'CHECKIN') {
@@ -725,14 +912,17 @@ Page({
 
     if (task.handlerType === 'FIRST_RECHARGE_GIFT' || task.handlerType === 'REGISTER_GIFT') {
       if (task.canClaim) {
+        this.setData({ processing: true });
         request.post('/task/claim-benefit', { taskCode: task.taskCode })
           .then(() => {
             wx.showToast({ title: '领取成功！', icon: 'success' });
-            this.loadProfile();
-            this.loadTasksFromServer();
+            this.refreshProfileQuietly();
           })
           .catch((err) => {
             wx.showToast({ title: err.message || '领取失败', icon: 'none' });
+          })
+          .finally(() => {
+            this.setData({ processing: false });
           });
       } else if (task.handlerType === 'FIRST_RECHARGE_GIFT') {
         wx.navigateTo({ url: '/pages/vip/vip' });
@@ -744,14 +934,17 @@ Page({
 
     if (task.handlerType === 'INVITE_REGISTER' || task.handlerType === 'INVITE_RECHARGE') {
       if (task.canClaim) {
+        this.setData({ processing: true });
         request.post('/task/claim-benefit', { taskCode: task.taskCode })
           .then(() => {
             wx.showToast({ title: '礼包已入包', icon: 'success' });
-            this.loadProfile();
-            this.loadTasksFromServer();
+            this.refreshProfileQuietly();
           })
           .catch((err) => {
             wx.showToast({ title: err.message || '领取失败', icon: 'none' });
+          })
+          .finally(() => {
+            this.setData({ processing: false });
           });
       } else {
         wx.navigateTo({ url: '/pages/invite/invite' })
@@ -767,29 +960,27 @@ Page({
     }
 
     if (task.canClaim && task.progressId) {
+      this.setData({ processing: true });
       request.post('/task/claim', { progressId: task.progressId })
         .then(() => {
           wx.showToast({ title: '领取成功！', icon: 'success' });
-          this.loadProfile();
-          this.loadTasksFromServer();
+          this.refreshProfileQuietly();
         })
         .catch((err) => {
           wx.showToast({ title: err.message || '领取失败', icon: 'none' });
+        })
+        .finally(() => {
+          this.setData({ processing: false });
         });
       return;
     }
 
     if (task.taskCode === 'daily_share') {
+      this.setData({ pendingShareTaskCode: task.taskCode });
       wx.showShareMenu({
         withShareTicket: true,
         success: () => {
-          request.post('/task/complete', { taskCode: 'daily_share' })
-            .then(() => {
-              wx.showToast({ title: '分享成功！', icon: 'success' });
-              this.loadProfile();
-              this.loadTasksFromServer();
-            })
-            .catch(() => {});
+          wx.showToast({ title: '请点击右上角分享', icon: 'none' });
         }
       });
       return;
@@ -800,14 +991,17 @@ Page({
       return;
     }
 
+    this.setData({ processing: true });
     request.post('/task/complete', { taskCode: task.taskCode })
       .then(() => {
         wx.showToast({ title: '任务完成！', icon: 'success' });
-        this.loadProfile();
-        this.loadTasksFromServer();
+        this.refreshProfileQuietly();
       })
       .catch((err) => {
         wx.showToast({ title: err.message || '操作失败', icon: 'none' });
+      })
+      .finally(() => {
+        this.setData({ processing: false });
       });
   },
 
@@ -815,6 +1009,24 @@ Page({
     const magicCount = this.data.magicCount + count;
     storage.set(storage.KEYS.MAGIC_COUNT, magicCount);
     this.setData({ magicCount });
+  },
+
+  onShareAppMessage() {
+    const taskCode = this.data.pendingShareTaskCode;
+    if (taskCode === 'daily_share') {
+      request.post('/task/complete', { taskCode })
+        .then(() => {
+          this.setData({ pendingShareTaskCode: '' });
+          this.refreshProfileQuietly();
+        })
+        .catch(() => {});
+    }
+
+    return {
+      title: '拼豆魔法屋 - 免费AI生成拼豆图纸',
+      path: '/pages/index/index',
+      imageUrl: '/images/share.jpg'
+    };
   },
 
   // ─── 设置操作 ───
@@ -827,13 +1039,12 @@ Page({
   onWatermarkChange(e) {
     const enabled = !!e.detail.value;
     if (!this.data.isVip) {
-      this.setData({ watermarkEnabled: true });
+      this.setData({ draftWatermarkEnabled: true });
       this.onCloseAllPanels();
       this.navigateToVipTab('vip');
       return;
     }
-    this.setData({ watermarkEnabled: enabled });
-    storage.set(storage.KEYS.WATERMARK_ENABLED, enabled);
+    this.setData({ draftWatermarkEnabled: enabled });
   },
 
   onWatermarkTextChange(e) {
@@ -842,7 +1053,7 @@ Page({
       this.navigateToVipTab('vip');
       return;
     }
-    this.setData({ watermarkText: e.detail.value });
+    this.setData({ draftWatermarkText: e.detail.value });
   },
 
   onCustomWatermarkTap() {
@@ -853,11 +1064,11 @@ Page({
   },
 
   async onConfirmSettings() {
-    const { watermarkEnabled, watermarkText, isVip } = this.data;
+    const { draftWatermarkEnabled, draftWatermarkText, isVip } = this.data;
 
     // 保存到本地存储（用于离线场景）
-    storage.set(storage.KEYS.WATERMARK_ENABLED, watermarkEnabled);
-    storage.set(storage.KEYS.WATERMARK_TEXT, watermarkText);
+    storage.set(storage.KEYS.WATERMARK_ENABLED, draftWatermarkEnabled);
+    storage.set(storage.KEYS.WATERMARK_TEXT, draftWatermarkText);
 
     // 如果是VIP，同步到服务器
     if (isVip) {
@@ -865,19 +1076,23 @@ Page({
         wx.showLoading({ title: '保存中...', mask: true });
 
         await request.post('/watermark/user-config', {
-          enabled: watermarkEnabled ? 1 : 0,
-          customText: watermarkText
+          enabled: draftWatermarkEnabled ? 1 : 0,
+          customText: draftWatermarkText
         });
 
         // 保存成功后，立即更新全局状态
         const wmConfig = store.get('watermarkConfig', null);
         if (wmConfig) {
-          wmConfig.enabled = watermarkEnabled;
-          wmConfig.text = watermarkText || store.get('appName', '');
+          wmConfig.enabled = draftWatermarkEnabled;
+          wmConfig.text = draftWatermarkText || store.get('appName', '');
           store.set('watermarkConfig', wmConfig);
         }
 
         wx.hideLoading();
+        this.setData({
+          watermarkEnabled: draftWatermarkEnabled,
+          watermarkText: draftWatermarkText,
+        });
         this.onCloseAllPanels();
         wx.showToast({ title: '设置已保存', icon: 'success' });
       } catch (e) {
@@ -886,6 +1101,10 @@ Page({
         wx.showToast({ title: '保存失败，请重试', icon: 'error' });
       }
     } else {
+      this.setData({
+        watermarkEnabled: draftWatermarkEnabled,
+        watermarkText: draftWatermarkText,
+      });
       this.onCloseAllPanels();
       wx.showToast({ title: '设置已保存', icon: 'success' });
     }

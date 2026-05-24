@@ -121,11 +121,11 @@ Page({
   },
 
   onGoConvert() {
-    wx.navigateTo({ url: '/pages/convert/convert' });
+    wx.switchTab({ url: '/pages/convert/convert' });
   },
 
   onGoAI() {
-    wx.navigateTo({ url: '/pages/ai-generate/ai-generate' });
+    wx.switchTab({ url: '/pages/ai-generate/ai-generate' });
   },
 
   onGoDraw() {

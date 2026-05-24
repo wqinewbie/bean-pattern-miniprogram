@@ -48,28 +48,33 @@ function adaptCtx(ctx) {
  *   @param {string} options.appName - 小程序名称（显示在顶部）
  *   @param {Object} options.watermark - 水印配置 { enabled, text, fontSize, color, position }
  * @returns {{ totalWidth, totalHeight, axisPad, startX, startY, cellSize,
- *             effectiveOuterSize, effectiveGridSize, offsetX, offsetY,
- *             summaryLen, summaryHeight, boardWrapSize, headerHeight }}
+ *             effectiveOuterSize, effectiveGridWidth, effectiveGridHeight, offsetX, offsetY,
+ *             summaryLen, summaryHeight, boardWrapWidth, boardWrapHeight, headerHeight }}
  */
 function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, options = {}) {
   ctx = adaptCtx(ctx);
 
   // 提取配置
-  const appName = options.appName || '小程序名称待定';
+  const appName = options.appName || '拼豆魔法屋';
   const watermark = options.watermark || null;
+
+  // 从 gridData 推导实际网格行列数（兼容非方形网格）
+  const gridRows = (gridData && gridData.length) || gridSize || 0;
+  const gridCols = (gridRows > 0 && gridData[0] && gridData[0].length) ? gridData[0].length : gridRows;
 
   console.log('[pattern-canvas] 开始绘制', {
     gridDataLength: gridData ? gridData.length : 0,
     colorPaletteLength: colorPalette ? colorPalette.length : 0,
-    gridSize: gridSize,
+    gridRows: gridRows,
+    gridCols: gridCols,
     boardSize: boardSize
   });
 
   // 统计各色用量（优先从 gridData 计算，避免后端 count 缺失）
   const countById = new Map();
   const paletteByIndex = colorPalette || [];
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
+  for (let y = 0; y < gridRows; y++) {
+    for (let x = 0; x < gridCols; x++) {
       const colorIndex = gridData[y] ? gridData[y][x] : -1;
       if (colorIndex < 0) continue;
       const color = paletteByIndex[colorIndex];
@@ -98,48 +103,54 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
   });
 
   const maxCanvasSize = Math.max(512, Number(options.maxCanvasSize) || 2048);
-  let workingBoardSize = boardSize;
-  let axisPad = 0; // 去掉外围留白
-  let boardWrapSize = 0;
-  let summaryHeight = 0;
-  let headerHeight = 0;
-  let totalWidth = 0;
-  let totalHeight = 0;
+  var workingBoardSize = boardSize;
+  var axisPad = 0;
+  var boardWrapWidth = 0;
+  var boardWrapHeight = 0;
+  var summaryHeight = 0;
+  var headerHeight = 0;
+  var totalWidth = 0;
+  var totalHeight = 0;
 
   // 计算顶部标题区域高度（紧凑型）
   if (appName) {
-    headerHeight = Math.max(40, Math.floor(boardSize * 0.025)); // 减小标题高度
+    headerHeight = Math.max(40, Math.floor(boardSize * 0.025));
   }
 
   // 迭代缩小直到总尺寸不超 maxCanvasSize
-  for (let i = 0; i < 30; i++) {
-    axisPad = 0; // 完全去掉留白
-    boardWrapSize = workingBoardSize;
+  var totalGridDim = Math.max(gridRows, gridCols) + 2;
+  for (var i = 0; i < 30; i++) {
+    axisPad = 0;
+    var approxCellSize = Math.floor(workingBoardSize / totalGridDim);
+    var effOuterSize = Math.max(20, Math.floor(approxCellSize * 0.6));
+    var effGridWidth = gridCols * approxCellSize;
+    var effGridHeight = gridRows * approxCellSize;
+    var totalGridWidth = effGridWidth + effOuterSize * 2;
+    var totalGridHeight = effGridHeight + effOuterSize * 2;
+    boardWrapWidth = Math.max(workingBoardSize, totalGridWidth);
+    boardWrapHeight = totalGridHeight;
 
     if (summaryItems.length) {
-      const totalGridSize = gridSize + 2;
-      const approxCellSize = workingBoardSize / totalGridSize;
-      let blockSize = Math.floor(approxCellSize * 1.2);
-      const minBlockSize = 40;
-      if (blockSize < minBlockSize) blockSize = minBlockSize;
-      const blockSpacing = Math.floor(blockSize * 0.1);
-      const availableWidth = workingBoardSize;
-      const blocksPerRow = Math.max(1, Math.floor(availableWidth / (blockSize + blockSpacing)));
-      const maxRows = 3;
-      let rowsNeeded = Math.ceil(summaryItems.length / blocksPerRow);
-      if (rowsNeeded > maxRows) {
-        const targetBlocksPerRow = Math.ceil(summaryItems.length / maxRows);
-        const maxBlockSize = Math.floor(availableWidth / targetBlocksPerRow - blockSpacing);
-        if (maxBlockSize >= minBlockSize) blockSize = maxBlockSize;
-        rowsNeeded = maxRows;
+      var summaryBlockSize = Math.max(40, Math.floor(approxCellSize * 1.2));
+      var summaryBlockSpacing = Math.floor(summaryBlockSize * 0.1);
+      var summaryAvailWidth = totalGridWidth;
+      var summaryBlocksPerRow = Math.max(1, Math.floor(summaryAvailWidth / (summaryBlockSize + summaryBlockSpacing)));
+      var maxSummaryRows = 3;
+      var summaryRowsNeeded = Math.ceil(summaryItems.length / summaryBlocksPerRow);
+      if (summaryRowsNeeded > maxSummaryRows) {
+        var targetBlocksPerRow = Math.ceil(summaryItems.length / maxSummaryRows);
+        var maxBlockSz = Math.floor(summaryAvailWidth / targetBlocksPerRow - summaryBlockSpacing);
+        if (maxBlockSz >= 40) summaryBlockSize = maxBlockSz;
+        summaryRowsNeeded = maxSummaryRows;
       }
-      summaryHeight = rowsNeeded * (blockSize + blockSpacing);
+      summaryHeight = summaryRowsNeeded * (summaryBlockSize + summaryBlockSpacing);
     } else {
       summaryHeight = 0;
     }
 
-    totalWidth = boardWrapSize;
-    totalHeight = headerHeight + boardWrapSize + summaryHeight;
+    var vertPad = Math.max(12, Math.floor(boardWrapHeight * 0.02));
+    totalWidth = boardWrapWidth;
+    totalHeight = vertPad + headerHeight + boardWrapHeight + summaryHeight + vertPad;
     if (totalWidth <= maxCanvasSize && totalHeight <= maxCanvasSize) break;
     workingBoardSize = Math.max(540, Math.floor(workingBoardSize * 0.92));
     if (appName) {
@@ -148,24 +159,35 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
   }
 
   // 整数格子大小，避免像素偏移
-  const totalGridSize = gridSize + 2;
-  let effectiveCellSize = Math.floor(workingBoardSize / totalGridSize);
-  let effectiveOuterSize = Math.max(20, Math.floor(effectiveCellSize * 0.6));
-  let effectiveGridSize = gridSize * effectiveCellSize;
-  let totalGridPixels = effectiveGridSize + effectiveOuterSize * 2;
+  var effectiveCellSize = Math.floor(workingBoardSize / totalGridDim);
+  var effectiveOuterSize = Math.max(20, Math.floor(effectiveCellSize * 0.6));
+  var effectiveGridWidth = gridCols * effectiveCellSize;
+  var effectiveGridHeight = gridRows * effectiveCellSize;
+  var totalGridWidth = effectiveGridWidth + effectiveOuterSize * 2;
+  var totalGridHeight = effectiveGridHeight + effectiveOuterSize * 2;
+  boardWrapWidth = Math.max(workingBoardSize, totalGridWidth);
+  boardWrapHeight = totalGridHeight;
 
-  if (totalGridPixels > workingBoardSize) {
-    effectiveCellSize = Math.max(1, Math.floor(workingBoardSize / totalGridSize));
+  if (totalGridWidth > boardWrapWidth || totalGridHeight > boardWrapHeight) {
+    effectiveCellSize = Math.max(1, Math.floor(workingBoardSize / totalGridDim));
     effectiveOuterSize = Math.max(20, Math.floor(effectiveCellSize * 0.6));
-    effectiveGridSize = gridSize * effectiveCellSize;
-    totalGridPixels = effectiveGridSize + effectiveOuterSize * 2;
+    effectiveGridWidth = gridCols * effectiveCellSize;
+    effectiveGridHeight = gridRows * effectiveCellSize;
+    totalGridWidth = effectiveGridWidth + effectiveOuterSize * 2;
+    totalGridHeight = effectiveGridHeight + effectiveOuterSize * 2;
+    boardWrapWidth = Math.max(workingBoardSize, totalGridWidth);
+    boardWrapHeight = totalGridHeight;
   }
 
-  const gridOffsetInWorking = Math.floor((workingBoardSize - totalGridPixels) / 2);
-  const offsetX = gridOffsetInWorking;
-  const offsetY = headerHeight + gridOffsetInWorking;
-  const startX = offsetX + effectiveOuterSize;
-  const startY = offsetY + effectiveOuterSize;
+  var gridOffsetX = Math.floor((boardWrapWidth - totalGridWidth) / 2);
+  var vertPad = Math.max(12, Math.floor(boardWrapHeight * 0.02));
+  var offsetX = gridOffsetX;
+  var offsetY = vertPad + headerHeight;
+  var startX = offsetX + effectiveOuterSize;
+  var startY = offsetY + effectiveOuterSize;
+
+  totalWidth = boardWrapWidth;
+  totalHeight = vertPad + headerHeight + boardWrapHeight + summaryHeight + vertPad;
 
   // 白底
   ctx.setFillStyle('#ffffff');
@@ -187,20 +209,20 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
 
   // 1. 外围坐标轴背景（浅蓝）
   ctx.setFillStyle('#E3F2FD');
-  for (let x = 0; x < gridSize; x++) {
+  for (let x = 0; x < gridCols; x++) {
     ctx.fillRect(startX + x * effectiveCellSize, offsetY, effectiveCellSize, effectiveOuterSize);
-    ctx.fillRect(startX + x * effectiveCellSize, offsetY + effectiveGridSize + effectiveOuterSize, effectiveCellSize, effectiveOuterSize);
+    ctx.fillRect(startX + x * effectiveCellSize, offsetY + effectiveGridHeight + effectiveOuterSize, effectiveCellSize, effectiveOuterSize);
   }
-  for (let y = 0; y < gridSize; y++) {
+  for (let y = 0; y < gridRows; y++) {
     ctx.fillRect(offsetX, startY + y * effectiveCellSize, effectiveOuterSize, effectiveCellSize);
-    ctx.fillRect(offsetX + effectiveGridSize + effectiveOuterSize, startY + y * effectiveCellSize, effectiveOuterSize, effectiveCellSize);
+    ctx.fillRect(offsetX + effectiveGridWidth + effectiveOuterSize, startY + y * effectiveCellSize, effectiveOuterSize, effectiveCellSize);
   }
 
   // 2. 主网格（填色 + 网格线）
   ctx.setStrokeStyle('#999999');
   ctx.setLineWidth(0.7);
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
+  for (let y = 0; y < gridRows; y++) {
+    for (let x = 0; x < gridCols; x++) {
       const colorIndex = gridData[y] ? gridData[y][x] : 0;
       const color = paletteByIndex[colorIndex];
       ctx.setFillStyle(color ? `rgb(${color.r},${color.g},${color.b})` : '#ffffff');
@@ -214,8 +236,8 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
   // 3. 主网格色号文字（模拟加粗）
   ctx.setTextAlign('center');
   ctx.setTextBaseline('middle');
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
+  for (let y = 0; y < gridRows; y++) {
+    for (let x = 0; x < gridCols; x++) {
       const colorIndex = gridData[y] ? gridData[y][x] : 0;
       const color = paletteByIndex[colorIndex];
       if (!color) continue;
@@ -246,22 +268,22 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
   const axisFont = Math.max(8, Math.floor(effectiveCellSize * 0.36));
   ctx.setFontSize(axisFont);
   ctx.setFillStyle('#5D4037');
-  for (let x = 0; x < gridSize; x++) {
+  for (let x = 0; x < gridCols; x++) {
     const label = String(x + 1);
     const centerX = startX + x * effectiveCellSize + effectiveCellSize / 2;
     ctx.fillText(label, centerX, offsetY + effectiveOuterSize / 2);
-    ctx.fillText(label, centerX, offsetY + effectiveGridSize + effectiveOuterSize + effectiveOuterSize / 2);
+    ctx.fillText(label, centerX, offsetY + effectiveGridHeight + effectiveOuterSize + effectiveOuterSize / 2);
   }
-  for (let y = 0; y < gridSize; y++) {
+  for (let y = 0; y < gridRows; y++) {
     const label = String(y + 1);
     const centerY = startY + y * effectiveCellSize + effectiveCellSize / 2;
     ctx.fillText(label, offsetX + effectiveOuterSize / 2, centerY);
-    ctx.fillText(label, offsetX + effectiveGridSize + effectiveOuterSize + effectiveOuterSize / 2, centerY);
+    ctx.fillText(label, offsetX + effectiveGridWidth + effectiveOuterSize + effectiveOuterSize / 2, centerY);
   }
 
   // 5. 底部色号汇总块
   if (summaryItems.length) {
-    const axisBottomY = offsetY + effectiveGridSize + effectiveOuterSize * 2;
+    const axisBottomY = offsetY + effectiveGridHeight + effectiveOuterSize * 2;
     const summaryTop = axisBottomY + Math.floor(effectiveOuterSize * 0.5);
 
     let blockSize = Math.floor(effectiveCellSize * 1.2);
@@ -269,7 +291,7 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
     if (blockSize < minBlockSize) blockSize = minBlockSize;
     const blockSpacing = Math.floor(blockSize * 0.1);
     const borderRadius = Math.floor(blockSize * 0.1);
-    const availableWidth = totalGridPixels;
+    const availableWidth = totalGridWidth;
     let blocksPerRow = Math.max(1, Math.floor(availableWidth / (blockSize + blockSpacing)));
     const maxRows = 3;
     if (summaryItems.length > blocksPerRow * maxRows) {
@@ -340,7 +362,7 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
       totalHeight
     });
 
-    const watermarkText = watermark.text || '水印内容待定';
+    const watermarkText = watermark.text || '拼豆魔法屋出品';
     const watermarkFontSize = watermark.fontSize || Math.max(24, Math.floor(totalWidth * 0.018));
     const watermarkColor = watermark.color || 'rgba(100,100,100,0.25)';
     const watermarkAngle = watermark.angle !== undefined ? watermark.angle : -30; // 倾斜角度
@@ -399,12 +421,14 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
     startY,
     cellSize: effectiveCellSize,
     effectiveOuterSize,
-    effectiveGridSize,
+    effectiveGridWidth,
+    effectiveGridHeight,
     offsetX,
     offsetY,
     summaryLen: summaryItems.length,
     summaryHeight,
-    boardWrapSize,
+    boardWrapWidth,
+    boardWrapHeight,
     headerHeight,
   };
 }

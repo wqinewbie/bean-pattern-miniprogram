@@ -1,6 +1,6 @@
 const request = require('../../utils/request');
 const vipApi = require('../../utils/vip-api');
-const { requireLogin } = require('../../utils/profile-guard');
+const { requireLogin, refreshWechatSession } = require('../../utils/profile-guard');
 const storage = require('../../utils/storage');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 
@@ -65,10 +65,6 @@ Page({
       this.setData({ selectedCouponId: parseInt(options.couponId) });
     }
 
-    // 处理分享参数（好友点击分享链接）
-    if (options.share_from && options.task) {
-      this.handleShareVerify(options.share_from, options.task);
-    }
   },
 
   onShow() {
@@ -351,8 +347,9 @@ Page({
           validity: this.getOrderValidity(order),
           time: order.createdAt,
           amount: order.amount,
-          status: this.getOrderStatusText(order.status),
+          status: this.getOrderStatusText(order.status, order.deliverStatus),
           statusCode: order.status,
+          deliverStatus: order.deliverStatus,
         }));
 
         this.setData({
@@ -397,7 +394,16 @@ Page({
   /**
    * 获取订单状态文本
    */
-  getOrderStatusText(status) {
+  getOrderStatusText(status, deliverStatus) {
+    if (status === 'PAID' && deliverStatus === 'SUCCESS') {
+      return '已到账';
+    }
+    if (status === 'PAID' && deliverStatus === 'FAILED') {
+      return '权益处理中';
+    }
+    if (status === 'PAID') {
+      return '发放中';
+    }
     const statusMap = {
       'PENDING': '待支付',
       'PAID': '支付成功',
@@ -537,11 +543,21 @@ Page({
       return;
     }
 
-    if (this.data.vipTab === 'vip') {
-      this.purchaseVip();
-    } else if (this.data.vipTab === 'cards') {
-      this.purchaseCard();
-    }
+    wx.showLoading({ title: '准备支付...' });
+    refreshWechatSession()
+      .then(() => {
+        wx.hideLoading();
+        if (this.data.vipTab === 'vip') {
+          this.purchaseVip();
+        } else if (this.data.vipTab === 'cards') {
+          this.purchaseCard();
+        }
+      })
+      .catch((err) => {
+        wx.hideLoading();
+        console.error('刷新微信会话失败', err);
+        wx.showToast({ title: '登录状态刷新失败，请重试', icon: 'none' });
+      });
   },
 
   /**
@@ -560,7 +576,6 @@ Page({
       .then((data) => {
         const orderNo = data && data.orderNo;
         const payment = data && data.payment;
-        const payParams = (payment && payment.payParams) || data.payParams;
         const status = (payment && payment.status) || data.status;
         if (!orderNo) {
           throw new Error('创建订单失败');
@@ -571,17 +586,21 @@ Page({
           setTimeout(() => this.loadVipInfo(), 500);
           return;
         }
-        if (!payParams) {
+        const signData = payment && payment.signData;
+        const paySig = payment && payment.paySig;
+        const signature = payment && payment.signature;
+        const mode = (payment && payment.mode) || 'short_series_coin';
+        if (!signData || !paySig || !signature) {
           this.setData({ isPaying: false });
           wx.showModal({
             title: '订单已创建',
-            content: '当前后端尚未返回微信支付参数，请稍后在订单列表中完成支付。',
+            content: '支付参数缺失，请稍后在订单列表中重试。',
             showCancel: false,
             success: () => this.loadOrders(true)
           });
           return;
         }
-        this.callWechatPay(orderNo, payParams);
+        this.callVirtualPay(orderNo, { signData, paySig, signature, mode });
       })
       .catch((err) => {
         this.setData({ isPaying: false });
@@ -605,7 +624,6 @@ Page({
       .then((data) => {
         const orderNo = data && data.orderNo;
         const payment = data && data.payment;
-        const payParams = (payment && payment.payParams) || data.payParams;
         const status = (payment && payment.status) || data.status;
         if (!orderNo) {
           throw new Error('创建订单失败');
@@ -616,17 +634,21 @@ Page({
           setTimeout(() => this.loadVipInfo(), 500);
           return;
         }
-        if (!payParams) {
+        const signData = payment && payment.signData;
+        const paySig = payment && payment.paySig;
+        const signature = payment && payment.signature;
+        const mode = (payment && payment.mode) || 'short_series_coin';
+        if (!signData || !paySig || !signature) {
           this.setData({ isPaying: false });
           wx.showModal({
             title: '订单已创建',
-            content: '当前后端尚未返回微信支付参数，请稍后在订单列表中完成支付。',
+            content: '支付参数缺失，请稍后在订单列表中重试。',
             showCancel: false,
             success: () => this.loadOrders(true)
           });
           return;
         }
-        this.callWechatPay(orderNo, payParams);
+        this.callVirtualPay(orderNo, { signData, paySig, signature, mode });
       })
       .catch((err) => {
         this.setData({ isPaying: false });
@@ -635,29 +657,65 @@ Page({
   },
 
   /**
-   * 调用微信支付
+   * 调用微信虚拟支付（米大师）
    */
-  callWechatPay(orderNo, payParams) {
-    wx.requestPayment({
-      timeStamp: payParams.timeStamp,
-      nonceStr: payParams.nonceStr,
-      package: payParams.package,
-      signType: payParams.signType || 'RSA',
-      paySign: payParams.paySign,
+  callVirtualPay(orderNo, payParams) {
+    if (typeof wx.requestVirtualPayment !== 'function') {
+      this.setData({ isPaying: false });
+      wx.showModal({
+        title: '暂不支持虚拟支付',
+        content: '当前微信版本或运行环境不支持虚拟支付，请使用支持的微信客户端真机测试。',
+        showCancel: false
+      });
+      return;
+    }
+    const normalizedPayParams = this.normalizeVirtualPayParams(payParams);
+    wx.requestVirtualPayment({
+      signData: normalizedPayParams.signData,
+      paySig: normalizedPayParams.paySig,
+      signature: normalizedPayParams.signature,
+      mode: normalizedPayParams.mode,
       success: () => {
-        // 支付成功，查询订单状态
-        this.queryPaymentResult(orderNo);
+        wx.showLoading({ title: '权益发放中', mask: true });
+        this.queryPaymentResultV2(orderNo);
       },
       fail: (err) => {
         this.setData({ isPaying: false });
-
-        if (err.errMsg === 'requestPayment:fail cancel') {
+        console.error('wx.requestVirtualPayment fail', {
+          orderNo,
+          err,
+          payParams: normalizedPayParams,
+          rawPayParams: payParams
+        });
+        if (err.errMsg && err.errMsg.indexOf('cancel') !== -1) {
           wx.showToast({ title: '支付已取消', icon: 'none' });
         } else {
-          wx.showToast({ title: '支付失败', icon: 'none' });
+          const detail = err && (err.errMsg || err.errCode || JSON.stringify(err));
+          wx.showModal({
+            title: '支付失败',
+            content: detail ? String(detail).slice(0, 500) : '请稍后重试',
+            showCancel: false
+          });
         }
       }
     });
+  },
+
+  normalizeVirtualPayParams(payParams) {
+    let mode = payParams.mode || 'short_series_coin';
+    try {
+      const signData = JSON.parse(payParams.signData || '{}');
+      const hasGoodsFields = !!signData.productId && signData.goodsPrice !== undefined && signData.goodsPrice !== null;
+      if (!hasGoodsFields) {
+        mode = 'short_series_coin';
+      }
+    } catch (e) {
+      mode = mode || 'short_series_coin';
+    }
+    return {
+      ...payParams,
+      mode
+    };
   },
 
   /**
@@ -702,35 +760,77 @@ Page({
       });
   },
 
-  /**
-   * 处理分享验证（好友点击分享链接）
-   */
-  handleShareVerify(shareFrom, taskCode) {
-    vipApi.verifyShare(shareFrom, taskCode)
+  queryPaymentResultV2(orderNo, retryCount = 0) {
+    const maxRetry = 20;
+    const retryDelay = 1000;
+
+    vipApi.queryOrderStatus(orderNo)
       .then((data) => {
-        if (data.success) {
-          wx.showToast({
-            title: '已帮助好友完成任务！',
-            icon: 'success'
-          });
+        const status = data.status;
+        const deliverStatus = data.deliverStatus;
+
+        if (status === 'PAID' && deliverStatus === 'SUCCESS') {
+          this.setData({ isPaying: false });
+          wx.hideLoading();
+          wx.showToast({ title: '购买成功', icon: 'success', duration: 2000 });
+          setTimeout(() => {
+            this.loadVipInfo();
+            this.loadOrders(true);
+          }, 500);
+          return;
         }
+
+        if (status === 'PAID' && deliverStatus === 'FAILED') {
+          this.showEntitlementPendingModal('支付成功', '权益正在处理中，系统会自动补发。稍后可刷新权益或查看订单。');
+          return;
+        }
+
+        if ((status === 'PENDING' || status === 'PAID') && retryCount < maxRetry) {
+          setTimeout(() => {
+            this.queryPaymentResultV2(orderNo, retryCount + 1);
+          }, retryDelay);
+          return;
+        }
+
+        const title = status === 'PAID' ? '支付成功' : '支付处理中';
+        const content = status === 'PAID'
+          ? '权益稍后到账，请稍后刷新权益或查看订单。'
+          : '支付结果确认中，请稍后查看订单。';
+        this.showEntitlementPendingModal(title, content);
       })
       .catch((err) => {
-        console.log('分享验证失败', err);
+        this.setData({ isPaying: false });
+        wx.hideLoading();
+        wx.showToast({ title: '查询支付结果失败', icon: 'none' });
       });
+  },
+
+  showEntitlementPendingModal(title, content) {
+    this.setData({ isPaying: false });
+    wx.hideLoading();
+    wx.showModal({
+      title,
+      content,
+      confirmText: '查看订单',
+      cancelText: '刷新权益',
+      success: (res) => {
+        if (res.confirm) {
+          this.setData({ vipTab: 'orders' });
+          this.loadOrders(true);
+        } else {
+          this.loadVipInfo();
+        }
+      }
+    });
   },
 
   /**
    * 分享小程序
    */
   onShareAppMessage() {
-    const app = getApp();
-    const userInfo = app.globalData.prefetch.profile || {};
-    const userId = userInfo.id || '';
-
     return {
       title: '拼豆魔法屋 - 免费AI生成拼豆图纸',
-      path: `/pages/index/index?share_from=${userId}&task=daily_share`,
+      path: '/pages/index/index',
       imageUrl: '/images/share.jpg'
     };
   },

@@ -192,7 +192,7 @@ Page({
       this.setData({ customMode: false, customConfirmed: false, customSizeVal: '' });
       return;
     }
-    if (val > 100) val = 100;
+    if (val > 200) val = 200;
     this.setData({ customSizeVal: String(val), customMode: false, customConfirmed: true });
   },
 
@@ -223,28 +223,53 @@ Page({
     wx.getImageInfo({
       src: imagePath,
       success: (info) => {
-        const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
-        const previewBoxPx = Math.round((windowInfo.windowWidth || 375) * 640 / 750);
-        const ratio = info.width / info.height;
-        let baseW = previewBoxPx;
-        let baseH = previewBoxPx;
-        if (ratio >= 1) {
-          baseW = previewBoxPx;
-          baseH = previewBoxPx / ratio;
-        } else {
-          baseH = previewBoxPx;
-          baseW = previewBoxPx * ratio;
-        }
-        this.setData({
-          previewBaseW: baseW,
-          previewBaseH: baseH,
-          previewLeft: (previewBoxPx - baseW) / 2,
-          previewTop: (previewBoxPx - baseH) / 2,
-          previewBoxPx,
-          previewX: 0,
-          previewY: 0,
-          previewScale: 1
+        this._getPreviewViewportSize().then((previewBoxPx) => {
+          const ratio = info.width / info.height;
+          let baseW = previewBoxPx;
+          let baseH = previewBoxPx;
+          if (ratio >= 1) {
+            baseW = previewBoxPx;
+            baseH = previewBoxPx / ratio;
+          } else {
+            baseH = previewBoxPx;
+            baseW = previewBoxPx * ratio;
+          }
+          this.setData({
+            previewBaseW: baseW,
+            previewBaseH: baseH,
+            previewLeft: (previewBoxPx - baseW) / 2,
+            previewTop: (previewBoxPx - baseH) / 2,
+            previewBoxPx,
+            previewX: 0,
+            previewY: 0,
+            previewScale: 1
+          });
         });
+      }
+    });
+  },
+
+  _getPreviewViewportSize() {
+    return new Promise((resolve) => {
+      const fallback = () => {
+        const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+        resolve(Math.round((windowInfo.windowWidth || 375) * 624 / 750));
+      };
+
+      try {
+        const query = wx.createSelectorQuery();
+        query.select('.preview-interact').boundingClientRect((rect) => {
+          const width = rect && Number(rect.width);
+          const height = rect && Number(rect.height);
+          const size = Math.min(width || 0, height || 0);
+          if (Number.isFinite(size) && size > 0) {
+            resolve(size);
+          } else {
+            fallback();
+          }
+        }).exec();
+      } catch (e) {
+        fallback();
       }
     });
   },
@@ -256,7 +281,7 @@ Page({
     if (!box || !baseW || !baseH) return;
 
     let scale = nextScale;
-    if (scale < 1) scale = 1;
+    if (scale < 0.5) scale = 0.5;
     if (scale > 5) scale = 5;
 
     const scaledW = baseW * scale;
@@ -265,21 +290,13 @@ Page({
     let x = nextX;
     let y = nextY;
 
-    if (scaledW <= box) {
-      x = 0;
-    } else {
-      const maxX = (scaledW - box) / 2;
-      if (x > maxX) x = maxX;
-      if (x < -maxX) x = -maxX;
-    }
+    const maxX = scaledW > box ? (scaledW - box) / 2 : (box + scaledW) / 2;
+    if (x > maxX) x = maxX;
+    if (x < -maxX) x = -maxX;
 
-    if (scaledH <= box) {
-      y = 0;
-    } else {
-      const maxY = (scaledH - box) / 2;
-      if (y > maxY) y = maxY;
-      if (y < -maxY) y = -maxY;
-    }
+    const maxY = scaledH > box ? (scaledH - box) / 2 : (box + scaledH) / 2;
+    if (y > maxY) y = maxY;
+    if (y < -maxY) y = -maxY;
 
     this.setData({ previewX: x, previewY: y, previewScale: scale });
   },
@@ -398,10 +415,13 @@ Page({
       wx.getImageInfo({
         src: imageUrl,
         success: (info) => {
+          this._getPreviewViewportSize().then((actualBoxPx) => {
           const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
-          const fallbackBoxPx = Math.round((windowInfo.windowWidth || 375) * 640 / 750);
+          const fallbackBoxPx = Math.round((windowInfo.windowWidth || 375) * 624 / 750);
           const boxPxRaw = Number(previewBoxPx);
-          const boxPx = Number.isFinite(boxPxRaw) && boxPxRaw > 0 ? boxPxRaw : fallbackBoxPx;
+          const boxPx = Number.isFinite(actualBoxPx) && actualBoxPx > 0
+            ? actualBoxPx
+            : (Number.isFinite(boxPxRaw) && boxPxRaw > 0 ? boxPxRaw : fallbackBoxPx);
           const baseWRaw = Number(previewBaseW);
           const baseHRaw = Number(previewBaseH);
           const baseW = Number.isFinite(baseWRaw) && baseWRaw > 0 ? baseWRaw : boxPx;
@@ -412,28 +432,28 @@ Page({
           const top = Number.isFinite(topRaw) ? topRaw : (boxPx - baseH) / 2;
           const scaleRaw = Number(previewScale);
           const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 ? scaleRaw : 1;
-          const canvasSize = 640;
+          const maxExportDim = 640;
 
           // ========== 可视区 -> 源图坐标映射 ==========
           // 计算缩放后的图片层左上角位置（考虑 transform-origin: center center）
           const scaledLeft = left + baseW * (1 - scale) / 2;
           const scaledTop = top + baseH * (1 - scale) / 2;
-          
+
           // 加上平移后的最终位置
           const finalLeft = scaledLeft + previewX;
           const finalTop = scaledTop + previewY;
-          
+
           // 可视区域左上角在图片层上的坐标（图片层坐标系，缩放后）
           const visibleLayerX = -finalLeft;
           const visibleLayerY = -finalTop;
-          
+
           // 映射到源图坐标（考虑两层缩放）
           const unscaledX = visibleLayerX / scale;
           const unscaledY = visibleLayerY / scale;
-          
+
           const srcToLayerScaleW = info.width / baseW;
           const srcToLayerScaleH = info.height / baseH;
-          
+
           // 计算裁剪矩形
           let sx = Math.floor(unscaledX * srcToLayerScaleW);
           let sy = Math.floor(unscaledY * srcToLayerScaleH);
@@ -448,28 +468,48 @@ Page({
           if (sx + sw > info.width) sx = Math.max(0, info.width - sw);
           if (sy + sh > info.height) sy = Math.max(0, info.height - sh);
 
+          // 按源矩形宽高比计算导出尺寸
+          let exportW, exportH;
+          if (sw >= sh) {
+            exportW = maxExportDim;
+            exportH = Math.max(1, Math.round(maxExportDim * sh / sw));
+          } else {
+            exportH = maxExportDim;
+            exportW = Math.max(1, Math.round(maxExportDim * sw / sh));
+          }
+
           const sourcePath = info.path || imageUrl;
-          console.log('[generate][export] crop', { sx, sy, sw, sh, scale, srcWidth: info.width, srcHeight: info.height });
+          const isWholeImage = sx === 0
+            && sy === 0
+            && Math.abs(sw - info.width) <= 1
+            && Math.abs(sh - info.height) <= 1;
+          if (isWholeImage) {
+            resolve(sourcePath || imageUrl);
+            return;
+          }
 
           // 使用 Canvas 2D
           init2dCanvas(this, '#genCropCanvas').then(({ canvas, ctx, dpr }) => {
-            // 设置 canvas 尺寸
-            resize2dCanvas({ canvas, ctx, width: canvasSize, height: canvasSize, dpr });
+            resize2dCanvas({ canvas, ctx, width: exportW, height: exportH, dpr });
 
-            // 绘制白色背景
             ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvasSize, canvasSize);
+            ctx.fillRect(0, 0, exportW, exportH);
 
             // 加载图片并绘制
             const img = canvas.createImage();
             img.onload = () => {
-              // 裁剪（源图矩形 -> 640x640）
-              ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvasSize, canvasSize);
+              ctx.save();
+              ctx.translate(-Math.round(sx * exportW / sw), -Math.round(sy * exportH / sh));
+              ctx.scale(exportW / sw, exportH / sh);
+              ctx.drawImage(img, 0, 0, info.width, info.height);
+              ctx.restore();
 
               // 导出为临时文件
               exportCanvasToTempFilePath(canvas, {
-                width: canvasSize,
-                height: canvasSize,
+                width: exportW,
+                height: exportH,
+                sourceWidth: canvas.width,
+                sourceHeight: canvas.height,
                 fileType: 'png',
                 quality: 1
               }, this).then((tempFilePath) => {
@@ -487,6 +527,7 @@ Page({
           }).catch((err) => {
             console.error('[generate][export] canvas init fail', err);
             resolve(imageUrl);
+          });
           });
         },
         fail: () => resolve(imageUrl)
@@ -522,7 +563,7 @@ Page({
       if (customConfirmed) {
         const customGridSize = parseInt(customSizeVal, 10);
         if (!isNaN(customGridSize) && customGridSize >= 10) {
-          gridSize = customGridSize;
+          gridSize = Math.min(customGridSize, 200);
         }
       }
       let brand = 'MARD';

@@ -24,6 +24,12 @@ Component({
     },
 
     hide() {
+      const popupKey = this.data.neverShowKey;
+      if (popupKey) {
+        const lastShown = storage.getJSON(storage.KEYS.POPUP_LAST_SHOWN, {});
+        lastShown[popupKey] = Date.now();
+        storage.setJSON(storage.KEYS.POPUP_LAST_SHOWN, lastShown);
+      }
       this.setData({ visible: false });
     },
 

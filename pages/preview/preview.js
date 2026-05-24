@@ -146,12 +146,13 @@ Page({
       const totalBeads = parsedColorPalette.reduce((sum, c) => sum + (c.count || 0), 0);
       const renderedPatternUrl = data.renderedPatternUrl || '';
       const returnedBoxId = data.boxId ? String(data.boxId) : (this.data.boxId || null);
+      const returnedDraftId = data.draftId ? String(data.draftId) : (this.data.draftId || null);
       const isSaved = sourceType === 'BOX' || (!!returnedBoxId && returnedBoxId !== id);
       const canEnterFocusMode = sourceType === 'BOX' || isSaved;
       let activeTab = 'pattern';
       if (sourceType === 'DRAFT' || isAiStyle) activeTab = hasPatternData ? 'result' : 'pattern';
       else { if (hasPatternData) activeTab = 'result'; else if (originalUrl) activeTab = 'original'; }
-      this.setData({ name: data.name || '', originalUrl, currentPreviewUrl: originalUrl, currentSize: data.gridSize || 64, brandName: (data.brand || 'MARD').toUpperCase(), colorCount: data.colorCount || parsedColorPalette.length, mappedPixelData: parsedMappedPixelData, gridData: parsedGridData, colorPalette: parsedColorPalette, totalBeads, hasPatternData, hasResultData: hasPatternData, renderedPatternUrl, patternRendered: !!renderedPatternUrl, activeTab, boxId: returnedBoxId, isSaved, canEnterFocusMode, loading: false, isHydrated: true, initialLoading: hasPatternData ? true : false, isAiStyle }, () => { if (hasPatternData && !renderedPatternUrl) setTimeout(() => this._generatePatternPreview2d(), 200); });
+      this.setData({ name: data.name || '', originalUrl, currentPreviewUrl: originalUrl, currentSize: data.gridSize || 64, brandName: (data.brand || 'MARD').toUpperCase(), colorCount: data.colorCount || parsedColorPalette.length, mappedPixelData: parsedMappedPixelData, gridData: parsedGridData, colorPalette: parsedColorPalette, totalBeads, hasPatternData, hasResultData: hasPatternData, renderedPatternUrl, patternRendered: !!renderedPatternUrl, activeTab, boxId: returnedBoxId, draftId: returnedDraftId, isSaved, canEnterFocusMode, loading: false, isHydrated: true, initialLoading: hasPatternData ? true : false, isAiStyle }, () => { if (hasPatternData && !renderedPatternUrl) setTimeout(() => this._generatePatternPreview2d(), 200); });
     }).catch((err) => {
       const message = (err && err.message) ? err.message : '加载失败';
       wx.showToast({ title: message.length > 8 ? '加载失败' : message, icon: 'none' });
@@ -233,6 +234,7 @@ Page({
     waitCanvas2dReady(this, 'patternExport2dComp', { timeout: 5000 }).then(({ comp, ctx, canvas }) => {
       const boardSize = patternExportSize(currentSize);
       const drawOptions = {
+        maxCanvasSize: 4096,
         appName: appName || '',
         watermark: watermarkConfig || null
       };
@@ -264,13 +266,25 @@ Page({
     const name = (patternNameInput || '').trim() || generatePatternName();
     this.setData({ savingToBox: true });
     request.post('/box/save', { name, sourceType: sourceType || 'LOCAL', brand: brandName, colorCount, gridSize: currentSize, mappedPixelData: JSON.stringify(mappedPixelData), historyId: historyId || null, draftId: draftId || null, sourceUrl: originalUrl || '' }).then((box) => {
-      const newBoxId = box && box.id ? String(box.id) : null;
+      const newBoxId = box && box.id ? String(box.id) : (box && box.box && box.box.id ? String(box.box.id) : null);
       this.setData({ isSaved: true, boxId: newBoxId, canEnterFocusMode: true, showNameModal: false, savingToBox: false });
       wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+      this._showCapacityFullIfNeeded(box);
       const pages = getCurrentPages();
       const prevPage = pages.length > 1 ? pages[pages.length - 2] : null;
       if (prevPage) prevPage._needsRefresh = true;
     }).catch(() => { this.setData({ savingToBox: false }); wx.showToast({ title: '保存失败，请重试', icon: 'none' }); });
+  },
+
+  _showCapacityFullIfNeeded(result) {
+    if (!result || !result.capacityFull) return;
+    setTimeout(() => {
+      wx.showToast({
+        title: result.capacityMessage || '图纸箱容量已满',
+        icon: 'none',
+        duration: 2200
+      });
+    }, 900);
   },
 
   onEnterFocusMode() {
@@ -283,7 +297,7 @@ Page({
   },
 
   handleToggleEditMode() {
-    const { mappedPixelData, gridData, colorPalette, currentSize, brandName, colorCount } = this.data;
+    const { mappedPixelData, gridData, colorPalette, currentSize, brandName, colorCount, sourceType, draftId, boxId, name } = this.data;
     if (!mappedPixelData || !mappedPixelData.length) { wx.showToast({ title: '暂无可编辑图纸', icon: 'none' }); return; }
 
     // 确保 gridData 和 colorPalette 存在
@@ -298,9 +312,13 @@ Page({
       gridData,
       colorPalette,
       brand: brandName || 'MARD',
-      colorCount: colorCount || 0
+      colorCount: colorCount || 0,
+      editSourceType: sourceType,
+      draftId: draftId || null,
+      boxId: boxId || null,
+      name: name || ''
     });
-    wx.navigateTo({ url: '/pages/draw/draw?source=result&storageKey=' + storageKey });
+    wx.navigateTo({ url: '/pages/draw/draw?source=preview&storageKey=' + storageKey });
   },
 
   onSaveImage() {
@@ -338,6 +356,7 @@ Page({
     waitCanvas2dReady(this, 'patternExport2dComp', { timeout: 5000 }).then(({ comp, ctx, canvas }) => {
       const boardSize = patternExportSize(currentSize);
       const drawOptions = {
+        maxCanvasSize: 4096,
         appName: appName || '',
         watermark: watermarkConfig || null
       };

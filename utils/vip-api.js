@@ -219,38 +219,21 @@ function claimActivityGift(activityCode) {
  * 每日签到
  */
 function dailyCheckin() {
-  return request.post('/task/checkin');
+  return request.post('/checkin/do');
 }
 
 /**
  * 获取签到状态
  */
 function getCheckinStatus() {
-  return request.get('/task/checkin/status');
+  return request.get('/checkin/status');
 }
 
 /**
  * 领取签到奖励
  */
 function claimCheckinReward() {
-  return request.post('/task/checkin/claim');
-}
-
-/**
- * 记录分享行为
- * @param {string} taskCode - 任务代码：daily_share
- */
-function recordShare(taskCode) {
-  return request.post('/task/share/record', { taskCode });
-}
-
-/**
- * 验证分享（好友点击分享链接时调用）
- * @param {string} shareFrom - 分享者用户ID
- * @param {string} taskCode - 任务代码：daily_share
- */
-function verifyShare(shareFrom, taskCode) {
-  return request.post('/task/share/verify', { shareFrom, taskCode });
+  return request.post('/checkin/claim');
 }
 
 /**
@@ -330,8 +313,6 @@ module.exports = {
   dailyCheckin,
   getCheckinStatus,
   claimCheckinReward,
-  recordShare,
-  verifyShare,
   getTaskList,
   getTaskLogs,
 

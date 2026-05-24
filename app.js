@@ -4,10 +4,10 @@ const store = require('./utils/store');
 
 App({
   globalData: {
-    appName: '拼豆精灵',
+    appName: '拼豆魔法屋',
     watermarkConfig: {
       enabled: true,
-      text: '拼豆精灵',
+      text: '拼豆魔法屋出品',
       fontSize: 36,
       color: 'rgba(100,100,100,0.15)',
       angle: -30,
@@ -24,11 +24,13 @@ App({
   },
 
   _silentLoginPromise: null,
+  _suppressSilentLogin: false,
+  _silentLoginToken: 0,
 
   onLaunch(options) {
     this.captureInviteCode(options);
     const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
-    if (!sessionId) {
+    if (!sessionId && !this._suppressSilentLogin) {
       this.silentLogin();
     }
     this.preloadTabPages();
@@ -41,7 +43,7 @@ App({
   onShow(options) {
     this.captureInviteCode(options);
     const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
-    if (!sessionId) {
+    if (!sessionId && !this._suppressSilentLogin) {
       this.silentLogin();
       return;
     }
@@ -83,7 +85,9 @@ App({
   ensureSession() {
     const cached = storage.get(storage.KEYS.SESSION_ID, '');
     if (cached) return Promise.resolve(cached);
+    if (this._suppressSilentLogin) return Promise.reject(new Error('silent login suppressed'));
     if (this._silentLoginPromise) return this._silentLoginPromise;
+    const loginToken = ++this._silentLoginToken;
 
     this._silentLoginPromise = new Promise((resolve, reject) => {
       wx.login({
@@ -95,12 +99,17 @@ App({
           const inviteCode = storage.get(storage.KEYS.PENDING_INVITE_CODE, '');
           request.post('/auth/login', { code: res.code, inviteCode })
             .then((data) => {
+              if (this._suppressSilentLogin || loginToken !== this._silentLoginToken) {
+                reject(new Error('silent login cancelled'));
+                return;
+              }
               const sessionId = data.sessionId || data.token;
               if (!sessionId) {
                 reject(new Error('no session id'));
                 return;
               }
               storage.set(storage.KEYS.SESSION_ID, sessionId);
+              this._suppressSilentLogin = false;
               if (data.inviteCode) storage.set(storage.KEYS.MY_INVITE_CODE, data.inviteCode);
               storage.remove(storage.KEYS.PENDING_INVITE_CODE);
               this.prefetchProfileData();
@@ -132,6 +141,16 @@ App({
     request.get('/watermark/user-config')
       .then(config => this.updateWatermarkConfig(config))
       .catch(() => {});
+  },
+
+  suppressSilentLogin() {
+    this._suppressSilentLogin = true;
+    this._silentLoginPromise = null;
+    this._silentLoginToken += 1;
+  },
+
+  resumeSilentLogin() {
+    this._suppressSilentLogin = false;
   },
 
   silentLogin() {

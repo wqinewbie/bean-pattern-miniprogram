@@ -3,6 +3,7 @@ const storage = require('./storage');
 
 let currentPopup = null;
 let popupComponent = null;
+const sessionShown = {};
 
 function setPopupComponent(comp) {
   popupComponent = comp;
@@ -23,6 +24,7 @@ async function checkAndShowPopup() {
     for (const popup of popups) {
       const key = popup.key;
       if (hidden[key]) continue;
+      if (sessionShown[key]) continue;
 
       if (popup.showInterval && popup.showInterval > 0) {
         const last = lastShown[key];
@@ -33,6 +35,7 @@ async function checkAndShowPopup() {
       }
 
       currentPopup = popup;
+      sessionShown[key] = Date.now();
       if (popupComponent) {
         popupComponent.show(key, popup);
       }

@@ -1,32 +1,27 @@
 <view class="page">
-  <page-nav-bar title="沉浸式拼豆" subtitle="{{gridSize}}²" bgColor="rgba(255,235,181,0.9)" showBack="{{true}}" bind:back="onBack">
-    <view slot="right" class="focus-reset-btn" bindtap="onResetAll">
-      <text class="action-icon">↻</text>
-      <text class="action-text">重置</text>
-    </view>
-  </page-nav-bar>
+  <page-nav-bar title="沉浸式拼豆" subtitle="{{gridSize}}×{{gridSize}}" bgColor="rgba(255,235,181,0.9)" showBack="{{true}}" bind:back="onBack" />
 
-  <!-- 主内容区 -->
-  <view class="main-area">
-    <!-- 网格预览区 -->
+  <view
+    class="main-area"
+    bindtouchstart="handleTouchStart"
+    bindtouchmove="handleTouchMove"
+    bindtouchend="handleTouchEnd"
+    bindtouchcancel="handleTouchEnd"
+  >
     <view class="grid-preview">
-      <view 
-        class="canvas-container" 
-        style="width:{{canvasSize}}px;height:{{canvasSize}}px;"
-        bindtouchstart="handleTouchStart"
-        bindtouchmove="handleTouchMove"
-        bindtouchend="handleTouchEnd"
-        bindtouchcancel="handleTouchEnd"
+      <view
+        class="canvas-container"
+        style="width:{{displaySize}}px;height:{{displaySize}}px;"
       >
-        <view 
+        <view
           class="canvas-wrapper"
-          style="transform: translate({{offsetX}}px, {{offsetY}}px) scale({{scale}}); transform-origin: center center;"
+          style="transform: translate({{offsetX}}px, {{offsetY}}px);"
         >
-          <bead-canvas2d 
+          <bead-canvas2d
             id="immersiveCanvas"
-            canvas-id="immersive-canvas" 
-            width="{{canvasSize}}"
-            height="{{canvasSize}}"
+            canvas-id="immersive-canvas"
+            width="{{displaySize}}"
+            height="{{displaySize}}"
             auto-init="{{true}}"
             bind:ready="onCanvasReady"
             bind:error="onCanvasError"
@@ -35,93 +30,112 @@
       </view>
     </view>
 
-    <!-- 对比度滑块 -->
-    <view class="contrast-section">
-      <view class="contrast-card">
-        <text class="contrast-label">对比度</text>
-        <slider
-          class="contrast-slider"
-          min="0"
-          max="100"
-          step="10"
-          value="{{contrast}}"
-          activeColor="#FF9800"
-          backgroundColor="#FFF4DC"
-          block-color="#FF9800"
-          block-size="18"
-          bindchange="onContrastChange"
-        />
-        <text class="contrast-value">{{contrast}}%</text>
-      </view>
+    <view class="focus-reset-fab" bindtap="onResetAll">
+      <text class="fab-icon">↺</text>
+      <text class="fab-text">重置</text>
     </view>
-
-    <!-- Tab 切换 -->
-    <view class="tabs-section">
-      <view class="tabs-card">
-        <view 
-          class="tab-item {{tab==='color'?'tab-item--active':''}}"
-          bindtap="onTabChange"
-          data-tab="color"
-        >
-          <text class="tab-icon">#</text>
-          <text class="tab-label">按色号</text>
-        </view>
-        <view 
-          class="tab-item {{tab==='row'?'tab-item--active':''}}"
-          bindtap="onTabChange"
-          data-tab="row"
-        >
-          <text class="tab-icon">⇄</text>
-          <text class="tab-label">按横排</text>
-        </view>
-        <view 
-          class="tab-item {{tab==='col'?'tab-item--active':''}}"
-          bindtap="onTabChange"
-          data-tab="col"
-        >
-          <text class="tab-icon">⇅</text>
-          <text class="tab-label">按竖排</text>
-        </view>
-      </view>
-    </view>
-
-    <!-- 提示文字 -->
-    <view class="hint-section">
-      <view class="hint-divider"></view>
-      <text class="hint-text">点击卡片高亮 · 长按标记完成</text>
-      <view class="hint-divider"></view>
-    </view>
-
-    <!-- 卡片列表 -->
-    <scroll-view class="cards-section" scroll-y>
-      <!-- 色号卡片（固定显示，不随 Tab 切换） -->
-      <view class="cards-grid">
-        <view 
-          wx:for="{{palette}}" 
-          wx:key="id"
-          class="card-item {{highlightId===item.id?'card-item--active':''}} {{completedMap[item.id]?'card-item--done':''}}"
-          bindtap="onCardTap"
-          bindlongpress="onCardLongPress"
-          data-type="color"
-          data-value="{{item.id}}"
-        >
-          <view 
-            class="card-bead" 
-            style="background:rgb({{item.r}},{{item.g}},{{item.b}})"
-          >
-            <text wx:if="{{completedMap[item.id]}}" class="card-check">✓</text>
-            <text wx:else class="card-id" style="color:{{item.textColor}}">{{item.id}}</text>
-          </view>
-          <view class="card-info">
-            <text class="card-name">{{item.name || item.id}}</text>
-            <text class="card-count">剩余 {{remainingByColor[item.id] || 0}} 颗</text>
-          </view>
-        </view>
-      </view>
-    </scroll-view>
   </view>
 
-  <!-- 加载蒙层 -->
+  <view class="focus-panel {{panelExpanded ? 'focus-panel--expanded' : ''}}" style="height: {{panelHeight}}rpx;">
+    <view
+      class="focus-panel-handle"
+      bindtouchstart="onPanelTouchStart"
+      bindtouchmove="onPanelTouchMove"
+      bindtouchend="onPanelTouchEnd"
+      bindtap="onTogglePanel"
+    >
+      <view class="panel-handle-bar"></view>
+    </view>
+
+    <view class="focus-panel-content">
+      <view class="contrast-section">
+        <view class="contrast-card">
+          <text class="contrast-label">透明度</text>
+          <slider
+            class="contrast-slider"
+            min="0"
+            max="100"
+            step="10"
+            value="{{contrast}}"
+            activeColor="#FF9800"
+            backgroundColor="#FFF4DC"
+            block-color="#FF9800"
+            block-size="18"
+            bindchange="onContrastChange"
+          />
+          <text class="contrast-value">{{contrast}}%</text>
+        </view>
+      </view>
+
+      <view class="tabs-section">
+        <view class="tabs-card">
+          <view
+            class="tab-item {{tab==='color'?'tab-item--active':''}}"
+            bindtap="onTabChange"
+            data-tab="color"
+          >
+            <text class="tab-icon">#</text>
+            <text class="tab-label">色号名称</text>
+          </view>
+          <view
+            class="tab-item {{tab==='row'?'tab-item--active':''}}"
+            bindtap="onTabChange"
+            data-tab="row"
+          >
+            <text class="tab-icon">↔</text>
+            <text class="tab-label">横向计数</text>
+          </view>
+          <view
+            class="tab-item {{tab==='col'?'tab-item--active':''}}"
+            bindtap="onTabChange"
+            data-tab="col"
+          >
+            <text class="tab-icon">↕</text>
+            <text class="tab-label">竖向计数</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="hint-section">
+        <view class="hint-divider"></view>
+        <text class="hint-text">点击色号高亮 · 长按标记完成</text>
+        <view class="hint-divider"></view>
+      </view>
+
+      <scroll-view
+        class="cards-section {{panelExpanded ? 'cards-section--expanded' : 'cards-section--compact'}}"
+        scroll-x="{{!panelExpanded}}"
+        scroll-y="{{panelExpanded}}"
+        enhanced="{{true}}"
+        show-scrollbar="{{false}}"
+      >
+        <view class="cards-grid {{panelExpanded ? 'cards-grid--expanded' : 'cards-grid--compact'}}">
+          <view
+            wx:for="{{palette}}"
+            wx:key="id"
+            class="card-item {{highlightId===item.id?'card-item--active':''}} {{completedMap[item.id]?'card-item--done':''}}"
+            bindtap="onCardTap"
+            bindlongpress="onCardLongPress"
+            data-type="color"
+            data-value="{{item.id}}"
+          >
+            <view
+              class="card-bead"
+              style="background:rgb({{item.r}},{{item.g}},{{item.b}})"
+            >
+              <text wx:if="{{completedMap[item.id]}}" class="card-check">✓</text>
+              <text wx:else class="card-id" style="color:{{item.textColor}}">{{item.id}}</text>
+            </view>
+            <view class="card-info">
+              <text class="card-name">{{item.name || item.id}}</text>
+              <text class="card-count">剩余 {{remainingByColor[item.id] || 0}} 颗</text>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
   <view wx:if="{{loading}}" class="loading-overlay">
     <view class="loading-container">
       <view class="loading-spinner"></view>

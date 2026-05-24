@@ -51,10 +51,30 @@ Page({
     });
   },
 
-  onPhoneInput(e) {
-    this.setData({ phone: e.detail.value.replace(/\s+/g, '') }, () => {
-      this.checkIfEdited();
-    });
+  onGetPhoneNumber(e) {
+    const code = e.detail.code;
+    if (!code) {
+      // 用户拒绝授权或出错
+      if (e.detail.errMsg && e.detail.errMsg.indexOf('deny') === -1) {
+        wx.showToast({ title: '获取手机号失败', icon: 'none' });
+      }
+      return;
+    }
+    wx.showLoading({ title: '授权中...', mask: true });
+    request.post('/user/bind-phone-wx', { code })
+      .then((phone) => {
+        wx.hideLoading();
+        if (phone) {
+          this.setData({ phone }, () => {
+            this.checkIfEdited();
+          });
+          wx.showToast({ title: '手机号已授权', icon: 'success' });
+        }
+      })
+      .catch((e) => {
+        wx.hideLoading();
+        wx.showToast({ title: e.message || '手机号授权失败', icon: 'none' });
+      });
   },
 
   onSubmit() {

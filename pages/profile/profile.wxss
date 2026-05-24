@@ -614,6 +614,19 @@
   transform: scale(0.98);
 }
 
+.claim-btn--disabled {
+  background: #E0E0E0;
+  color: #9E9E9E;
+  box-shadow: none;
+}
+
+/* 任务按钮通用禁用态 */
+.task-btn--disabled {
+  background: #E0E0E0 !important;
+  color: #9E9E9E !important;
+  box-shadow: none !important;
+}
+
 /* 任务区域标题 */
 .task-section-title {
   font-size: 32rpx;
@@ -991,6 +1004,11 @@
   transform: scale(0.96);
 }
 
+.gift-use-btn--disabled {
+  background: #E0E0E0;
+  color: #9E9E9E;
+}
+
 .gift-empty {
   display: flex;
   flex-direction: column;
@@ -1014,14 +1032,24 @@
 
 .task-panel {
   background: #FFFFFF;
+  overflow: hidden;
+}
+
+.task-list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.task-panel .checkin-section,
+.task-panel .task-section-title {
+  flex-shrink: 0;
 }
 
 .task-list {
   display: flex;
   flex-direction: column;
   gap: 16rpx;
-  flex: 1;
-  overflow-y: auto;
 }
 
 .task-item {
@@ -1249,5 +1277,3 @@
   opacity: 0.85;
   transform: scale(0.95);
 }
-
-

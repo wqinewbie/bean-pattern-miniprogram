@@ -60,6 +60,7 @@ function request(url, method, data, headers) {
       url: fullUrl,
       method,
       data,
+      timeout: 15000,
       header: {
         'Content-Type': 'application/json',
         'X-Session-Id': sessionId,
@@ -95,7 +96,7 @@ function request(url, method, data, headers) {
           return;
         }
 
-        reject(new Error(`HTTP ${res.statusCode}`));
+        reject(new Error((body && body.message) || `HTTP ${res.statusCode}`));
       },
       fail: (err) => {
         if (DEBUG_REQUEST) {
@@ -142,6 +143,7 @@ function uploadImage(filePath) {
       url: fullUrl,
       filePath,
       name: 'file',
+      timeout: 30000,
       header: { 'X-Session-Id': sessionId },
       success: (res) => {
         try {

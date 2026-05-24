@@ -121,6 +121,15 @@
   background: white;
 }
 
+.activity-rich-text {
+  display: block;
+  padding: 32rpx;
+  font-size: 28rpx;
+  line-height: 1.8;
+  color: #5D4037;
+  box-sizing: border-box;
+}
+
 /* ========== 组件样式 ========== */
 
 /* 1. 头部Banner组件 */

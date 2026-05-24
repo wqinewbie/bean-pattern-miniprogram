@@ -74,7 +74,6 @@
             <view class="stat-dot" style="background:rgb({{item.r}},{{item.g}},{{item.b}})"></view>
             <view class="stat-info">
               <text class="stat-id">{{item.id || item.name}}</text>
-              <text wx:if="{{item.name && item.name !== item.id}}" class="stat-name">{{item.name}}</text>
             </view>
           </view>
           <text class="stat-count">x{{item.count}}</text>

@@ -3,6 +3,8 @@ const { requireLogin, cacheProfile, hasSession } = require('../../utils/profile-
 const popupManager = require('../../utils/popup-manager');
 const storage = require('../../utils/storage');
 
+const app = getApp();
+
 
 Page({
   syncTabBar() {
@@ -57,7 +59,6 @@ Page({
 
   onShow() {
     this.syncTabBar();
-    // 更新登录状态
     const loggedIn = hasSession();
     const nickName = storage.get(storage.KEYS.NICK_NAME, '');
     const avatarUrl = storage.get(storage.KEYS.AVATAR_URL, '');
@@ -76,30 +77,46 @@ Page({
     } else {
       this.closeLoginModal();
       this.refreshUserProfile();
-      popupManager.setPopupComponent(this.selectComponent('#globalPopup'));
-      popupManager.checkAndShowPopup();
     }
   },
 
   refreshUserProfile() {
+    const _apply = (profile) => {
+      cacheProfile(profile);
+      const vipExpire = profile.vipExpireAt || profile.vipExpire || '';
+      const isVip = !!(vipExpire && new Date(vipExpire) > new Date());
+      const aiQuota = Number(profile.aiQuota !== undefined ? profile.aiQuota : profile.magicCount);
+      const magicCount = Number.isNaN(aiQuota) ? 0 : aiQuota;
+      this.setData({
+        nickName: profile.nickName || this.data.nickName,
+        avatarUrl: profile.avatarUrl || this.data.avatarUrl,
+        isVip,
+        magicCount,
+      });
+    };
+
+    const _showPopup = () => {
+      popupManager.setPopupComponent(this.selectComponent('#globalPopup'));
+      popupManager.checkAndShowPopup();
+    };
+
+    const prefetched = (app && app.globalData && app.globalData.prefetch) || {};
+    const isFresh = prefetched.profileAt && (Date.now() - prefetched.profileAt < 30000);
+
+    if (isFresh && prefetched.profile) {
+      _apply(prefetched.profile);
+      _showPopup();
+      return;
+    }
+
     request.get('/user/profile')
       .then((profile) => {
-        profile = profile || {};
-        cacheProfile(profile);
-
-        const vipExpire = profile.vipExpireAt || profile.vipExpire || '';
-        const isVip = !!(vipExpire && new Date(vipExpire) > new Date());
-        const aiQuota = Number(profile.aiQuota !== undefined ? profile.aiQuota : profile.magicCount);
-        const magicCount = Number.isNaN(aiQuota) ? 0 : aiQuota;
-
-        this.setData({
-          nickName: profile.nickName || this.data.nickName,
-          avatarUrl: profile.avatarUrl || this.data.avatarUrl,
-          isVip,
-          magicCount,
-        });
+        _apply(profile || {});
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        _showPopup();
+      });
   },
 
   openLoginModal() {
@@ -116,6 +133,10 @@ Page({
   },
 
   closeLoginModal() {
+    const app = getApp();
+    if (app && typeof app.suppressSilentLogin === 'function') {
+      app.suppressSilentLogin();
+    }
     if (this._loginModalTimer) {
       clearTimeout(this._loginModalTimer);
       this._loginModalTimer = null;
@@ -149,7 +170,14 @@ Page({
             bannerBgColor: bgColor || '#FF9800'
           };
         });
-        if (!list.length) return;
+        if (!list.length) {
+          this.setData({
+            bannerList: [],
+            activeBanner: 0,
+            currentBanner: null
+          });
+          return;
+        }
         const first = list[0] || {};
         this.setData({
           bannerList: list,
@@ -323,6 +351,9 @@ Page({
 
         storage.set(storage.KEYS.SESSION_ID, sessionId);
         storage.set(storage.KEYS.EVER_REGISTERED, true);
+        if (app && typeof app.resumeSilentLogin === 'function') {
+          app.resumeSilentLogin();
+        }
 
         const profile = ret.profile || {};
         if (profile.nickName) storage.set(storage.KEYS.NICK_NAME, profile.nickName);

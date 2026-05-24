@@ -12,8 +12,8 @@
       {{config.buttonText || '我知道了'}}
     </view>
     
-    <view wx:if="{{showNeverShow}}" class="popup-never" bindtap="onNeverShow">
-      <checkbox-group>
+    <view wx:if="{{showNeverShow}}" class="popup-never">
+      <checkbox-group bindchange="onNeverShow">
         <label class="never-label">
           <checkbox value="true" color="#FF9800" />
           <text>不再显示</text>

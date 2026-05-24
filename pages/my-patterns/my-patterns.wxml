@@ -79,7 +79,8 @@
               bindtouchend="onTouchEnd"
               data-id="{{item.id}}">
           <view class="list-item-main" bindtap="onItemTap" data-item="{{item}}">
-            <image wx:if="{{item.sourceUrl || item.coverUrl}}" class="list-thumb" src="{{item.sourceUrl || item.coverUrl}}" mode="aspectFill" />
+            <canvas wx:if="{{item.hasCanvasCover}}" id="boxListCanvas{{item.id}}" class="list-thumb thumb-canvas" type="2d"/>
+            <image wx:elif="{{item.sourceUrl || item.coverUrl}}" class="list-thumb" src="{{item.sourceUrl || item.coverUrl}}" mode="aspectFill" />
             <view wx:else class="list-thumb list-thumb--ph">{{item.gridSize || 64}}</view>
             <view class="list-info">
               <text class="list-name">{{item.name || '未命名作品'}}</text>

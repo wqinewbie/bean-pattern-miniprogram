@@ -4,10 +4,10 @@
  */
 
 const DEFAULT_CONFIG = {
-  appName: '拼豆精灵',
+  appName: '拼豆魔法屋',
   watermarkConfig: {
     enabled: true,
-    text: '拼豆精灵',
+    text: '拼豆魔法屋出品',
     fontSize: 36,
     color: 'rgba(100,100,100,0.15)',
     angle: -30,

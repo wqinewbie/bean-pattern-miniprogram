@@ -42,7 +42,10 @@ Page({
     touchLastX: 0,
     swipeOpenPx: 140,
     isSwiping: false,
+    swipeOffset: 0,
   },
+  _pendingSwipeOffset: null,
+  _swipeRaf: null,
 
   onLoad() {
     this.calcNavTop();
@@ -93,10 +96,8 @@ Page({
     if (reset) {
       this.setData({
         page: 1,
-        patterns: [],
-        filteredPatterns: [],
         hasMore: true,
-        loading: true
+        loading: !this._dataLoaded
       });
     } else {
       if (!this.data.hasMore || this.data.loadingMore) return Promise.resolve();
@@ -357,6 +358,7 @@ Page({
       touchLastX: x,
       swipedOffsets: offsets,
       isSwiping: true,
+      swipeOffset: offsets[String(id)] || 0,
     });
   },
 
@@ -365,7 +367,7 @@ Page({
     if (!this.data.touchItemId) return;
     const x = e.touches[0].pageX;
     const lastX = this.data.touchLastX;
-    const currentOffset = this.data.swipedOffsets[String(this.data.touchItemId)] || 0;
+    const currentOffset = this._pendingSwipeOffset !== null ? this._pendingSwipeOffset : (this.data.swipeOffset || 0);
 
     // 计算本次移动的增量
     const deltaX = lastX - x;
@@ -375,26 +377,46 @@ Page({
     // 限制滑动范围：0 到 -swipeOpenPx
     newOffset = Math.max(-this.data.swipeOpenPx, Math.min(0, newOffset));
 
-    this.setData({
-      touchLastX: x,
-      [`swipedOffsets.${this.data.touchItemId}`]: newOffset,
-    });
+    this.data.touchLastX = x;
+    this._scheduleSwipeOffset(newOffset);
   },
 
   onTouchEnd(e) {
     if (this.data.viewMode !== 'list') return;
     if (!this.data.touchItemId) return;
     const id = this.data.touchItemId;
-    const currentOffset = this.data.swipedOffsets[String(id)] || 0;
+    const currentOffset = this._pendingSwipeOffset !== null ? this._pendingSwipeOffset : (this.data.swipeOffset || this.data.swipedOffsets[String(id)] || 0);
     const threshold = this.data.swipeOpenPx * 0.4;
     const snapOpen = Math.abs(currentOffset) > threshold;
     this.setData({
       [`swipedOffsets.${id}`]: snapOpen ? -this.data.swipeOpenPx : 0,
+      swipeOffset: 0,
       touchItemId: null,
       touchStartX: 0,
       touchLastX: 0,
       isSwiping: false,
     });
+  },
+
+  _scheduleSwipeOffset(offset) {
+    this._pendingSwipeOffset = offset;
+    if (this._swipeRaf) return;
+    const runner = () => {
+      this._swipeRaf = null;
+      const id = this.data.touchItemId;
+      if (!id || this._pendingSwipeOffset === null) return;
+      const next = this._pendingSwipeOffset;
+      this.setData({
+        swipeOffset: next,
+        [`swipedOffsets.${id}`]: next
+      });
+    };
+    if (wx.nextTick) {
+      this._swipeRaf = true;
+      wx.nextTick(runner);
+    } else {
+      this._swipeRaf = setTimeout(runner, 16);
+    }
   },
 
   applyFilter() {
@@ -413,12 +435,12 @@ Page({
 
   renderThumbnails() {
     // 仅对草稿来源且无原图的项用 canvas 渲染缩略图
-    if (this.data.viewMode !== 'thumb') return;
     const patterns = this.data.filteredPatterns || [];
     patterns.forEach(item => {
       if (!item.hasCanvasCover) return;
+      const canvasId = this.data.viewMode === 'thumb' ? '#boxThumbCanvas' + item.id : '#boxListCanvas' + item.id;
       const query = wx.createSelectorQuery();
-      query.select('#boxThumbCanvas' + item.id)
+      query.select(canvasId)
         .fields({ node: true, size: true })
         .exec((res) => {
           if (!res || !res[0] || !res[0].node) return;

@@ -6,7 +6,7 @@
       <text class="gift-tab-text">{{item.label}}</text><text class="gift-tab-count">{{item.count}}</text>
     </view>
   </view>
-  <view class="gift-list" wx:if="{{visibleGifts.length > 0}}">
+  <view class="gift-list" wx:if="{{visibleGifts && visibleGifts.length > 0}}">
     <view wx:for="{{visibleGifts}}" wx:key="id" class="gift-item {{item.itemClass}}">
       <view class="gift-info">
         <view class="gift-title-row">
@@ -16,7 +16,7 @@
         </view>
         <text wx:if="{{item.expireText}}" class="gift-expire">有效期至：{{item.expireText}}</text>
       </view>
-      <view wx:if="{{item.canUse}}" class="gift-use-btn" bindtap="onUse" data-gift="{{item}}">使用</view>
+      <view wx:if="{{item.canUse}}" class="gift-use-btn {{processing ? 'gift-use-btn--disabled' : ''}}" bindtap="onUse" data-gift="{{item}}">{{processing ? '使用中...' : '使用'}}</view>
     </view>
   </view>
   <view wx:else class="gift-empty">

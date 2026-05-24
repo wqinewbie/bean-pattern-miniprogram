@@ -48,6 +48,24 @@ Page({
       });
   },
 
+  onNotificationTap(e) {
+    const item = (e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.item) || {};
+    const actionType = String(item.actionType || 'NONE').toUpperCase();
+    const actionValue = item.actionValue || '';
+    if (!actionValue || actionType === 'NONE') return;
+
+    if (actionType === 'PAGE' || actionType === 'NAVIGATE') {
+      if (String(actionValue).indexOf('/pages/') === 0) {
+        wx.navigateTo({ url: actionValue });
+      }
+      return;
+    }
+
+    if (actionType === 'GIFT') {
+      wx.switchTab({ url: '/pages/profile/profile' });
+    }
+  },
+
   onBack() {
     wx.navigateBack();
   },

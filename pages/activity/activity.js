@@ -11,6 +11,7 @@ Page({
     // 活动信息
     title: '',
     coverImage: '',
+    contentHtml: '',
     buttonText: '立即参与',
     buttonAction: 'CLAIM',
     buttonUrl: '',
@@ -93,6 +94,7 @@ Page({
         activity: data,
         title: data.title,
         coverImage: data.coverImage,
+        contentHtml: data.contentHtml || '',
         sections: data.sections || [],
         buttonText: data.buttonText || '立即参与',
         buttonAction: data.buttonAction || 'CLAIM',

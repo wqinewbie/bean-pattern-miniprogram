@@ -20,14 +20,22 @@ const canvasCache = {};
 
 // 获取 Canvas 2D 实例的辅助函数
 async function getCanvas2d(pageInstance, canvasId, width, height) {
+  const targetWidth = Math.max(1, Math.floor(Number(width) || 1));
+  const targetHeight = Math.max(1, Math.floor(Number(height) || 1));
   if (canvasCache[canvasId]) {
+    const cached = canvasCache[canvasId];
+    if (cached.width !== targetWidth || cached.height !== targetHeight) {
+      resize2dCanvas({ canvas: cached.canvas, ctx: cached.ctx, width: targetWidth, height: targetHeight, dpr: cached.dpr });
+      cached.width = targetWidth;
+      cached.height = targetHeight;
+    }
     return canvasCache[canvasId];
   }
 
   const { canvas, ctx, dpr } = await init2dCanvas(pageInstance, '#' + canvasId);
-  resize2dCanvas({ canvas, ctx, width, height, dpr });
+  resize2dCanvas({ canvas, ctx, width: targetWidth, height: targetHeight, dpr });
 
-  const result = { canvas, ctx, dpr };
+  const result = { canvas, ctx, dpr, width: targetWidth, height: targetHeight };
   canvasCache[canvasId] = result;
   return result;
 }
@@ -1126,7 +1134,7 @@ Page({
 
     let nextUrl = '';
     if (tab === 'original') {
-      nextUrl = this.data.warmedOriginalUrl || this.data.originalUrl || '';
+      nextUrl = this.data.originalUrl || this.data.warmedOriginalUrl || '';
     }
 
     console.log('[result][tab] change request', {
@@ -1260,7 +1268,7 @@ Page({
   },
 
   _drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize) {
-    return drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize);
+    return drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, { maxCanvasSize: 4096 });
   },
 
   onCanvas2dError(e) {
@@ -1285,7 +1293,7 @@ Page({
             return;
           }
 
-          const boardSize = patternBoardSize(gridData.length);
+          const boardSize = patternBoardSize(gridData.length, (gridData[0] && gridData[0].length) || gridData.length);
 
           try {
             // 准备绘制选项（包含小程序名称和水印配置）
@@ -1619,9 +1627,10 @@ Page({
             exportCanvasToTempFilePath(canvas, {
               width: targetW,
               height: targetH,
+              sourceWidth: canvas.width,
+              sourceHeight: canvas.height,
               fileType: 'png',
               quality: 1
-            }, this).then((tempFilePath) => {
             }, this).then((tempFilePath) => {
               console.log('[result][mirror-preview] canvasToTempFilePath success', {
                 tempFilePath: tempFilePath
@@ -1786,18 +1795,20 @@ Page({
     const { withWatermark = false } = options;
     this._traceFlow('patternTemp:export:start', { withWatermark });
     const { gridData, colorPalette } = this._getRenderableLegacyData();
-    const { gridSize } = this.data;
 
     if (!gridData || !gridData.length || !colorPalette || !colorPalette.length) {
       return Promise.reject(new Error('no pattern data'));
     }
+
+    const gridRows = gridData.length;
+    const gridCols = (gridData[0] && gridData[0].length) || gridRows;
 
     return waitCanvas2dReady(this, 'patternExport2dComp', {
       label: 'pattern-export',
       maxCompRetry: 15,
       maxCtxRetry: 20
     }).then(({ comp, ctx }) => {
-      const boardSize = patternBoardSize(gridSize);
+      const boardSize = patternBoardSize(gridRows, gridCols);
       
       // 准备绘制选项（包含小程序名称和水印配置）
       const drawOptions = {
@@ -1813,8 +1824,8 @@ Page({
       };
       
       // 第一步：先绘制一次获取实际尺寸
-      const layoutPreview = drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, drawOptions);
-      
+      const layoutPreview = drawPatternWithAxes(ctx, gridData, colorPalette, gridRows, boardSize, drawOptions);
+
       // 第二步：根据实际尺寸 resize Canvas（长方形）
       if (typeof comp.resizeSync === 'function') {
         comp.resizeSync(layoutPreview.totalWidth, layoutPreview.totalHeight);
@@ -1824,7 +1835,7 @@ Page({
       try {
         // 第三步：清空并重新绘制（resize 会清空内容）
         ctx.clearRect(0, 0, layoutPreview.totalWidth, layoutPreview.totalHeight);
-        layout = drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, drawOptions);
+        layout = drawPatternWithAxes(ctx, gridData, colorPalette, gridRows, boardSize, drawOptions);
         this._traceFlow('patternTemp:export:layout-ok', {
           totalWidth: layout.totalWidth,
           totalHeight: layout.totalHeight,
@@ -1863,18 +1874,19 @@ Page({
   _exportPatternWithLegacy(options = {}) {
     const { withWatermark = false } = options;
     const { gridData, colorPalette } = this._getRenderableLegacyData();
-    const { gridSize } = this.data;
 
     if (!gridData || !gridData.length || !colorPalette || !colorPalette.length) {
       return Promise.reject(new Error('no pattern data'));
     }
 
-    const boardSize = patternBoardSize(gridSize);
+    const gridRows = gridData.length;
+    const gridCols = (gridData[0] && gridData[0].length) || gridRows;
+    const boardSize = patternBoardSize(gridRows, gridCols);
+    const canvasInitDim = Math.max(boardSize, Math.ceil(boardSize * Math.max(gridCols, gridRows) / Math.max(1, Math.min(gridCols, gridRows))));
 
     return new Promise((resolve, reject) => {
-      // 使用 Canvas 2D
-      getCanvas2d(this, 'tempSaveCanvas', boardSize, boardSize).then(({ canvas, ctx }) => {
-        const layout = drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize);
+      getCanvas2d(this, 'tempSaveCanvas', canvasInitDim, canvasInitDim).then(({ canvas, ctx }) => {
+        const layout = drawPatternWithAxes(ctx, gridData, colorPalette, gridRows, boardSize, { maxCanvasSize: 4096 });
 
         if (withWatermark) {
           this.applyWatermark(ctx, layout.totalWidth, layout.totalHeight, this.data.watermarkConfig);
@@ -1884,6 +1896,8 @@ Page({
         exportCanvasToTempFilePath(canvas, {
           width: layout.totalWidth,
           height: layout.totalHeight,
+          sourceWidth: Math.max(1, Math.floor(layout.totalWidth * ((canvas.width || layout.totalWidth) / Math.max(1, canvasInitDim)))),
+          sourceHeight: Math.max(1, Math.floor(layout.totalHeight * ((canvas.height || layout.totalHeight) / Math.max(1, canvasInitDim)))),
           fileType: 'png',
           quality: 1
         }, this).then((tempFilePath) => {
@@ -2409,18 +2423,31 @@ Page({
         focusProgress: focusTotalCells > 0 ? Math.round(completedCells / focusTotalCells * 100) : 0,
       })
         .then((box) => {
+          const newBoxId = box && box.id ? box.id : (box && box.box && box.box.id ? box.box.id : null);
           this.setData({
             isSaved: true,
             showNameModal: false,
             patternNameInput: name,
-            boxId: box.id
+            boxId: newBoxId
           });
           wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+          this._showCapacityFullIfNeeded(box);
         })
         .catch(() => {
           wx.showToast({ title: '保存失败，请重试', icon: 'none' });
         });
     });
+  },
+
+  _showCapacityFullIfNeeded(result) {
+    if (!result || !result.capacityFull) return;
+    setTimeout(() => {
+      wx.showToast({
+        title: result.capacityMessage || '图纸箱容量已满',
+        icon: 'none',
+        duration: 2200
+      });
+    }, 900);
   },
 
   onSaveToHistory() {
@@ -2730,7 +2757,10 @@ Page({
         return this._mergeSimilarMappedColors(mappedResult, similarityThreshold);
       })
       .then((mappedResult) => {
-        const mappedPixelData = mappedResult.mappedPixelData || [];
+        let mappedPixelData = mappedResult.mappedPixelData || [];
+        if (mirrorOn && Array.isArray(mappedPixelData) && mappedPixelData.length) {
+          mappedPixelData = mappedPixelData.map((row) => Array.isArray(row) ? row.slice().reverse() : row);
+        }
         const colorStats = mappedResult.colorStats || [];
         this._traceFlow('imageFlow:merge-ok', {
           mappedLen: mappedPixelData.length,
@@ -2747,6 +2777,7 @@ Page({
           });
           console.log('[result] buildResult 开始，cosImageUrl:', cosImageUrl, 'length:', cosImageUrl ? cosImageUrl.length : 0);
 
+          const displayOriginalUrl = sourceImageUrl || cosImageUrl || '';
           const resultData = {
             id: 'BP' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6).toUpperCase(),
             resultToken: 'RT' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10),
@@ -2754,8 +2785,8 @@ Page({
             brand,
             colorCount: colorStats.length,
             sourceType: 'LOCAL',
-            mirrorOn: false,
-            originalUrl: cosImageUrl || '', // 只使用 COS URL，不 fallback 到临时路径
+            mirrorOn: !!mirrorOn,
+            originalUrl: displayOriginalUrl,
             sourceUrl: cosImageUrl || '', // 只使用 COS URL，不 fallback 到临时路径
             mappedPixelData,
             colorStats,

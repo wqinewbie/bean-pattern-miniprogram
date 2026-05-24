@@ -1,6 +1,7 @@
 <view class="generate-page">
   <page-nav-bar title="魔法参数设置" showBack="{{true}}" bind:back="onBack" />
 
+  <scroll-view scroll-y class="generate-scroll">
   <!-- 重新选择图片 -->
   <view class="reselect-bar">
     <view class="btn-reselect-top" bindtap="onChooseImage">
@@ -109,11 +110,17 @@
       </view>
     </view>
 
+    <view class="scroll-more-hint">
+      <text>上滑查看更多参数</text>
+      <text class="scroll-more-arrow">⌄</text>
+    </view>
+
     <!-- 生成按钮 -->
     <view class="generate-bottom-bar">
       <view class="btn-generate" bindtap="onGenerate">立即生成图纸</view>
     </view>
   </view>
+  </scroll-view>
 
   <!-- 尺寸底部弹窗 -->
   <view wx:if="{{showSizeSheet}}" class="sheet-mask" bindtap="onHideSizeSheet"></view>

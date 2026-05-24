@@ -144,12 +144,12 @@
   <magic-panel show="{{showMagicPanel}}" magicCount="{{magicCount}}" isVip="{{isVip}}" bind:close="onCloseAllPanels" bind:task="onShowTaskPanelFromMagic" bind:vip="onVip" bind:cards="onGoCards" />
 
   <!-- 礼品包弹框 -->
-  <gift-panel show="{{showGiftPanel}}" giftTabs="{{giftTabs}}" giftTab="{{giftTab}}" visibleGifts="{{visibleGifts}}" bind:close="onCloseAllPanels" bind:tabchange="onGiftTabChange" bind:use="onUseGift" />
+  <gift-panel show="{{showGiftPanel}}" processing="{{processing}}" giftTabs="{{giftTabs}}" giftTab="{{giftTab}}" visibleGifts="{{visibleGifts}}" bind:close="onCloseAllPanels" bind:tabchange="onGiftTabChange" bind:use="onUseGift" />
 
   <!-- 任务中心弹框 -->
-  <task-panel show="{{showTaskPanel}}" checkinStatus="{{checkinStatus}}" tasks="{{tasks}}" bind:close="onCloseAllPanels" bind:checkin="onCheckin" bind:claim="onClaimCheckinReward" bind:dotask="onDoTask" />
+  <task-panel show="{{showTaskPanel}}" processing="{{processing}}" checkinStatus="{{checkinStatus}}" tasks="{{tasks}}" bind:close="onCloseAllPanels" bind:checkin="onCheckin" bind:claim="onClaimCheckinReward" bind:dotask="onDoTask" />
 
   <!-- 设置弹框 -->
-  <settings-panel show="{{showSettingsPanel}}" isVip="{{isVip}}" watermarkEnabled="{{watermarkEnabled}}" watermarkText="{{watermarkText}}" bind:close="onCloseAllPanels" bind:watermarkchange="onWatermarkChange" bind:watermarktextchange="onWatermarkTextChange" bind:confirm="onConfirmSettings" bind:customtap="onCustomWatermarkTap" />
+  <settings-panel show="{{showSettingsPanel}}" isVip="{{isVip}}" watermarkEnabled="{{draftWatermarkEnabled}}" watermarkText="{{draftWatermarkText}}" bind:close="onCloseAllPanels" bind:watermarkchange="onWatermarkChange" bind:watermarktextchange="onWatermarkTextChange" bind:confirm="onConfirmSettings" bind:customtap="onCustomWatermarkTap" />
 
 </view>

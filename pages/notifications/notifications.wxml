@@ -9,7 +9,7 @@
     </view>
     <view wx:else class="notifications-page">
       <view class="notifications-list">
-        <view wx:for="{{notifications}}" wx:key="id" class="notification-card {{item.read ? '' : 'notification-card--unread'}}">
+        <view wx:for="{{notifications}}" wx:key="id" class="notification-card {{item.read ? '' : 'notification-card--unread'}}" bindtap="onNotificationTap" data-item="{{item}}">
           <view class="notification-icon notification-icon--{{item.type}}">{{item.type==='gift'?'🎁':item.type==='magic'?'🪄':'🔔'}}</view>
           <view class="notification-content">
             <view class="notification-title-row">

@@ -32,6 +32,7 @@
 
     <!-- 组件化内容渲染 -->
     <view class="sections-container">
+      <rich-text wx:if="{{contentHtml && (!sections || sections.length === 0)}}" class="activity-rich-text" nodes="{{contentHtml}}"></rich-text>
       <block wx:for="{{sections}}" wx:key="id">
 
           <!-- 1. 头部Banner组件 -->

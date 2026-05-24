@@ -29,10 +29,13 @@ Page({
     touchLastX: 0,
     swipeOpenPx: 140,
     isSwiping: false,
+    swipeOffset: 0,
     showSaveModal: false,
     selectedDraft: null,
     patternName: '',
   },
+  _pendingSwipeOffset: null,
+  _swipeRaf: null,
 
   onLoad() {
     this.calcNavTop();
@@ -87,10 +90,8 @@ Page({
     if (reset) {
       this.setData({
         page: 1,
-        drafts: [],
-        filteredDrafts: [],
         hasMore: true,
-        loading: true
+        loading: !this._dataLoaded
       });
     } else {
       if (!this.data.hasMore || this.data.loadingMore) return;
@@ -153,7 +154,7 @@ Page({
           loading: false,
           loadingMore: false
         }, () => {
-          setTimeout(() => this.renderVisibleThumbnails(), 150);
+          setTimeout(() => this.renderVisibleThumbnails(), reset ? 40 : 120);
         });
       })
       .catch(() => {
@@ -269,6 +270,7 @@ Page({
       this._needsRefresh = true;
       wx.navigateTo({
         url: '/pages/draw/draw?draftId=' + item.id +
+          '&source=draft' +
           '&gridSize=' + item.gridSize +
           '&brand=' + (item.brand || '')
       });
@@ -307,8 +309,17 @@ Page({
       draftId: selectedDraft.id,
       name: name
     })
-      .then(() => {
-        wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+      .then((result) => {
+        if (result && result.alreadySaved) {
+          wx.showToast({ title: '该草稿已保存到图纸箱', icon: 'none' });
+        } else {
+          wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+          if (result && result.capacityFull) {
+            setTimeout(() => {
+              wx.showToast({ title: result.capacityMessage || '图纸箱容量已满', icon: 'none', duration: 2200 });
+            }, 900);
+          }
+        }
         this.setData({ showSaveModal: false, selectedDraft: null, patternName: '' });
         this.loadDrafts();
       })
@@ -443,6 +454,7 @@ Page({
       touchLastX: x,
       swipedOffsets: offsets,
       isSwiping: true,
+      swipeOffset: offsets[String(id)] || 0,
     });
   },
 
@@ -451,25 +463,45 @@ Page({
     if (!this.data.touchItemId) return;
     const x = e.touches[0].pageX;
     const lastX = this.data.touchLastX;
-    const currentOffset = this.data.swipedOffsets[String(this.data.touchItemId)] || 0;
+    const currentOffset = this._pendingSwipeOffset !== null ? this._pendingSwipeOffset : (this.data.swipeOffset || 0);
     const deltaX = lastX - x;
     let newOffset = currentOffset - deltaX;
     newOffset = Math.max(-this.data.swipeOpenPx, Math.min(0, newOffset));
-    this.setData({
-      touchLastX: x,
-      [`swipedOffsets.${this.data.touchItemId}`]: newOffset,
-    });
+    this.data.touchLastX = x;
+    this._scheduleSwipeOffset(newOffset);
+  },
+
+  _scheduleSwipeOffset(offset) {
+    this._pendingSwipeOffset = offset;
+    if (this._swipeRaf) return;
+    const runner = () => {
+      this._swipeRaf = null;
+      const id = this.data.touchItemId;
+      if (!id || this._pendingSwipeOffset === null) return;
+      const next = this._pendingSwipeOffset;
+      this.setData({
+        swipeOffset: next,
+        [`swipedOffsets.${id}`]: next
+      });
+    };
+    if (wx.nextTick) {
+      this._swipeRaf = true;
+      wx.nextTick(runner);
+    } else {
+      this._swipeRaf = setTimeout(runner, 16);
+    }
   },
 
   onTouchEnd(e) {
     if (this.data.viewMode !== 'list') return;
     if (!this.data.touchItemId) return;
     const id = this.data.touchItemId;
-    const currentOffset = this.data.swipedOffsets[String(id)] || 0;
+    const currentOffset = this._pendingSwipeOffset !== null ? this._pendingSwipeOffset : (this.data.swipeOffset || this.data.swipedOffsets[String(id)] || 0);
     const threshold = this.data.swipeOpenPx * 0.4;
     const snapOpen = Math.abs(currentOffset) > threshold;
     this.setData({
       [`swipedOffsets.${id}`]: snapOpen ? -this.data.swipeOpenPx : 0,
+      swipeOffset: 0,
       touchItemId: null,
       touchStartX: 0,
       touchLastX: 0,

@@ -7,6 +7,7 @@
       controls
       show-center-play-btn
       show-play-btn
+      object-fit="contain"
       enable-progress-gesture
       binderror="onVideoError"
       bindloadedmetadata="onVideoLoaded"

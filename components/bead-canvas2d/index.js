@@ -192,6 +192,8 @@ Component({
       return exportCanvasToTempFilePath(this._canvas, {
         width: options.width || this.data.width,
         height: options.height || this.data.height,
+        sourceWidth: this._canvas.width,
+        sourceHeight: this._canvas.height,
         fileType: options.fileType || 'png',
         quality: options.quality == null ? 1 : options.quality,
         maxRetry: options.maxRetry,

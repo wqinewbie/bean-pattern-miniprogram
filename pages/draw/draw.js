@@ -1000,8 +1000,10 @@ Page({
     // 初始化颜色行
     this._updateColorRows();
     
-    if ((source === 'result' || source === 'ai-result') && storageKey) {
+    if ((source === 'result' || source === 'ai-result' || source === 'preview') && storageKey) {
       this._loadDrawData(storageKey);
+    } else if (options.draftId) {
+      this._loadDraftForEdit(options.draftId);
     } else {
       this._initData();
       this._tryRestoreLocalDraft();
@@ -1056,16 +1058,32 @@ Page({
       return request.get(`/bead/brands/${brand.id}/kits`);
     }).then((kits) => {
       if (!kits || !kits.length) throw new Error('empty kits');
-      
-      // 保存套餐列表，选择第一个套餐（最小色卡）
-      this.setData({ 
+
+      // 如果从编辑模式进入，根据 colorCount 选择匹配的色卡套餐
+      let selectedKit = kits[0];
+      const targetColorCount = this._editSourceColorCount;
+      if (targetColorCount > 0) {
+        const exactMatch = kits.find(k => (k.colorCount || 0) === targetColorCount);
+        if (exactMatch) {
+          selectedKit = exactMatch;
+        } else {
+          // 找最接近但不小于 targetColorCount 的套餐
+          const sorted = [...kits].sort((a, b) => (a.colorCount || 0) - (b.colorCount || 0));
+          const larger = sorted.find(k => (k.colorCount || 0) >= targetColorCount);
+          if (larger) selectedKit = larger;
+          else selectedKit = sorted[sorted.length - 1];
+        }
+      }
+
+      // 保存套餐列表，选择匹配的套餐
+      this.setData({
         kitList: kits,
-        selectedKitId: kits[0].id,
-        selectedKitName: kits[0].name
+        selectedKitId: selectedKit.id,
+        selectedKitName: selectedKit.name
       });
-      
-      // 加载第一个套餐的色号
-      return this.loadKitColors(kits[0].id);
+
+      // 加载匹配套餐的色号
+      return this.loadKitColors(selectedKit.id);
     }).catch((err) => {
       console.error('加载套餐列表失败:', err);
       // 失败时使用默认颜色
@@ -1105,14 +1123,23 @@ Page({
       });
       
       const firstColor = colorsWithCode[0] || null;
-      this.setData({ 
+      this.setData({
         colors: colorsWithCode.map(c => c.hex),
         colorsWithCode,
         currentColor: firstColor ? firstColor.hex : this.data.currentColor,
         currentCode: firstColor ? firstColor.code : this.data.currentCode
       });
-      
+
+      // 将套餐色号补充到 hexCodeMap 中
+      if (!this._hexCodeMap) this._hexCodeMap = {};
+      colorsWithCode.forEach(c => {
+        if (c.hex && c.code && !this._hexCodeMap[c.hex.toUpperCase()]) {
+          this._hexCodeMap[c.hex.toUpperCase()] = c.code;
+        }
+      });
+
       this._updateColorRows();
+      this._updateUsedColors();
       if (this._canvasRenderer) this._canvasRenderer.invalidateCodeLayer();
       this._drawFullGrid();
     }).catch((err) => {
@@ -1330,7 +1357,7 @@ Page({
     try {
       const drawData = storage.getJSON(storageKey, null);
       if (!drawData) { wx.showToast({ title: '数据加载失败', icon: 'none' }); this._initData(); return; }
-      const { gridSize, gridData, colorPalette, brand, backgroundState } = drawData;
+      const { gridSize, gridData, colorPalette, brand, backgroundState, colorCount, editSourceType, draftId, boxId, name } = drawData;
 
       // 验证 gridData 是否存在且为数组
       if (!gridData || !Array.isArray(gridData)) {
@@ -1363,15 +1390,22 @@ Page({
       // 构建 hex → 真实色号 映射表（用于展示已使用颜色的真实色号）
       const hexCodeMap = {};
       (colorPalette || []).forEach(c => {
-        if (c && c.hex && (c.id || c.name)) {
-          const upperHex = String(c.hex).toUpperCase();
+        if (!c || !(c.id || c.name)) return;
+        let hex = c.hex;
+        if (!hex && typeof c.r === 'number' && typeof c.g === 'number' && typeof c.b === 'number') {
+          hex = '#' + [c.r, c.g, c.b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+        }
+        if (hex) {
+          const upperHex = String(hex).toUpperCase();
           if (!hexCodeMap[upperHex]) {
             hexCodeMap[upperHex] = c.id || c.name;
           }
         }
       });
       this._hexCodeMap = hexCodeMap;
-      
+      this._editSourceColorCount = colorCount || 0;
+      this._editSourceUsedColors = colors;
+
       // 恢复背景图层状态
       const bgState = backgroundState ? (typeof backgroundState === 'string' ? JSON.parse(backgroundState) : backgroundState) : null;
       
@@ -1385,6 +1419,10 @@ Page({
         gridLineWidth: 1,
         majorLineWidth: 2,
         brand: brand || 'MARD', 
+        sourceRecordType: editSourceType || '',
+        editingDraftId: draftId || '',
+        editingBoxId: boxId || '',
+        editingName: name || '',
         colorPalette, 
         colors, 
         currentColor: initialColor,
@@ -1415,6 +1453,80 @@ Page({
       wx.showToast({ title: '数据加载失败', icon: 'none' });
       this._initData();
     }
+  },
+
+  _loadDraftForEdit(draftId) {
+    this.setData({ loading: true, loadingText: '加载草稿...' });
+    request.get('/draft/detail/' + encodeURIComponent(draftId)).then((draft) => {
+      const mapped = this._parseMappedPixelData(draft && draft.mappedPixelData);
+      const legacy = this._deriveLegacyFromMapped(mapped);
+      if (!legacy.gridData.length || !legacy.colorPalette.length) {
+        throw new Error('草稿数据为空');
+      }
+      const storageKey = 'draw_draft_edit_' + Date.now();
+      storage.setJSON(storageKey, {
+        gridSize: draft.gridSize || legacy.gridData.length,
+        gridData: legacy.gridData,
+        colorPalette: legacy.colorPalette,
+        brand: draft.brand || 'MARD',
+        colorCount: draft.colorCount || legacy.colorPalette.length,
+        editSourceType: 'DRAFT',
+        draftId: draft.id,
+        boxId: draft.boxId || null,
+        name: draft.name || ''
+      });
+      this.setData({ loading: false, source: 'draft' });
+      this._loadDrawData(storageKey);
+    }).catch((err) => {
+      this.setData({ loading: false });
+      wx.showToast({ title: (err && err.message) || '草稿加载失败', icon: 'none' });
+      this._initData();
+    });
+  },
+
+  _parseMappedPixelData(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  _deriveLegacyFromMapped(mappedPixelData) {
+    const stats = new Map();
+    const order = [];
+    (mappedPixelData || []).forEach((row) => {
+      (row || []).forEach((cell) => {
+        if (!cell || cell.isExternal) return;
+        const hex = cell.hex || (typeof cell.r === 'number' ? '#' + [cell.r, cell.g, cell.b].map(v => Number(v || 0).toString(16).padStart(2, '0')).join('').toUpperCase() : '');
+        const key = String(cell.id || '') + '|' + String(hex || '');
+        if (!stats.has(key)) {
+          stats.set(key, {
+            id: cell.id || '',
+            name: cell.name || '',
+            hex,
+            r: Number(cell.r),
+            g: Number(cell.g),
+            b: Number(cell.b),
+            count: 0
+          });
+          order.push(key);
+        }
+        stats.get(key).count++;
+      });
+    });
+    const colorPalette = order.map((k, index) => ({ index, ...stats.get(k) }));
+    const indexMap = new Map(order.map((k, index) => [k, index]));
+    const gridData = (mappedPixelData || []).map((row) => (row || []).map((cell) => {
+      if (!cell || cell.isExternal) return -1;
+      const hex = cell.hex || (typeof cell.r === 'number' ? '#' + [cell.r, cell.g, cell.b].map(v => Number(v || 0).toString(16).padStart(2, '0')).join('').toUpperCase() : '');
+      const key = String(cell.id || '') + '|' + String(hex || '');
+      return indexMap.has(key) ? indexMap.get(key) : -1;
+    }));
+    return { gridData, colorPalette };
   },
 
   _getAdaptiveCanvasSize(gridSize = this.data.gridSize) {
@@ -1631,6 +1743,7 @@ Page({
     if (!this._history) this._history = new HistoryManager();
     this._history.endStroke(this._strokeUndoCells);
     this._strokeUndoCells = null;
+    this._hasUnsavedChanges = true;
     this.setData(this._history.getState());
     this._scheduleLocalRecoveryDraft();
   },
@@ -1720,6 +1833,7 @@ Page({
       currentState,
       previousState
     );
+    this._hasUnsavedChanges = true;
     this.setData(this._history.getState());
     this._scheduleLocalRecoveryDraft();
   },
@@ -3574,18 +3688,45 @@ Page({
       gridSize: gridSize,
       mappedPixelData: JSON.stringify(mappedPixelData),
       sourceUrl: ''
-    }).then(() => {
+    }).then((result) => {
       this.setData({ loading: false });
       wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+      if (result && result.capacityFull) {
+        setTimeout(() => {
+          wx.showToast({ title: result.capacityMessage || '图纸箱容量已满', icon: 'none', duration: 2200 });
+        }, 900);
+      }
     }).catch(() => {
       this.setData({ loading: false });
       wx.showToast({ title: '保存失败', icon: 'none' });
     });
   },
 
-  _saveDraft(name) {
+  _saveDraft(name, saveMode) {
+    const editingDraftId = this.data.editingDraftId;
+    const editingBoxIdForChoice = this.data.editingBoxId;
+    if (editingDraftId && !saveMode) {
+      wx.showActionSheet({
+        itemList: ['覆盖原草稿', '另存新草稿'],
+        success: (res) => {
+          if (res.tapIndex === 0) this._saveDraft(name, 'overwrite');
+          if (res.tapIndex === 1) this._saveDraft(name, 'new');
+        }
+      });
+      return;
+    }
+    if (!editingDraftId && editingBoxIdForChoice && !saveMode) {
+      wx.showActionSheet({
+        itemList: ['关联当前图纸', '另存新草稿'],
+        success: (res) => {
+          if (res.tapIndex === 0) this._saveDraft(name, 'link-box');
+          if (res.tapIndex === 1) this._saveDraft(name, 'new');
+        }
+      });
+      return;
+    }
     this.setData({ loading: true, loadingText: '保存中...' });
-    const { gridSize, brand, source, backgroundImage, backgroundImageWidth, backgroundImageHeight, backgroundOffsetX, backgroundOffsetY, backgroundScale, locked } = this.data;
+    const { gridSize, brand, backgroundImage, backgroundImageWidth, backgroundImageHeight, backgroundOffsetX, backgroundOffsetY, backgroundScale, locked, editingBoxId } = this.data;
     const colorStats = this._buildColorStats();
     const colorPalette = colorStats.map((s, idx) => ({
       index: idx, id: s.id, name: s.name, hex: s.hex, r: s.r, g: s.g, b: s.b, count: s.count
@@ -3603,47 +3744,41 @@ Page({
       locked
     } : null;
 
-    if (source === 'result') {
-      request.post('/draft/save', {
-        name,
-        sourceType: 'EDIT', brand: brand || 'MARD', colorCount: colorStats.length,
-        gridSize: gridSize, mappedPixelData: JSON.stringify(mappedPixelData),
-        backgroundState: backgroundState ? JSON.stringify(backgroundState) : null
-      }).then(() => {
-        this.setData({ loading: false });
-        wx.showToast({ title: '已保存', icon: 'success' });
-        const editResult = { updated: true, gridData, colorPalette, gridSize, brand: brand || 'MARD',
-          colorCount: colorStats.length, totalBeads: colorStats.reduce((a, c) => a + c.count, 0) };
-        const resultStorageKey = 'editResult_' + Date.now();
-        storage.setJSON(resultStorageKey, editResult);
-        setTimeout(() => {
-          const pages = getCurrentPages();
-          const prevPage = pages[pages.length - 2];
-          if (prevPage && prevPage.route === 'pages/result/result') {
-            prevPage.setData({ _editResultKey: resultStorageKey });
-            wx.navigateBack({ delta: 1 });
-          } else {
-            wx.navigateBack({ delta: 1 });
-          }
-        }, 1000);
-      }).catch((err) => {
-        this.setData({ loading: false });
-        wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' });
-      });
-    } else {
-      request.post('/draft/save', {
-        name,
-        sourceType: 'DRAW', brand: brand || 'MARD', colorCount: colorStats.length,
-        gridSize: gridSize, mappedPixelData: JSON.stringify(mappedPixelData),
-        backgroundState: backgroundState ? JSON.stringify(backgroundState) : null
-      }).then(() => {
-        this.setData({ loading: false });
-        wx.showToast({ title: '已保存', icon: 'success' });
-      }).catch((err) => {
-        this.setData({ loading: false });
-        wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' });
-      });
+    const payload = {
+      name,
+      sourceType: 'DRAW',
+      brand: brand || 'MARD',
+      colorCount: colorStats.length,
+      gridSize: gridSize,
+      mappedPixelData: JSON.stringify(mappedPixelData),
+      backgroundState: backgroundState ? JSON.stringify(backgroundState) : null
+    };
+    if (editingDraftId && saveMode === 'overwrite') {
+      payload.id = Number(editingDraftId);
+      if (editingBoxId) payload.boxId = Number(editingBoxId);
+    } else if (!editingDraftId && editingBoxId && saveMode === 'link-box') {
+      payload.boxId = Number(editingBoxId);
     }
+    request.post('/draft/save', payload).then((savedDraft) => {
+      const draftData = (savedDraft && savedDraft.draft) ? savedDraft.draft : savedDraft;
+      const savedId = savedDraft && savedDraft.id ? savedDraft.id : (draftData && draftData.id ? draftData.id : editingDraftId);
+      this.setData({
+        loading: false,
+        editingDraftId: savedId || '',
+        editingBoxId: saveMode === 'overwrite' ? (editingBoxId || '') : ((draftData && draftData.boxId) || ''),
+        source: 'draft'
+      });
+      this._hasUnsavedChanges = false;
+      wx.showToast({ title: saveMode === 'overwrite' ? '已覆盖原草稿' : (saveMode === 'link-box' ? '已关联保存' : '已保存'), icon: 'success' });
+      if (savedDraft && savedDraft.capacityFull) {
+        setTimeout(() => {
+          wx.showToast({ title: savedDraft.capacityMessage || '草稿箱容量已满', icon: 'none', duration: 2200 });
+        }, 900);
+      }
+    }).catch((err) => {
+      this.setData({ loading: false });
+      wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' });
+    });
   },
 
   _hasDrawableContent() {
@@ -4207,7 +4342,19 @@ Page({
   },
 
   onBack() {
-    wx.navigateBack({ delta: 1 });
+    if (!this._hasUnsavedChanges) {
+      wx.navigateBack({ delta: 1 });
+      return;
+    }
+    wx.showModal({
+      title: '退出编辑',
+      content: '当前图纸有未保存修改，确定退出吗？',
+      confirmText: '退出',
+      cancelText: '继续编辑',
+      success: (res) => {
+        if (res.confirm) wx.navigateBack({ delta: 1 });
+      }
+    });
   },
 
   // ========== 设置面板相关方法 ==========
@@ -4566,4 +4713,3 @@ Page({
     return { r, g, b };
   }
 });
-

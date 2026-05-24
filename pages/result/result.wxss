@@ -26,7 +26,7 @@
 .preview-wrap {
   width: 100%;
   aspect-ratio: 1;
-  background: #F5F5F5;
+  background: #ffffff;
   border-radius: 32rpx;
   overflow: hidden;
   display: flex;
@@ -38,9 +38,7 @@
 }
 
 .preview-wrap--tall {
-  aspect-ratio: auto;
-  min-height: 400rpx;
-  display: block;
+  aspect-ratio: 1;
 }
 
 .preview-wrap--overlay-placeholder {

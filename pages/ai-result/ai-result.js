@@ -13,9 +13,11 @@ Page({
     aiImageUrl: '',
     resultImageUrl: '',
     colorNumberImageUrl: '', // 色号图
+    sizeMode: 'default',
     gridSize: 64,
     colorCount: 0,
     brand: 'MARD',
+    mirror: false,
     mappedPixelData: null,
     colorList: [],
     gridData: [],
@@ -54,14 +56,20 @@ Page({
 
     const taskId = options.taskId || '';
     const aiImageUrl = decodeURIComponent(options.aiImageUrl || '');
-    const gridSize = parseInt(options.gridSize) || 64;
+    const sizeMode = options.sizeMode || 'default';
+    const gridSize = sizeMode === 'small' ? 36 : 64;
     const brand = options.brand || 'MARD';
+    const colorCount = parseInt(options.colorCount) || 0;
+    const mirror = options.mirror === '1';
 
     this.setData({
       taskId,
       aiImageUrl,
+      sizeMode,
       gridSize,
       brand,
+      colorCount,
+      mirror,
       isGenerating: true
     });
 
@@ -112,12 +120,14 @@ Page({
       // 3. 转换为 mappedPixelData 格式
       console.log('[ai-result] 转换数据格式...');
       let { mappedPixelData, colorStats, gridData, colorPalette } = this._convertToMappedPixelData(matchedGrid);
-
       // 4. 合并相近色号
       console.log('[ai-result] 合并相近色号...');
       const mergedResult = await this._mergeSimilarMappedColors({ mappedPixelData, colorStats }, similarityThreshold);
       mappedPixelData = mergedResult.mappedPixelData;
       colorStats = mergedResult.colorStats;
+      if (this.data.mirror) {
+        mappedPixelData = this._mirrorGridRows(mappedPixelData);
+      }
 
       // 重新生成 gridData 和 colorPalette
       const converted = this._convertToMappedPixelData(this._convertMappedToMatchedGrid(mappedPixelData));
@@ -261,6 +271,10 @@ Page({
     );
   },
 
+  _mirrorGridRows(grid) {
+    return (grid || []).map(row => Array.isArray(row) ? row.slice().reverse() : row);
+  },
+
   // 渲染效果图和色号图（使用bead-canvas2d组件导出临时图片）
   async _renderImages(mappedPixelData, gridData, colorPalette, gridSize) {
     console.log('[ai-result] _renderImages 开始', {
@@ -356,7 +370,7 @@ Page({
       maxCtxRetry: 20
     }).then(async ({ comp, ctx }) => {
       console.log('[ai-result] patternCanvas2d 已就绪');
-      const boardSize = patternBoardSize(gridSize);
+      const boardSize = patternBoardSize(gridSize, gridSize);
 
       // 获取水印配置（使用公共方法）
       const { appName, watermarkConfig } = await getWatermarkConfig();
@@ -626,7 +640,8 @@ Page({
       wx.hideLoading();
 
       // 后端返回的是box对象，不是{success: true}格式
-      if (res && res.id) {
+      const newBoxId = res && res.id ? res.id : (res && res.box && res.box.id ? res.box.id : null);
+      if (newBoxId) {
         this.setData({
           showNamingModal: false,
           patternName: '',
@@ -642,7 +657,7 @@ Page({
             gridSize,
             brand,
             sourceUrl: aiImageUrl,
-            boxId: res.id
+          boxId: newBoxId
           });
         }
 
@@ -651,6 +666,7 @@ Page({
           icon: 'success',
           duration: 2000
         });
+        this._showCapacityFullIfNeeded(res);
       } else {
         throw new Error('保存失败');
       }
@@ -662,5 +678,16 @@ Page({
         icon: 'error'
       });
     }
+  },
+
+  _showCapacityFullIfNeeded(result) {
+    if (!result || !result.capacityFull) return;
+    setTimeout(() => {
+      wx.showToast({
+        title: result.capacityMessage || '图纸箱容量已满',
+        icon: 'none',
+        duration: 2200
+      });
+    }, 900);
   }
 });

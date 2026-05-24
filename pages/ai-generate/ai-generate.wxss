@@ -468,6 +468,28 @@
   transform: translateX(calc(100% + 8rpx));
 }
 
+.scroll-more-hint {
+  width: 280rpx;
+  margin: -18rpx auto 48rpx;
+  padding: 10rpx 24rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  border: 2rpx solid #E1BEE7;
+  color: #9C27B0;
+  font-size: 22rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  box-sizing: border-box;
+}
+
+.scroll-more-arrow {
+  font-size: 26rpx;
+  line-height: 1;
+}
+
 /* ─── 底部固定按钮区 ─── */
 .bottom-action {
   position: fixed;

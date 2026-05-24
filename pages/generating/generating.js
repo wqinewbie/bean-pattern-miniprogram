@@ -7,7 +7,7 @@ const request = require('../../utils/request');
 Page({
   data: {
     isTimeout: false,
-    loadingText: '正在处理...',
+    loadingText: 'AI 正在施展魔法...',
     taskId: '',
   },
 
@@ -17,63 +17,19 @@ Page({
 
   onLoad(options) {
     const taskId = options.taskId || '';
-    const fromAiGenerate = options.fromAiGenerate === '1';
-    this.setData({ taskId });
 
-    if (fromAiGenerate) {
-      // 从 ai-generate 页面跳转过来，需要先上传图片和调用 API
-      this.setData({ loadingText: '正在上传图片...' });
-      const app = getApp();
-      const params = app.globalData.aiGenerateParams;
-
-      if (!params) {
-        wx.showToast({ title: '参数缺失', icon: 'none' });
-        setTimeout(() => {
-          wx.navigateBack();
-        }, 1500);
-        return;
-      }
-
-      // 上传图片并调用 AI 生成接口
-      this.uploadImage(params.uploadedImage).then(imageUrl => {
-        this.setData({ loadingText: 'AI 正在施展魔法...' });
-        return this.callAiGenerate({
-          imageUrl,
-          style: params.style,
-          size: params.size,
-          brand: params.brand,
-          colorCount: params.colorCount,
-          mirror: params.mirror
-        });
-      }).then(taskId => {
-        // 获取到 taskId 后开始轮询
-        this.setData({ taskId });
-        this.startPolling(taskId);
-
-        // 8秒后显示超时提示
-        this._timeoutTimer = setTimeout(() => {
-          this.setData({ isTimeout: true });
-        }, 8000);
-      }).catch(err => {
-        console.error('生成失败', err);
-        wx.showToast({ title: err.message || '生成失败', icon: 'none' });
-        setTimeout(() => {
-          wx.navigateBack();
-        }, 1500);
-      });
-    } else if (taskId) {
-      this.startPolling(taskId);
-
-      // 8秒后显示超时提示
-      this._timeoutTimer = setTimeout(() => {
-        this.setData({ isTimeout: true });
-      }, 8000);
-    } else {
+    if (!taskId) {
       wx.showToast({ title: '任务ID缺失', icon: 'none' });
-      setTimeout(() => {
-        wx.navigateBack();
-      }, 1500);
+      setTimeout(() => { wx.navigateBack(); }, 1500);
+      return;
     }
+
+    this.setData({ taskId });
+    this.startPolling(taskId);
+
+    this._timeoutTimer = setTimeout(() => {
+      this.setData({ isTimeout: true });
+    }, 8000);
   },
 
   onUnload() {
@@ -81,7 +37,6 @@ Page({
     clearTimeout(this._pollingTimer);
   },
 
-  // ========== AI 任务轮询 ==========
   startPolling(taskId) {
     this._pollingCount = 0;
     this.pollTaskStatus(taskId);
@@ -97,21 +52,18 @@ Page({
       const status = data.status;
 
       if (status === 'SUCCESS') {
-        // 生成成功，跳转到结果页
         clearTimeout(this._timeoutTimer);
         clearTimeout(this._pollingTimer);
 
-        // 从 globalData 获取生成参数
-        const app = getApp();
-        const aiParams = app.globalData.aiGenerateParams || {};
-        const gridSize = aiParams.size || 64;
-        const brand = aiParams.brand || 'MARD';
+        const sizeMode = data.sizeMode || 'default';
+        const brand = data.brand || 'MARD';
+        const colorCount = data.colorCount || 0;
+        const mirror = data.mirror || false;
 
         wx.redirectTo({
-          url: `/pages/ai-result/ai-result?taskId=${taskId}&aiImageUrl=${encodeURIComponent(data.aiImageUrl || '')}&gridSize=${gridSize}&brand=${brand}`
+          url: `/pages/ai-result/ai-result?taskId=${taskId}&aiImageUrl=${encodeURIComponent(data.aiImageUrl || '')}&sizeMode=${sizeMode}&brand=${brand}&colorCount=${colorCount}&mirror=${mirror ? '1' : '0'}`
         });
       } else if (status === 'FAILED') {
-        // 生成失败
         clearTimeout(this._timeoutTimer);
         clearTimeout(this._pollingTimer);
 
@@ -121,11 +73,8 @@ Page({
           duration: 2000
         });
 
-        setTimeout(() => {
-          wx.navigateBack();
-        }, 2000);
+        setTimeout(() => { wx.navigateBack(); }, 2000);
       } else {
-        // 继续轮询
         this.scheduleNextPoll(taskId);
       }
     }).catch(err => {
@@ -137,16 +86,14 @@ Page({
   scheduleNextPoll(taskId) {
     this._pollingCount++;
 
-    // 智能轮询策略
     let delay;
     if (this._pollingCount < 5) {
-      delay = 2000; // 前10秒：每2秒查询一次
+      delay = 2000;
     } else if (this._pollingCount < 15) {
-      delay = 5000; // 10-30秒：每5秒查询一次
+      delay = 5000;
     } else if (this._pollingCount < 30) {
-      delay = 10000; // 30-60秒：每10秒查询一次
+      delay = 10000;
     } else {
-      // 超过60秒，停止轮询
       return;
     }
 
@@ -156,36 +103,15 @@ Page({
   },
 
   onKeepWaiting() {
-    // 继续守护 - 关闭超时提示，继续轮询
     this.setData({ isTimeout: false });
   },
 
   onGoHistory() {
-    // 去时光机
     clearTimeout(this._timeoutTimer);
     clearTimeout(this._pollingTimer);
 
     wx.redirectTo({
       url: '/pages/history/history'
-    });
-  },
-
-  // ========== AI 生成相关方法 ==========
-  uploadImage(filePath) {
-    return request.uploadImage(filePath).then(data => data.imageUrl || data.originalUrl);
-  },
-
-  callAiGenerate(params) {
-    return new Promise((resolve, reject) => {
-      request.post('/ai/generate', params).then(data => {
-        if (data && data.taskId) {
-          resolve(data.taskId);
-        } else {
-          reject(new Error('生成失败'));
-        }
-      }).catch(err => {
-        reject(err);
-      });
     });
   },
 });

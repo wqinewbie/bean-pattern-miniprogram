@@ -40,19 +40,16 @@ function drawImmersiveGrid(ctx, options) {
   } = options;
 
   const cellSize = width / gridSize;
-  const beadRadius = Math.max(1.2, cellSize * 0.42);
   const dimAlpha = Math.max(0.2, contrast / 100 * 0.5); // 降低未选中的透明度
   const hasFocus = !!highlightId;
+  const isCountMode = mode === 'horizontal' || mode === 'vertical';
 
   // 清空画布
   ctx.clearRect(0, 0, width, height);
 
   // 绘制背景
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, width, height);
-
   // 字体大小
-  const fontSize = Math.max(5, Math.min(10, Math.floor(cellSize * 0.58)));
+  const fontSize = Math.max(8, Math.min(28, Math.floor(cellSize * 0.64)));
 
   // 绘制拼豆
   for (let y = 0; y < gridSize; y++) {
@@ -68,7 +65,7 @@ function drawImmersiveGrid(ctx, options) {
 
       // 设置透明度
       if (done) {
-        ctx.globalAlpha = 0.2; // 已完成的更暗
+        ctx.globalAlpha = 1; // 已完成色号保持纯色显示
       } else if (focused) {
         ctx.globalAlpha = 1; // 高亮的完全不透明
       } else {
@@ -80,26 +77,34 @@ function drawImmersiveGrid(ctx, options) {
       ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
 
       // 如果高亮且未完成，添加高亮边框
-      if (focused && !done) {
-        ctx.globalAlpha = 0.3;
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 1 / dpr;
-        ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
-      }
+      if (hasFocus && focused && !done && !isCountMode) {
+        const lineWidth = Math.max(1.5 / dpr, cellSize * 0.08);
+        const inset = lineWidth / 2;
 
-      // 如果已完成且高亮，绘制绿色完成标记（小方块）
-      if (done && focused) {
-        ctx.globalAlpha = 0.8;
-        ctx.fillStyle = '#22c55e';
-        const markSize = Math.max(2, cellSize * 0.3);
-        const markX = cx - markSize / 2;
-        const markY = cy - markSize / 2;
-        ctx.fillRect(markX, markY, markSize, markSize);
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = '#FF9800';
+        ctx.lineWidth = lineWidth;
+        ctx.strokeRect(
+          x * cellSize + inset,
+          y * cellSize + inset,
+          cellSize - lineWidth,
+          cellSize - lineWidth
+        );
+
+        ctx.globalAlpha = 0.75;
+        ctx.strokeStyle = (r + g + b) > 560 ? '#1f2937' : '#FFFFFF';
+        ctx.lineWidth = Math.max(1 / dpr, lineWidth * 0.45);
+        ctx.strokeRect(
+          x * cellSize + lineWidth,
+          y * cellSize + lineWidth,
+          cellSize - lineWidth * 2,
+          cellSize - lineWidth * 2
+        );
       }
 
       // 绘制文字标签（只在横竖计数模式下显示）
       let text = '';
-      if (id && focused && mode !== 'colorId') {
+      if (!done && id && focused && mode !== 'colorId') {
         if (id === highlightId) {
           if (mode === 'horizontal' && hRun[y] && hRun[y][x]) {
             text = String(hRun[y][x]);
@@ -113,9 +118,12 @@ function drawImmersiveGrid(ctx, options) {
         const isLight = (r + g + b) > 560;
         ctx.globalAlpha = 1;
         ctx.fillStyle = isLight ? '#1f2937' : '#ffffff';
-        ctx.font = `${fontSize}px sans-serif`;
+        ctx.font = `700 ${fontSize}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        ctx.lineWidth = Math.max(1, fontSize * 0.16);
+        ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.75)' : 'rgba(31,41,55,0.65)';
+        ctx.strokeText(text, cx, cy);
         ctx.fillText(text, cx, cy);
       }
     }

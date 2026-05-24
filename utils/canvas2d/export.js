@@ -43,6 +43,8 @@ function exportCanvasToTempFilePath(canvas, options, componentInstance) {
   options = options || {};
   const width = Math.max(1, Math.floor(Number(options.width) || 1));
   const height = Math.max(1, Math.floor(Number(options.height) || 1));
+  const sourceWidth = Math.max(1, Math.floor(Number(options.sourceWidth || options.width) || width));
+  const sourceHeight = Math.max(1, Math.floor(Number(options.sourceHeight || options.height) || height));
   const fileType = options.fileType || 'png';
   const quality = options.quality == null ? 1 : Number(options.quality);
   const maxRetry = options.maxRetry != null ? Number(options.maxRetry) : 2;
@@ -56,8 +58,8 @@ function exportCanvasToTempFilePath(canvas, options, componentInstance) {
   var params = {
     x: 0,
     y: 0,
-    width: width,
-    height: height,
+    width: sourceWidth,
+    height: sourceHeight,
     destWidth: width,
     destHeight: height,
     fileType: fileType,

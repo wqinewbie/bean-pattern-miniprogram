@@ -9,9 +9,9 @@
  */
 
 var MIN_PREVIEW_SIZE = 300;
-var MAX_EXPORT_SIZE = 2048;
-var MAX_PATTERN_BOARD = 2048;
-var PATTERN_CELL_FACTOR = 30;
+var MAX_EXPORT_SIZE = 4096;
+var MAX_PATTERN_BOARD = 4096;
+var PATTERN_CELL_FACTOR = 42;
 
 /**
  * 效果图 / 色号图预览尺寸（逻辑像素，用于屏幕内渲染）
@@ -25,8 +25,9 @@ function previewSize(viewportWidth) {
 /**
  * 色号图 boardSize（绘制网格的逻辑尺寸）
  */
-function patternBoardSize(gridSize) {
-  return Math.min(Math.max(1, Number(gridSize) || 64) * PATTERN_CELL_FACTOR, MAX_PATTERN_BOARD);
+function patternBoardSize(gridRows, gridCols) {
+  var maxDim = Math.max(Number(gridRows) || 0, Number(gridCols) || 0);
+  return Math.min(Math.max(1, maxDim) * PATTERN_CELL_FACTOR, MAX_PATTERN_BOARD);
 }
 
 /**

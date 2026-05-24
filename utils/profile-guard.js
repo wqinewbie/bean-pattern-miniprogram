@@ -45,6 +45,35 @@ function requireLogin(options = {}) {
   return false;
 }
 
+function wxLoginCode() {
+  return new Promise((resolve, reject) => {
+    wx.login({
+      success: (res) => {
+        if (!res.code) {
+          reject(new Error('NO_CODE'));
+          return;
+        }
+        resolve(res.code);
+      },
+      fail: (err) => reject(err || new Error('WX_LOGIN_FAILED')),
+    });
+  });
+}
+
+function refreshWechatSession() {
+  return wxLoginCode()
+    .then((code) => request.post('/auth/login', { code }))
+    .then((ret) => {
+      const sessionId = ret && ret.sessionId;
+      if (!sessionId) throw new Error('NO_SESSION');
+
+      storage.set(storage.KEYS.SESSION_ID, sessionId);
+      storage.set(storage.KEYS.EVER_REGISTERED, true);
+      cacheProfile(ret.profile || {});
+      return ret;
+    });
+}
+
 function ensureProfileComplete() {
   if (!hasSession()) {
     wx.showToast({ title: '请先登录', icon: 'none' });
@@ -66,4 +95,5 @@ module.exports = {
   isLoggedAndBound,
   cacheProfile,
   requireLogin,
+  refreshWechatSession,
 };

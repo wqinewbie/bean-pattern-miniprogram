@@ -1,11 +1,17 @@
 /* generate.wxss - Figma Crop 风格 */
 .generate-page {
-  min-height: 100vh;
+  height: 100vh;
   background: #FFF9ED;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.generate-scroll {
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
 }
 
 .reselect-bar {
@@ -163,6 +169,27 @@
   border-top: 6rpx solid #FFF4DC;
   box-sizing: border-box;
   z-index: 10;
+}
+
+.scroll-more-hint {
+  width: 280rpx;
+  margin: -12rpx auto 28rpx;
+  padding: 10rpx 24rpx;
+  border-radius: 999rpx;
+  background: #FFF9ED;
+  border: 2rpx solid #FFEBB5;
+  color: #A1887F;
+  font-size: 22rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.scroll-more-arrow {
+  color: #FF9800;
+  font-size: 26rpx;
+  line-height: 1;
 }
 
 .setting-section {
