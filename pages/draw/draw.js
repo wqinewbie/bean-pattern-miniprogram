@@ -15,7 +15,8 @@ const ToolEngine = require('./module/toolEngine');
 // 画板内置基础色板（工具层默认，非拼豆品牌色）
 const DEFAULT_COLORS = ['#FFFFFF','#000000','#FF0000','#00FF00','#0000FF','#FFFF00','#FF6B35','#FF69B4','#00CED1','#9370DB','#FFA500','#008B8B','#DC143C','#32CD32','#4169E1','#FFD700','#808080','#2F4F4F','#FF6B6B','#90EE90','#87CEEB','#DDA0DD','#F0E68C','#E6E6FA'];
 const MAX_GRID_SIZE = 200;
-const MIN_GRID_SIZE = 16;
+const MIN_GRID_SIZE = 24;
+const SIZE_LIMIT_TIP = '超出限值，数值范围24~200';
 const BASE_PRESET_SIZES = [24, 36, 50, 52, 64, 78, 104, 200];
 const PIXEL_EDITOR_ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3, 4, 6];
 const LOCAL_RECOVERY_KEY = 'draw_local_recovery_v1';
@@ -477,6 +478,37 @@ Page({
     this.setData(updates);
   },
 
+  onWxsPinchMove(state = {}) {
+    this._lastCanvasTouchEventAt = Date.now();
+    this._pendingWxsPinchRenderState = state;
+
+    if (this._pinchResizeRafId) return;
+    this._pinchResizeRafId = this._scheduleGestureFrame(() => {
+      this._pinchResizeRafId = null;
+      const pendingState = this._pendingWxsPinchRenderState;
+      this._pendingWxsPinchRenderState = null;
+      this._renderRealtimePinchResolution(pendingState);
+    });
+  },
+
+  _renderRealtimePinchResolution(state = {}) {
+    if (!this._canvas || !this._ctx || !this.data.canvasReady) return;
+
+    const scale = Number(state && state.canvasScale);
+    if (!Number.isFinite(scale) || scale <= 0) return;
+
+    const previousPinchRenderState = this._pinchRenderState;
+    this._pinchRenderState = { canvasScale: scale };
+
+    try {
+      this._syncCanvasResolution(false, { scale, mode: 'high' });
+      if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(false);
+      this._drawFullGrid({ skipResolutionSync: true });
+    } finally {
+      this._pinchRenderState = previousPinchRenderState;
+    }
+  },
+
   onWxsPinchEnd(state = {}) {
     const toFinite = (value, fallback) => {
       const n = Number(value);
@@ -495,6 +527,12 @@ Page({
       this._cancelGestureFrame(this._pinchRafId);
       this._pinchRafId = null;
     }
+    if (this._pinchResizeRafId) {
+      this._cancelGestureFrame(this._pinchResizeRafId);
+      this._pinchResizeRafId = null;
+    }
+    this._pendingWxsPinchRenderState = null;
+    this._renderRealtimePinchResolution(state);
     this._endRenderGesture();
 
     const nextScale = toFinite(state.canvasScale, this.data.canvasScale);
@@ -523,7 +561,6 @@ Page({
 
     this.setData(updates, () => {
       if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(false);
-      this._redrawCanvasAtCurrentScale();
       this._updateAxisLabels();
       this._updateCanvasAreaRect();
       this._updateCanvasRect();
@@ -914,6 +951,7 @@ Page({
   },
 
   _getRenderState() {
+    const pinchRenderState = this._pinchRenderState || {};
     return {
       canvasWidth: this.data.canvasWidth,
       canvasHeight: this.data.canvasHeight,
@@ -923,7 +961,7 @@ Page({
       gridSize: this.data.gridSize,
       showGrid: true,
       renderCodes: true,
-      canvasScale: this.data.canvasScale,
+      canvasScale: pinchRenderState.canvasScale == null ? this.data.canvasScale : pinchRenderState.canvasScale,
       backgroundImage: this.data.backgroundImage,
       dpr: this._dpr,
       renderDpr: this._renderDpr
@@ -1211,6 +1249,10 @@ Page({
     if (this._settingsCloseTimer) {
       clearTimeout(this._settingsCloseTimer);
       this._settingsCloseTimer = null;
+    }
+    if (this._pinchResizeRafId) {
+      this._cancelGestureFrame(this._pinchResizeRafId);
+      this._pinchResizeRafId = null;
     }
     if (this._renderScheduler && typeof this._renderScheduler.destroy === 'function') {
       this._renderScheduler.destroy();
@@ -1662,12 +1704,12 @@ Page({
     }, 150);
   },
 
-  _drawFullGrid() {
+  _drawFullGrid(options = {}) {
     if (!this._ctx || !this.data.canvasReady) {
       return;
     }
 
-    if (!this._isPinching) {
+    if (!this._isPinching && !options.skipResolutionSync) {
       this._syncCanvasResolution(false, { mode: 'high' });
     }
 
@@ -2383,28 +2425,13 @@ Page({
       if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(false);
       this._updateCanvasAreaRect();
 
-      const snappedScale = this._maybeSnapScaleToPixelGrid(this.data.canvasScale, { threshold: 0.18 });
-      const scaleChanged = Math.abs(snappedScale - this.data.canvasScale) > 0.001;
-
-      if (scaleChanged) {
-        this._setWorkspaceScale(snappedScale, {
-          historyBefore: this._viewportHistoryBefore,
-          historyType: 'viewport'
-        });
-        this._viewportHistoryBefore = null;
-      } else {
-        // 缩放结束后，重新绘制一次高精度画面
-        this._redrawCanvasAtCurrentScale();
-        
-        // 结束手势后同步 UI 状态，避免重复整屏重绘
-        this.setData({
-          isPinching: false,
-          overlayScale: this.data.canvasScale,
-          currentZoomLabel: this._getZoomLabel(this.data.canvasScale)
-        });
-        this._pushViewportHistory(this._viewportHistoryBefore, 'viewport');
-        this._viewportHistoryBefore = null;
-      }
+      this.setData({
+        isPinching: false,
+        overlayScale: this.data.canvasScale,
+        currentZoomLabel: this._getZoomLabel(this.data.canvasScale)
+      });
+      this._pushViewportHistory(this._viewportHistoryBefore, 'viewport');
+      this._viewportHistoryBefore = null;
       
       // 问题3修复：双指操作结束后的工具切换逻辑优化
       // 如果还有手指在屏幕上，继续保持拖拽模式
@@ -3637,7 +3664,7 @@ Page({
   onSave() {
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
-      this._promptNameAndSave('draft');
+      this._startSaveDraft();
     });
   },
 
@@ -3648,7 +3675,38 @@ Page({
     });
   },
 
-  _promptNameAndSave(type) {
+  _startSaveDraft() {
+    const editingDraftId = this.data.editingDraftId;
+    const editingBoxId = this.data.editingBoxId;
+    const isEditingBoxSource = this.data.sourceRecordType === 'BOX' && editingBoxId;
+    if (isEditingBoxSource) {
+      this._promptNameAndSave('draft', 'new');
+      return;
+    }
+    if (editingDraftId) {
+      wx.showActionSheet({
+        itemList: ['覆盖原草稿', '另存新草稿'],
+        success: (res) => {
+          if (res.tapIndex === 0) this._saveDraft('', 'overwrite');
+          if (res.tapIndex === 1) this._promptNameAndSave('draft', 'new');
+        }
+      });
+      return;
+    }
+    if (editingBoxId) {
+      wx.showActionSheet({
+        itemList: ['关联当前图纸', '另存新草稿'],
+        success: (res) => {
+          if (res.tapIndex === 0) this._saveDraft('', 'link-box');
+          if (res.tapIndex === 1) this._promptNameAndSave('draft', 'new');
+        }
+      });
+      return;
+    }
+    this._promptNameAndSave('draft', 'new');
+  },
+
+  _promptNameAndSave(type, saveMode) {
     const title = type === 'box' ? '保存到图纸箱' : '保存草稿';
     const defaultName = `拼豆图纸_${Date.now()}`;
     wx.showModal({
@@ -3661,7 +3719,7 @@ Page({
         const input = String((res.content || '')).trim();
         const name = input || defaultName;
         if (type === 'box') this._saveToBox(name);
-        else this._saveDraft(name);
+        else this._saveDraft(name, saveMode);
       }
     });
   },
@@ -3704,27 +3762,6 @@ Page({
 
   _saveDraft(name, saveMode) {
     const editingDraftId = this.data.editingDraftId;
-    const editingBoxIdForChoice = this.data.editingBoxId;
-    if (editingDraftId && !saveMode) {
-      wx.showActionSheet({
-        itemList: ['覆盖原草稿', '另存新草稿'],
-        success: (res) => {
-          if (res.tapIndex === 0) this._saveDraft(name, 'overwrite');
-          if (res.tapIndex === 1) this._saveDraft(name, 'new');
-        }
-      });
-      return;
-    }
-    if (!editingDraftId && editingBoxIdForChoice && !saveMode) {
-      wx.showActionSheet({
-        itemList: ['关联当前图纸', '另存新草稿'],
-        success: (res) => {
-          if (res.tapIndex === 0) this._saveDraft(name, 'link-box');
-          if (res.tapIndex === 1) this._saveDraft(name, 'new');
-        }
-      });
-      return;
-    }
     this.setData({ loading: true, loadingText: '保存中...' });
     const { gridSize, brand, backgroundImage, backgroundImageWidth, backgroundImageHeight, backgroundOffsetX, backgroundOffsetY, backgroundScale, locked, editingBoxId } = this.data;
     const colorStats = this._buildColorStats();
@@ -3745,7 +3782,7 @@ Page({
     } : null;
 
     const payload = {
-      name,
+      name: name || this.data.editingName || '拼豆图纸_' + Date.now(),
       sourceType: 'DRAW',
       brand: brand || 'MARD',
       colorCount: colorStats.length,
@@ -3766,6 +3803,7 @@ Page({
         loading: false,
         editingDraftId: savedId || '',
         editingBoxId: saveMode === 'overwrite' ? (editingBoxId || '') : ((draftData && draftData.boxId) || ''),
+        editingName: payload.name,
         source: 'draft'
       });
       this._hasUnsavedChanges = false;
@@ -4420,7 +4458,7 @@ Page({
 
     const value = this._clampGridSize(parsed);
     if (value !== parsed) {
-      wx.showToast({ title: `尺寸已限制为${MAX_GRID_SIZE}`, icon: 'none' });
+      wx.showToast({ title: SIZE_LIMIT_TIP, icon: 'none' });
     }
     
     // 标记为自定义尺寸

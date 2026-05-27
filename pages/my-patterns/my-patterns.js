@@ -324,7 +324,7 @@ Page({
         if (res.confirm && res.content) {
           const newName = res.content.trim();
           if (!newName || newName === item.name) return;
-          request.put('/box/update', { id: item.id, name: newName })
+          request.put('/box/rename', { id: item.id, name: newName })
             .then(() => {
               const patterns = this.data.patterns.map(p => {
                 if (String(p.id) === String(item.id)) {
@@ -337,7 +337,7 @@ Page({
               });
               wx.showToast({ title: '已重命名', icon: 'success' });
             })
-            .catch(() => wx.showToast({ title: '操作失败', icon: 'none' }));
+            .catch((err) => wx.showToast({ title: (err && err.message) || '操作失败', icon: 'none' }));
         }
       }
     });

@@ -253,7 +253,7 @@ Page({
     this._dpr = context.dpr;
     
     this.setData({ canvasReady: true }, () => {
-      this._resizeCanvasToDisplaySize(this.data.displaySize, true);
+      this._resizeCanvasToDisplaySize(this.data.canvasSize, true);
       // Canvas 灏辩华鍚庯紝濡傛灉鏁版嵁宸插姞杞斤紝绔嬪嵆娓叉煋
       if (this.data.gridData && this.data.gridData.length > 0) {
         this._renderCanvas();
@@ -277,15 +277,15 @@ Page({
       return;
     }
     
-    const { displaySize, gridSize, gridData, highlightId, completedMap, contrast, tab } = this.data;
+    const { canvasSize, gridSize, gridData, highlightId, completedMap, contrast, tab } = this.data;
     
     let mode = 'colorId';
     if (tab === 'row') mode = 'horizontal';
     else if (tab === 'col') mode = 'vertical';
     
     drawImmersiveGrid(this._ctx, {
-      width: displaySize,
-      height: displaySize,
+      width: canvasSize,
+      height: canvasSize,
       gridSize,
       gridData,
       highlightId,
@@ -359,14 +359,12 @@ Page({
   },
 
   _setViewport(scale, offsetX, offsetY, immediateRender) {
-    const displaySize = Math.max(1, Math.round((this.data.canvasSize || 1) * scale));
     this.setData({
       scale,
-      displaySize,
       offsetX,
       offsetY
     }, () => {
-      this._resizeCanvasToDisplaySize(displaySize, immediateRender);
+      if (immediateRender) this._renderCanvas();
     });
   },
 
@@ -787,8 +785,7 @@ Page({
 
   handleTouchEnd(e) {
     if (this._isPinching) {
-      const displaySize = Math.max(1, Math.round((this.data.canvasSize || 1) * this.data.scale));
-      this._resizeCanvasToDisplaySize(displaySize, true);
+      this._renderCanvas();
     }
     this._isPinching = false;
     this._isDragging = false;

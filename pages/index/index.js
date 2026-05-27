@@ -378,6 +378,9 @@ Page({
         });
 
         wx.showToast({ title: '登录成功', icon: 'success' });
+        if (app && typeof app.fetchWatermarkConfig === 'function') {
+          app.fetchWatermarkConfig();
+        }
 
         if (typeof this._loginCallback === 'function') {
           const cb = this._loginCallback;

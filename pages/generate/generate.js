@@ -5,6 +5,10 @@ const previewGesture = require('../../mixins/preview-gesture');
 const { init2dCanvas, resize2dCanvas } = require('../../utils/canvas2d/core');
 const { exportCanvasToTempFilePath } = require('../../utils/canvas2d/export');
 
+const MIN_GRID_SIZE = 24;
+const MAX_GRID_SIZE = 200;
+const SIZE_LIMIT_TIP = '超出限值，数值范围24~200';
+
 Page({
   data: {
     imageUrl: '',
@@ -168,9 +172,7 @@ Page({
   onCustomMode() {
     if (this.data.customMode) {
       let val = parseInt(this.data.customSizeVal, 10);
-      if (isNaN(val) || val < 10) val = 24;
-      if (val > 200) val = 200;
-      this.setData({ customMode: false, customConfirmed: true, customSizeVal: String(val) });
+      if (!this._applyCustomSize(val)) return;
     } else if (this.data.customConfirmed) {
       this.setData({ customMode: false, customConfirmed: false, customSizeVal: '' });
     } else {
@@ -188,12 +190,26 @@ Page({
 
   onCustomSizeBlur() {
     let val = parseInt(this.data.customSizeVal, 10);
-    if (isNaN(val) || val < 10) {
+    if (isNaN(val)) {
       this.setData({ customMode: false, customConfirmed: false, customSizeVal: '' });
       return;
     }
-    if (val > 200) val = 200;
-    this.setData({ customSizeVal: String(val), customMode: false, customConfirmed: true });
+    this._applyCustomSize(val);
+  },
+
+  _applyCustomSize(value) {
+    if (isNaN(value)) {
+      this.setData({ customMode: false, customConfirmed: false, customSizeVal: '' });
+      return false;
+    }
+    if (value < MIN_GRID_SIZE || value > MAX_GRID_SIZE) {
+      wx.showToast({ title: SIZE_LIMIT_TIP, icon: 'none' });
+      const clamped = Math.max(MIN_GRID_SIZE, Math.min(MAX_GRID_SIZE, value));
+      this.setData({ customSizeVal: String(clamped), customMode: false, customConfirmed: true });
+      return false;
+    }
+    this.setData({ customSizeVal: String(value), customMode: false, customConfirmed: true });
+    return true;
   },
 
   onChooseImage() {
@@ -562,8 +578,8 @@ Page({
       let gridSize = gridSizeOptions[gridSizeIndex].value;
       if (customConfirmed) {
         const customGridSize = parseInt(customSizeVal, 10);
-        if (!isNaN(customGridSize) && customGridSize >= 10) {
-          gridSize = Math.min(customGridSize, 200);
+        if (!isNaN(customGridSize) && customGridSize >= MIN_GRID_SIZE && customGridSize <= MAX_GRID_SIZE) {
+          gridSize = customGridSize;
         }
       }
       let brand = 'MARD';

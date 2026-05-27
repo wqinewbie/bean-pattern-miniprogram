@@ -15,7 +15,7 @@
 
         <block wx:if="{{!showGeneratingOverlay}}">
           <block wx:if="{{activeTab === 'original'}}">
-            <image wx:if="{{currentPreviewUrl}}" class="preview-img {{mirrorOn ? 'preview-img--mirror' : ''}}" src="{{currentPreviewUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+            <image wx:if="{{currentPreviewUrl}}" class="preview-img {{mirrorOn && !mirroredOriginalUrl ? 'preview-img--mirror' : ''}}" src="{{currentPreviewUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
             <view wx:if="{{isHydrated && !currentPreviewUrl}}" class="image-placeholder">
               <text class="ph-icon">🖼️</text>
               <text class="ph-text">暂无图片</text>

@@ -1336,6 +1336,10 @@ page {
 /* ========== Figma 设置面板样式 ========== */
 .setting-section {
   margin-bottom: 24rpx;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .setting-label-text {
@@ -1351,10 +1355,15 @@ page {
   display: flex;
   gap: 12rpx;
   align-items: center;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .setting-custom-input {
   flex: 1;
+  min-width: 0;
   padding: 16rpx 20rpx;
   background: #FFFFFF;
   border: 4rpx solid #FFEBB5;
@@ -1447,7 +1456,9 @@ page {
   border-radius: 24rpx;
   animation: slideDown 0.15s ease;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 @keyframes slideDown {
@@ -1497,10 +1508,15 @@ page {
   gap: 8rpx;
   max-height: 400rpx;
   overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .dropdown-item {
   width: 100%;
+  max-width: 100%;
   padding: 12rpx 20rpx;
   background: transparent;
   border-radius: 24rpx;
@@ -1509,6 +1525,8 @@ page {
   justify-content: space-between;
   transition: all 0.2s;
   flex-shrink: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .dropdown-item:active {
@@ -1524,7 +1542,10 @@ page {
   font-weight: 800;
   color: #8C6B4B;
   flex: 1;
-  word-break: break-all;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dropdown-item.active .item-text {
@@ -1536,6 +1557,7 @@ page {
   font-weight: 800;
   color: #FF9800;
   margin-left: 12rpx;
+  flex-shrink: 0;
 }
 
 /* 自定义尺寸输入框 */

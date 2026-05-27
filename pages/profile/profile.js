@@ -1,6 +1,6 @@
 const request = require('../../utils/request');
 const { API_BASE_URL } = require('../../utils/config');
-const { cacheProfile } = require('../../utils/profile-guard');
+const { cacheProfile, requireLogin } = require('../../utils/profile-guard');
 const storage = require('../../utils/storage');
 const store = require('../../utils/store');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
@@ -55,6 +55,8 @@ Page({
     
     // VIP状态
     isVip: false,
+    canCustomizeWatermark: false,
+    watermarkPrivilegeLoaded: false,
     
     // 待完成任务数
     pendingTaskCount: 0,
@@ -125,6 +127,7 @@ Page({
     this.syncTabBar();
     this.calcSafeAreas();
     this.loadProfile();
+    this.syncWatermarkConfigFromServer();
     this.loadLocalData();
     this.loadNotifications();
     this.setData({ processing: false });
@@ -283,7 +286,7 @@ Page({
         : (config.handlerType === 'INVITE_REGISTER' || config.handlerType === 'INVITE_RECHARGE')
           ? (status === 1 ? '领取礼包' : '去邀请')
           : config.handlerType === 'REVIEW_TASK'
-            ? (status === 2 ? '已完成' : '去提交')
+            ? ((status === 1 || config.canClaim) ? '领取奖励' : (status === 2 ? '已完成' : '去提交'))
             : (status === 1 ? '领取奖励' : '去完成');
     const progressDisplay = config.progressText || (config.handlerType === 'REVIEW_TASK' ? '' : `${currentCount}/${targetCount}`);
 
@@ -404,7 +407,9 @@ Page({
     this.setData({
       userInfo: { nickName: nickName || DEFAULT_NICKNAME, avatarUrl },
       phone,
-      isVip,
+      isVip: !!isVip,
+      canCustomizeWatermark: !!isVip,
+      watermarkPrivilegeLoaded: false,
     });
 
     const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
@@ -424,6 +429,9 @@ Page({
           storage.set(storage.KEYS.AVATAR_URL, profile.avatarUrl || '');
           storage.set(storage.KEYS.PHONE, profile.phone || '');
         }
+        if (profile && profile.aiQuota !== undefined) {
+          storage.set(storage.KEYS.MAGIC_COUNT, Number(profile.aiQuota || 0));
+        }
 
         const pendingTaskCount = this.calcPendingTaskCountFromServer(tasks || []);
 
@@ -434,6 +442,8 @@ Page({
 
         const inviteCode = inviteData && inviteData.inviteCode ? inviteData.inviteCode : storage.get(storage.KEYS.MY_INVITE_CODE, '');
 
+        const serverIsVip = !!(profile && profile.vipExpireAt && new Date(profile.vipExpireAt) > new Date());
+
         this.setData({
           userInfo: {
             nickName: (profile && profile.nickName) || nickName || DEFAULT_NICKNAME,
@@ -442,7 +452,8 @@ Page({
           stats: stats || EMPTY_STATS,
           phone: (profile && profile.phone) || phone || '',
           inviteCode,
-          isVip: (profile && profile.vipExpireAt && new Date(profile.vipExpireAt) > new Date()) || isVip,
+          isVip: serverIsVip,
+          canCustomizeWatermark: this.data.watermarkPrivilegeLoaded ? this.data.canCustomizeWatermark : serverIsVip,
           magicCount: profile && profile.aiQuota !== undefined ? Number(profile.aiQuota || 0) : this.data.magicCount,
           gifts: normalizedGifts,
           availableGiftCount,
@@ -606,6 +617,7 @@ Page({
   },
 
   onUseGift(e) {
+    if (!requireLogin()) return;
     if (this.data.processing) return;
     const gift = e.detail.gift;
     if (!gift) return;
@@ -635,8 +647,9 @@ Page({
     this.setData({ processing: true });
     const redeemNow = giftCode === 'GIFT_PACKAGE';
     request.post('/gift/use', { giftId: gift.id, redeemNow })
-      .then(() => {
+      .then((result) => {
         wx.showToast({ title: redeemNow ? '兑换成功' : '使用成功', icon: 'success' });
+        this.applyGiftUseResult(result);
         this.markGiftUsedLocally(gift.id);
         this.refreshGiftState();
       })
@@ -646,6 +659,31 @@ Page({
       .finally(() => {
         this.setData({ processing: false });
       });
+  },
+
+  applyGiftUseResult(result) {
+    const user = result && result.user;
+    if (!user) return;
+
+    const nextData = {};
+    if (user.aiQuota !== undefined) {
+      const magicCount = Number(user.aiQuota || 0);
+      storage.set(storage.KEYS.MAGIC_COUNT, magicCount);
+      nextData.magicCount = magicCount;
+    }
+    if (user.vipExpireAt !== undefined) {
+      const vipExpireAt = user.vipExpireAt || '';
+      const isVip = !!(vipExpireAt && new Date(vipExpireAt) > new Date());
+      storage.set(storage.KEYS.VIP_EXPIRE, vipExpireAt);
+      nextData.isVip = isVip;
+      if (!this.data.watermarkPrivilegeLoaded) {
+        nextData.canCustomizeWatermark = isVip;
+      }
+    }
+
+    if (Object.keys(nextData).length > 0) {
+      this.setData(nextData);
+    }
   },
 
   markGiftUsedLocally(giftId) {
@@ -679,8 +717,11 @@ Page({
         };
 
         if (profile) {
-          nextData.isVip = (profile.vipExpireAt && new Date(profile.vipExpireAt) > new Date()) || this.data.isVip;
+          nextData.isVip = !!(profile.vipExpireAt && new Date(profile.vipExpireAt) > new Date());
           nextData.magicCount = profile.aiQuota !== undefined ? Number(profile.aiQuota || 0) : this.data.magicCount;
+          if (profile.aiQuota !== undefined) {
+            storage.set(storage.KEYS.MAGIC_COUNT, nextData.magicCount);
+          }
         }
         if (stats) {
           nextData.stats = stats;
@@ -765,6 +806,7 @@ Page({
 
   // 执行签到
   onCheckin() {
+    if (!requireLogin()) return;
     if (this.data.processing) return;
     this.setData({ processing: true });
     request.post('/checkin/do')
@@ -842,6 +884,7 @@ Page({
 
   // 领取签到奖励
   onClaimCheckinReward() {
+    if (!requireLogin()) return;
     if (this.data.processing) return;
     this.setData({ processing: true });
     request.post('/checkin/claim')
@@ -953,6 +996,21 @@ Page({
     }
 
     if (task.handlerType === 'REVIEW_TASK') {
+      if (task.canClaim && task.progressId) {
+        this.setData({ processing: true });
+        request.post('/task/claim', { progressId: task.progressId })
+          .then(() => {
+            wx.showToast({ title: '领取成功！', icon: 'success' });
+            this.refreshProfileQuietly();
+          })
+          .catch((err) => {
+            wx.showToast({ title: err.message || '领取失败', icon: 'none' });
+          })
+          .finally(() => {
+            this.setData({ processing: false });
+          });
+        return;
+      }
       wx.navigateTo({
         url: `/pages/review-task-submit/review-task-submit?taskCode=${encodeURIComponent(task.taskCode)}&taskName=${encodeURIComponent(task.taskName || '')}`
       })
@@ -1038,7 +1096,7 @@ Page({
 
   onWatermarkChange(e) {
     const enabled = !!e.detail.value;
-    if (!this.data.isVip) {
+    if (!this.data.canCustomizeWatermark) {
       this.setData({ draftWatermarkEnabled: true });
       this.onCloseAllPanels();
       this.navigateToVipTab('vip');
@@ -1048,7 +1106,7 @@ Page({
   },
 
   onWatermarkTextChange(e) {
-    if (!this.data.isVip) {
+    if (!this.data.canCustomizeWatermark) {
       this.onCloseAllPanels();
       this.navigateToVipTab('vip');
       return;
@@ -1057,21 +1115,21 @@ Page({
   },
 
   onCustomWatermarkTap() {
-    if (!this.data.isVip) {
+    if (!this.data.canCustomizeWatermark) {
       this.onCloseAllPanels();
       this.navigateToVipTab('vip');
     }
   },
 
   async onConfirmSettings() {
-    const { draftWatermarkEnabled, draftWatermarkText, isVip } = this.data;
+    const { draftWatermarkEnabled, draftWatermarkText } = this.data;
 
     // 保存到本地存储（用于离线场景）
     storage.set(storage.KEYS.WATERMARK_ENABLED, draftWatermarkEnabled);
     storage.set(storage.KEYS.WATERMARK_TEXT, draftWatermarkText);
 
-    // 如果是VIP，同步到服务器
-    if (isVip) {
+    // 有自定义权限时才同步到服务器，避免本地VIP缓存和后端权限不一致时报错。
+    if (this.data.canCustomizeWatermark) {
       try {
         wx.showLoading({ title: '保存中...', mask: true });
 
@@ -1098,6 +1156,18 @@ Page({
       } catch (e) {
         wx.hideLoading();
         console.error('[profile] 保存水印配置失败', e);
+        if (e && e.message && e.message.indexOf('VIP') !== -1) {
+          this.setData({
+            isVip: false,
+            canCustomizeWatermark: false,
+            watermarkPrivilegeLoaded: true,
+            watermarkEnabled: draftWatermarkEnabled,
+            watermarkText: draftWatermarkText,
+          });
+          this.onCloseAllPanels();
+          wx.showToast({ title: '仅VIP可自定义水印', icon: 'none' });
+          return;
+        }
         wx.showToast({ title: '保存失败，请重试', icon: 'error' });
       }
     } else {
@@ -1117,6 +1187,53 @@ Page({
       watermarkEnabled: enabled !== false,
       watermarkText: text,
     });
+  },
+
+  syncWatermarkConfigFromServer() {
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
+    if (!sessionId) return Promise.resolve(null);
+
+    return request.get('/watermark/user-config')
+      .then((config) => {
+        if (!config) return null;
+        const canCustomizeWatermark = !!config.canCustomize;
+        const watermark = config.watermark || {};
+        const app = getApp && getApp();
+        const mergedWatermark = {
+          ...(store.get('watermarkConfig', null) || {}),
+          ...watermark,
+          isVip: !!config.isVip,
+          canCustomize: canCustomizeWatermark
+        };
+
+        if (app && app.globalData) {
+          app.globalData.watermarkConfig = {
+            ...(app.globalData.watermarkConfig || {}),
+            ...mergedWatermark
+          };
+          app.globalData.watermarkConfigLoaded = true;
+        }
+        store.set('appName', config.appName || store.get('appName', ''));
+        store.set('watermarkConfig', mergedWatermark);
+        store.set('canCustomizeWatermark', canCustomizeWatermark);
+
+        const nextData = {
+          isVip: !!config.isVip,
+          canCustomizeWatermark,
+          watermarkPrivilegeLoaded: true
+        };
+        if (canCustomizeWatermark) {
+          nextData.watermarkEnabled = watermark.enabled !== false;
+          nextData.watermarkText = watermark.text || '';
+          nextData.draftWatermarkEnabled = watermark.enabled !== false;
+          nextData.draftWatermarkText = watermark.text || '';
+          storage.set(storage.KEYS.WATERMARK_ENABLED, nextData.watermarkEnabled);
+          storage.set(storage.KEYS.WATERMARK_TEXT, nextData.watermarkText);
+        }
+        this.setData(nextData);
+        return config;
+      })
+      .catch(() => null);
   },
 
   // ─── 清除魔法痕迹 ───
@@ -1151,6 +1268,7 @@ Page({
   },
 
   onSendFeedback() {
+    if (!requireLogin()) return;
     const text = this.data.feedbackText.trim();
     if (!text) {
       wx.showToast({ title: '请先写下建议', icon: 'none' });
@@ -1168,10 +1286,12 @@ Page({
 
   // ─── 其他导航 ───
   onEditProfile() {
+    if (!requireLogin()) return;
     wx.navigateTo({ url: '/pages/edit-profile/edit-profile' });
   },
 
   onNotifications() {
+    if (!requireLogin()) return;
     wx.navigateTo({ url: '/pages/notifications/notifications' });
   },
 
@@ -1180,14 +1300,17 @@ Page({
   },
 
   onGoHistory() {
+    if (!requireLogin()) return;
     wx.navigateTo({ url: '/pages/history/history' });
   },
 
   onGoDraft() {
+    if (!requireLogin()) return;
     wx.navigateTo({ url: '/pages/draft/draft' });
   },
 
   onGoMyPatterns() {
+    if (!requireLogin()) return;
     wx.navigateTo({ url: '/pages/my-patterns/my-patterns' });
   },
 

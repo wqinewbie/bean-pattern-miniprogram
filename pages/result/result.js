@@ -479,6 +479,16 @@ Page({
       this.precomputeRemovedBackground();
     }
     this._warmOriginalImage(ui.originalUrl || '');
+    if (meta.mirrorOn && ui.originalUrl) {
+      this.ensureMirroredOriginalUrl(ui.originalUrl, (mirrored) => {
+        if (!mirrored) return;
+        const update = { mirroredOriginalUrl: mirrored };
+        if (this.data.activeTab === 'original') {
+          update.currentPreviewUrl = mirrored;
+        }
+        this.setData(update);
+      });
+    }
     if (render.generatePatternPreview && hasAnyPattern) {
       setTimeout(() => this.generatePatternPreviewImage(true), render.previewDelay || 80);
     }
@@ -1782,7 +1792,11 @@ Page({
     this._exportResultTempImage()
       .then((path) => {
         if (path) {
-          this.setData({ renderedResultUrl: path });
+          const update = { renderedResultUrl: path };
+          if (this.data.activeTab === 'result') {
+            update.currentPreviewUrl = path;
+          }
+          this.setData(update);
         }
         this._resultPreviewGenerating = false;
       })
@@ -1931,7 +1945,11 @@ Page({
     this._exportPatternByMode({ withWatermark: true })
       .then((path) => {
         if (path) {
-          this.setData({ renderedPatternUrl: path }, () => {
+          const update = { renderedPatternUrl: path };
+          if (this.data.activeTab === 'pattern') {
+            update.currentPreviewUrl = path;
+          }
+          this.setData(update, () => {
             this._traceFlow('patternTemp:generate:setData-ok', {
               hasPath: !!path,
               pathLen: path ? String(path).length : 0,

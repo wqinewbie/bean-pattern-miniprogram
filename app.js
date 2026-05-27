@@ -30,9 +30,6 @@ App({
   onLaunch(options) {
     this.captureInviteCode(options);
     const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
-    if (!sessionId && !this._suppressSilentLogin) {
-      this.silentLogin();
-    }
     this.preloadTabPages();
     if (sessionId) {
       this.prefetchProfileData();
@@ -43,11 +40,7 @@ App({
   onShow(options) {
     this.captureInviteCode(options);
     const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
-    if (!sessionId && !this._suppressSilentLogin) {
-      this.silentLogin();
-      return;
-    }
-    this.prefetchProfileData();
+    if (sessionId) this.prefetchProfileData();
   },
 
   preloadTabPages() {
@@ -130,10 +123,17 @@ App({
 
   updateWatermarkConfig(config) {
     if (!config) return;
-    store.set('appName', config.appName || this.globalData.appName);
+    const appName = config.appName || this.globalData.appName;
+    this.globalData.appName = appName;
+    store.set('appName', appName);
     if (config.watermark) {
-      store.set('watermarkConfig', { ...this.globalData.watermarkConfig, ...config.watermark });
+      this.globalData.watermarkConfig = { ...this.globalData.watermarkConfig, ...config.watermark };
+      this.globalData.watermarkConfig.isVip = !!config.isVip;
+      this.globalData.watermarkConfig.canCustomize = !!config.canCustomize;
+      store.set('watermarkConfig', this.globalData.watermarkConfig);
     }
+    store.set('canCustomizeWatermark', !!config.canCustomize);
+    this.globalData.watermarkConfigLoaded = true;
     store.set('watermarkConfigLoaded', true);
   },
 

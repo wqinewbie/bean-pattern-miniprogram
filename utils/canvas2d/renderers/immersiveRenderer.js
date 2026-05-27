@@ -40,7 +40,7 @@ function drawImmersiveGrid(ctx, options) {
   } = options;
 
   const cellSize = width / gridSize;
-  const dimAlpha = Math.max(0.2, contrast / 100 * 0.5); // 降低未选中的透明度
+  const dimAlpha = Math.max(0.15, (100 - contrast) / 100 * 0.65); // 数值越大，未选中背景越浅
   const hasFocus = !!highlightId;
   const isCountMode = mode === 'horizontal' || mode === 'vertical';
 
@@ -49,7 +49,7 @@ function drawImmersiveGrid(ctx, options) {
 
   // 绘制背景
   // 字体大小
-  const fontSize = Math.max(8, Math.min(28, Math.floor(cellSize * 0.64)));
+  const baseFontSize = Math.max(8, Math.min(24, Math.floor(cellSize * 0.58)));
 
   // 绘制拼豆
   for (let y = 0; y < gridSize; y++) {
@@ -65,7 +65,7 @@ function drawImmersiveGrid(ctx, options) {
 
       // 设置透明度
       if (done) {
-        ctx.globalAlpha = 1; // 已完成色号保持纯色显示
+        ctx.globalAlpha = focused ? 0.75 : dimAlpha;
       } else if (focused) {
         ctx.globalAlpha = 1; // 高亮的完全不透明
       } else {
@@ -104,27 +104,47 @@ function drawImmersiveGrid(ctx, options) {
 
       // 绘制文字标签（只在横竖计数模式下显示）
       let text = '';
-      if (!done && id && focused && mode !== 'colorId') {
+      if (!done && id && focused) {
         if (id === highlightId) {
-          if (mode === 'horizontal' && hRun[y] && hRun[y][x]) {
+          if (mode === 'colorId') {
+            text = String(id);
+          } else if (mode === 'horizontal' && hRun[y] && hRun[y][x]) {
             text = String(hRun[y][x]);
           } else if (mode === 'vertical' && vRun[y] && vRun[y][x]) {
             text = String(vRun[y][x]);
           }
+        } else if (!hasFocus && mode === 'colorId') {
+          text = String(id);
         }
       }
 
       if (text) {
         const isLight = (r + g + b) > 560;
+        const maxTextWidth = Math.max(1, cellSize * 0.82);
+        let fontSize = baseFontSize;
         ctx.globalAlpha = 1;
         ctx.fillStyle = isLight ? '#1f2937' : '#ffffff';
         ctx.font = `700 ${fontSize}px sans-serif`;
+        while (fontSize > 5 && ctx.measureText(text).width > maxTextWidth) {
+          fontSize -= 1;
+          ctx.font = `700 ${fontSize}px sans-serif`;
+        }
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x * cellSize + 1 / dpr, y * cellSize + 1 / dpr, cellSize - 2 / dpr, cellSize - 2 / dpr);
+        ctx.clip();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.lineWidth = Math.max(1, fontSize * 0.16);
-        ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.75)' : 'rgba(31,41,55,0.65)';
+        ctx.lineJoin = 'round';
+        ctx.miterLimit = 2;
+        ctx.lineWidth = Math.max(1, Math.min(2.5, fontSize * 0.2));
+        ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.96)' : 'rgba(17,24,39,0.92)';
+        ctx.strokeText(text, cx, cy);
+        ctx.lineWidth = Math.max(1, fontSize * 0.1);
+        ctx.strokeStyle = isLight ? 'rgba(17,24,39,0.25)' : 'rgba(255,255,255,0.3)';
         ctx.strokeText(text, cx, cy);
         ctx.fillText(text, cx, cy);
+        ctx.restore();
       }
     }
   }

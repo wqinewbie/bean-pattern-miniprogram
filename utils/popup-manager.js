@@ -5,6 +5,13 @@ let currentPopup = null;
 let popupComponent = null;
 const sessionShown = {};
 
+function getPopupVersionKey(popup) {
+  if (!popup) return '';
+  const key = popup.key || popup.id || '';
+  const version = popup.updatedAt || popup.updated_at || popup.content || popup.title || '';
+  return key + ':' + version;
+}
+
 function setPopupComponent(comp) {
   popupComponent = comp;
 }
@@ -22,7 +29,7 @@ async function checkAndShowPopup() {
     const now = Date.now();
 
     for (const popup of popups) {
-      const key = popup.key;
+      const key = getPopupVersionKey(popup);
       if (hidden[key]) continue;
       if (sessionShown[key]) continue;
 
@@ -37,7 +44,7 @@ async function checkAndShowPopup() {
       currentPopup = popup;
       sessionShown[key] = Date.now();
       if (popupComponent) {
-        popupComponent.show(key, popup);
+        popupComponent.show(popup.key, popup);
       }
       break;
     }

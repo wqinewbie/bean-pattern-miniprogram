@@ -1,5 +1,10 @@
 const storage = require('../../utils/storage');
 
+function getPopupVersionKey(popupKey, config) {
+  const version = (config && (config.updatedAt || config.updated_at || config.content || config.title)) || '';
+  return popupKey + ':' + version;
+}
+
 Component({
   properties: {
     config: { type: Object, value: {} }
@@ -14,11 +19,12 @@ Component({
   methods: {
     show(popupKey, config) {
       const hidden = storage.getJSON(storage.KEYS.POPUP_HIDDEN, {});
-      if (hidden[popupKey]) return;
+      const versionKey = getPopupVersionKey(popupKey, config || {});
+      if (hidden[versionKey]) return;
 
       this.setData({
         visible: true,
-        neverShowKey: popupKey,
+        neverShowKey: versionKey,
         config: config || {}
       });
     },

@@ -8,13 +8,13 @@
           <image class="back-icon" src="/assets/icons/lucide-arrow-left-brown.svg" mode="aspectFit"/>
         </view>
         <view class="action-btn" bindtap="onExport">
-          <text class="action-text">导出</text>
+          <text class="action-text">预览</text>
         </view>
         <view class="action-btn" bindtap="onSaveToBox">
-          <text class="action-text">保存到草稿箱</text>
+          <text class="action-text">保存到图纸箱</text>
         </view>
         <view class="action-btn primary" bindtap="onSave">
-          <text class="action-text">保存</text>
+          <text class="action-text">保存到草稿箱</text>
         </view>
       </view>
       <view class="top-bar-right">

@@ -85,6 +85,17 @@ function applyBackgroundStyle(owner, offsetX, offsetY, scale) {
   });
 }
 
+function notifyPinchMove(owner) {
+  owner.callMethod('onWxsPinchMove', {
+    canvasOffsetX: state.finalCanvasOffsetX,
+    canvasOffsetY: state.finalCanvasOffsetY,
+    canvasScale: state.finalCanvasScale,
+    backgroundOffsetX: state.finalBackgroundOffsetX,
+    backgroundOffsetY: state.finalBackgroundOffsetY,
+    backgroundScale: state.finalBackgroundScale
+  });
+}
+
 function beginPinch(event, owner) {
   var touches = event.touches || [];
   if (touches.length < 2) return false;
@@ -294,6 +305,7 @@ function touchmove(event, owner) {
     state.finalBackgroundOffsetY = scaleChanged ? bgY + panY : state.baseBackgroundOffsetY;
     applyCanvasStyle(owner, state.finalCanvasOffsetX, state.finalCanvasOffsetY, state.finalCanvasScale, boardInset);
     applyBackgroundStyle(owner, state.finalBackgroundOffsetX, state.finalBackgroundOffsetY, state.finalBackgroundScale);
+    notifyPinchMove(owner);
     return;
   }
 
@@ -307,6 +319,7 @@ function touchmove(event, owner) {
     state.finalBackgroundOffsetX = bgChanged ? offsetX + panX : state.baseBackgroundOffsetX;
     state.finalBackgroundOffsetY = bgChanged ? offsetY + panY : state.baseBackgroundOffsetY;
     applyBackgroundStyle(owner, state.finalBackgroundOffsetX, state.finalBackgroundOffsetY, state.finalBackgroundScale);
+    notifyPinchMove(owner);
     return;
   }
 
@@ -319,6 +332,7 @@ function touchmove(event, owner) {
   state.finalCanvasOffsetX = changed ? nextX + panX : state.baseCanvasOffsetX;
   state.finalCanvasOffsetY = changed ? nextY + panY : state.baseCanvasOffsetY;
   applyCanvasStyle(owner, state.finalCanvasOffsetX, state.finalCanvasOffsetY, state.finalCanvasScale, boardInset);
+  notifyPinchMove(owner);
 }
 
 function touchend(event, owner) {

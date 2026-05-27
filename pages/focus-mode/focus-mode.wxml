@@ -11,17 +11,17 @@
     <view class="grid-preview">
       <view
         class="canvas-container"
-        style="width:{{displaySize}}px;height:{{displaySize}}px;"
+        style="width:{{canvasSize}}px;height:{{canvasSize}}px;"
       >
         <view
           class="canvas-wrapper"
-          style="transform: translate({{offsetX}}px, {{offsetY}}px);"
+          style="transform: translate({{offsetX}}px, {{offsetY}}px) scale({{scale}});"
         >
           <bead-canvas2d
             id="immersiveCanvas"
             canvas-id="immersive-canvas"
-            width="{{displaySize}}"
-            height="{{displaySize}}"
+            width="{{canvasSize}}"
+            height="{{canvasSize}}"
             auto-init="{{true}}"
             bind:ready="onCanvasReady"
             bind:error="onCanvasError"
@@ -61,6 +61,7 @@
             backgroundColor="#FFF4DC"
             block-color="#FF9800"
             block-size="18"
+            bindchanging="onContrastChange"
             bindchange="onContrastChange"
           />
           <text class="contrast-value">{{contrast}}%</text>

@@ -1,5 +1,6 @@
 const request = require('../../utils/request');
 const storage = require('../../utils/storage');
+const { requireLogin } = require('../../utils/profile-guard');
 
 Page({
   data: {
@@ -16,6 +17,7 @@ Page({
   },
 
   onLoad() {
+    if (!requireLogin()) return;
     this.loadProfileDraft();
   },
 
@@ -40,6 +42,7 @@ Page({
   },
 
   onChooseAvatar(e) {
+    if (!requireLogin()) return;
     this.setData({ avatarUrl: e.detail.avatarUrl }, () => {
       this.checkIfEdited();
     });
@@ -52,6 +55,7 @@ Page({
   },
 
   onGetPhoneNumber(e) {
+    if (!requireLogin()) return;
     const code = e.detail.code;
     if (!code) {
       // 用户拒绝授权或出错
@@ -78,6 +82,7 @@ Page({
   },
 
   onSubmit() {
+    if (!requireLogin()) return;
     const { nickName, avatarUrl, phone } = this.data;
     if (!nickName.trim()) {
       wx.showToast({ title: '请输入昵称', icon: 'none' });
