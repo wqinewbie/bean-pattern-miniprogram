@@ -1,8 +1,0 @@
-<view class="coordinate-overlay-container" style="width: {{width}}px; height: {{height}}px; visibility: {{_visible}};">
-  <canvas
-    type="2d"
-    id="coordinateCanvas"
-    class="coordinate-canvas"
-    style="width: {{width}}px; height: {{height}}px;"
-  ></canvas>
-</view>

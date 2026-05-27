@@ -1,4 +1,5 @@
 const request = require('../../utils/request');
+const { API_BASE_URL } = require('../../utils/config');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { drawPatternWithAxes } = require('../../utils/pattern-canvas');
 const storage = require('../../utils/storage');
@@ -74,7 +75,12 @@ Page({
     });
 
     // 处理AI图片，生成效果图和色号图
-    this.processAiImage(aiImageUrl);
+    this.processAiImage(this.toReadableImageUrl(aiImageUrl));
+  },
+
+  toReadableImageUrl(imageUrl) {
+    if (!imageUrl || !/^https?:\/\//.test(imageUrl)) return imageUrl;
+    return `${API_BASE_URL}/api/image/proxy?url=${encodeURIComponent(imageUrl)}`;
   },
 
   initSystemInfo() {
@@ -160,7 +166,7 @@ Page({
         colorStats,
         gridSize,
         brand,
-        sourceUrl: imageUrl
+        sourceUrl: this.data.aiImageUrl || imageUrl
       });
 
       console.log('[ai-result] 处理完成，setData 已调用');

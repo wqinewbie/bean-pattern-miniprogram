@@ -1,3 +1,0 @@
-<view class="card-shell {{variant==='warm'?'card-shell--warm':'card-shell--plain'}} {{animated?'card-shell--animated':''}} {{customClass}}">
-  <slot></slot>
-</view>

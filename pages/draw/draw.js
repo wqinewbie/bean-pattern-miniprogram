@@ -25,6 +25,7 @@ const BOTTOM_COLORBAR_VISUAL_SAFE_RPX = 220;
 const PINCH_SCALE_DEADZONE = 0.018;
 const PINCH_PAN_DEADZONE_PX = 2;
 const PINCH_SMOOTHING = 0.28;
+const MAX_REALTIME_PHYSICAL_SIZE = 3072;
 
 Page({
   data: {
@@ -204,6 +205,23 @@ Page({
 
     // 大画布（>700px）：限制 3 倍，保持稳定性
     return 3;
+  },
+
+  _getSystemPixelRatio() {
+    try {
+      const deviceInfo = wx.getDeviceInfo ? wx.getDeviceInfo() : null;
+      return Math.max(1, Number(deviceInfo && deviceInfo.pixelRatio) || 1);
+    } catch (_) {
+      return 1;
+    }
+  },
+
+  _getInitialQualityScale(gridSize = this.data.gridSize) {
+    const size = Math.max(1, Number(gridSize) || 1);
+    if (size <= 52) return 3;
+    if (size <= 78) return 2;
+    if (size <= 104) return 1.5;
+    return 1.15;
   },
 
   _getGridOverlayMetrics(viewScale) {
@@ -492,21 +510,8 @@ Page({
   },
 
   _renderRealtimePinchResolution(state = {}) {
-    if (!this._canvas || !this._ctx || !this.data.canvasReady) return;
-
-    const scale = Number(state && state.canvasScale);
-    if (!Number.isFinite(scale) || scale <= 0) return;
-
-    const previousPinchRenderState = this._pinchRenderState;
-    this._pinchRenderState = { canvasScale: scale };
-
-    try {
-      this._syncCanvasResolution(false, { scale, mode: 'high' });
-      if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(false);
-      this._drawFullGrid({ skipResolutionSync: true });
-    } finally {
-      this._pinchRenderState = previousPinchRenderState;
-    }
+    // 固定高清预算模式：双指缩放期间只让 WXS/CSS transform 改视觉尺寸，
+    // 不再按实时 scale 重分配 canvas backing store，避免内存抖动。
   },
 
   onWxsPinchEnd(state = {}) {
@@ -615,16 +620,18 @@ Page({
   },
 
   _getTargetRenderDpr(scale, mode) {
-    const baseWidth = Math.max(1, Number(this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
-    const baseHeight = Math.max(1, Number(this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
-    const safeScale = Math.max(1, Number(scale) || 1);
-    const renderMode = mode || (safeScale > 1 ? 'high' : 'low');
-
-    if (this._renderScheduler && typeof this._renderScheduler.getAdaptiveDpr === 'function') {
-      return this._renderScheduler.getAdaptiveDpr(baseWidth, baseHeight, safeScale, this._dpr || 1, renderMode);
+    if (this._layoutRenderDpr) {
+      return Math.max(1, Number(this._layoutRenderDpr) || 1);
     }
 
-    return Math.max(1, this._dpr || 1);
+    const baseWidth = Math.max(1, Number(this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
+    const baseHeight = Math.max(1, Number(this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
+    const systemDpr = Math.max(1, this._dpr || this._getSystemPixelRatio());
+    const maxDprByWidth = MAX_REALTIME_PHYSICAL_SIZE / baseWidth;
+    const maxDprByHeight = MAX_REALTIME_PHYSICAL_SIZE / baseHeight;
+    const targetDpr = Math.min(systemDpr * this._getInitialQualityScale(), maxDprByWidth, maxDprByHeight);
+
+    return Math.max(1, targetDpr);
   },
 
   _syncCanvasResolution(force = false, options = {}) {
@@ -632,9 +639,7 @@ Page({
 
     const width = Math.max(1, Number(this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
     const height = Math.max(1, Number(this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
-    const scale = Math.max(1, Number(options.scale == null ? this.data.canvasScale : options.scale) || 1);
-    const mode = options.mode || 'high';
-    const targetDpr = this._getTargetRenderDpr(scale, mode);
+    const targetDpr = this._getTargetRenderDpr();
     const resolutionKey = [width, height, targetDpr.toFixed(3)].join(':');
 
     if (!force && this._renderResolutionKey === resolutionKey) {
@@ -806,13 +811,20 @@ Page({
     const needResizeCanvas = snapshot.gridSize != null && snapshot.gridSize !== this.data.gridSize;
     
     if (needResizeCanvas) {
-      const canvasSize = this._getAdaptiveCanvasSize(snapshot.gridSize);
+      const layout = this._getSnappedCanvasLayout(snapshot.gridSize);
+      const canvasSize = layout.canvasSize;
+      this._layoutRenderDpr = layout.renderDpr;
+      this._renderResolutionKey = '';
       this.setData({
         gridSize: snapshot.gridSize,
         canvasWidth: canvasSize,
         canvasHeight: canvasSize,
-        gridCellSize: canvasSize / snapshot.gridSize,
-        majorGridSizePx: canvasSize / snapshot.gridSize * 5,
+        coordinateCellSize: layout.coordinateCellSize,
+        boardInset: layout.boardInset,
+        boardCanvasWidth: layout.boardCanvasWidth,
+        boardCanvasHeight: layout.boardCanvasHeight,
+        gridCellSize: layout.cellSize,
+        majorGridSizePx: layout.cellSize * 5,
         canvasOffsetX: snapshot.canvasOffsetX == null ? this.data.canvasOffsetX : snapshot.canvasOffsetX,
         canvasOffsetY: snapshot.canvasOffsetY == null ? this.data.canvasOffsetY : snapshot.canvasOffsetY,
         canvasScale: snapshot.canvasScale == null ? this.data.canvasScale : snapshot.canvasScale,
@@ -1369,7 +1381,7 @@ Page({
     
     this.setData({ canvasReady: true, canvas2dComponent: canvas2dComponent });
     this._updateCanvasRect();
-    this._syncCanvasResolution(true, { mode: 'high' });
+    this._syncCanvasResolution(false, { mode: 'high' });
     
     this._ensurePixelStoreFromGrid();
     if (this._pixelStore) this._drawFullGrid();
@@ -1409,8 +1421,11 @@ Page({
         return;
       }
 
-      const canvasSize = this._getAdaptiveCanvasSize(gridSize);
-      const cellSize = canvasSize / gridSize;
+      const layout = this._getSnappedCanvasLayout(gridSize);
+      const canvasSize = layout.canvasSize;
+      const cellSize = layout.cellSize;
+      this._layoutRenderDpr = layout.renderDpr;
+      this._renderResolutionKey = '';
       const hexGridData = gridData.map(row => row.map(idx => {
         if (idx === -1) return null;
         const color = colorPalette[idx];
@@ -1456,8 +1471,12 @@ Page({
         gridSize, 
         canvasWidth: canvasSize, 
         canvasHeight: canvasSize,
-        gridCellSize: canvasSize / gridSize,
-        majorGridSizePx: canvasSize / gridSize * 5,
+        coordinateCellSize: layout.coordinateCellSize,
+        boardInset: layout.boardInset,
+        boardCanvasWidth: layout.boardCanvasWidth,
+        boardCanvasHeight: layout.boardCanvasHeight,
+        gridCellSize: layout.cellSize,
+        majorGridSizePx: layout.cellSize * 5,
         gridLineWidth: 1,
         majorLineWidth: 2,
         brand: brand || 'MARD', 
@@ -1572,6 +1591,10 @@ Page({
   },
 
   _getAdaptiveCanvasSize(gridSize = this.data.gridSize) {
+    return this._getSnappedCanvasLayout(gridSize).canvasSize;
+  },
+
+  _getRawAdaptiveCanvasSize(gridSize = this.data.gridSize) {
     const info = wx.getSystemInfoSync();
     // 完整可见优先：给顶部坐标轴和底部颜色栏留出更保守空间
     const safeByWidth = Math.max(160, info.windowWidth - 96);
@@ -1582,13 +1605,46 @@ Page({
     return cellMultiplier * safeGridSize;
   },
 
+  _getSnappedCanvasLayout(gridSize = this.data.gridSize) {
+    const safeGridSize = Math.max(1, parseInt(gridSize, 10) || this.data.gridSize || 1);
+    const rawCanvasSize = this._getRawAdaptiveCanvasSize(safeGridSize);
+    const rawCellSize = rawCanvasSize / safeGridSize;
+    const systemDpr = Math.max(1, this._dpr || this._getSystemPixelRatio());
+    const qualityScale = this._getInitialQualityScale(safeGridSize);
+
+    // 画板四周坐标轴各占 1 个 cell，物理上一起纳入实时 canvas 预算。
+    const maxDprByBoard = MAX_REALTIME_PHYSICAL_SIZE / Math.max(rawCellSize * (safeGridSize + 2), 1);
+    const renderDpr = Math.max(1, Math.min(systemDpr * qualityScale, maxDprByBoard));
+    const maxPhysicalCellSize = Math.max(1, Math.floor(MAX_REALTIME_PHYSICAL_SIZE / (safeGridSize + 2)));
+    const physicalCellSize = Math.max(1, Math.min(maxPhysicalCellSize, Math.round(rawCellSize * renderDpr)));
+    const cellSize = physicalCellSize / renderDpr;
+    const canvasSize = cellSize * safeGridSize;
+    const boardInset = cellSize;
+
+    return {
+      canvasSize,
+      canvasWidth: canvasSize,
+      canvasHeight: canvasSize,
+      cellSize,
+      coordinateCellSize: cellSize,
+      boardInset,
+      boardCanvasWidth: canvasSize + boardInset * 2,
+      boardCanvasHeight: canvasSize + boardInset * 2,
+      renderDpr,
+      physicalCellSize
+    };
+  },
+
   _initData() {
     this._applyGridSize(this.data.gridSize, false);
   },
 
   _applyGridSize(newGridSize, keepContent = false) {
-    const canvasSize = this._getAdaptiveCanvasSize(newGridSize);
-    this._cellSize = canvasSize / newGridSize;
+    const layout = this._getSnappedCanvasLayout(newGridSize);
+    const canvasSize = layout.canvasSize;
+    this._layoutRenderDpr = layout.renderDpr;
+    this._cellSize = layout.cellSize;
+    this._renderResolutionKey = '';
 
     // 完美版：记录切换前的相对位置
     let relativePosition = null;
@@ -1635,17 +1691,16 @@ Page({
     const newBackgroundScale = relativePosition ? relativePosition.scale : 1;
 
     // 标准做法：setData 完成后计算位置
-    const coordinateCellSize = canvasSize / newGridSize;
     this.setData({
       gridSize: newGridSize,
       canvasWidth: canvasSize,
       canvasHeight: canvasSize,
-      coordinateCellSize,
-      boardInset: coordinateCellSize,
-      boardCanvasWidth: canvasSize + coordinateCellSize * 2,
-      boardCanvasHeight: canvasSize + coordinateCellSize * 2,
-      gridCellSize: canvasSize / newGridSize,
-      majorGridSizePx: canvasSize / newGridSize * 5,
+      coordinateCellSize: layout.coordinateCellSize,
+      boardInset: layout.boardInset,
+      boardCanvasWidth: layout.boardCanvasWidth,
+      boardCanvasHeight: layout.boardCanvasHeight,
+      gridCellSize: layout.cellSize,
+      majorGridSizePx: layout.cellSize * 5,
       gridLineWidth: 1,
       majorLineWidth: 2,
       ...(this._history ? this._history.getState() : { canUndo: false, canRedo: false }),
@@ -2543,7 +2598,7 @@ Page({
     }
     this._lastHighQualityRedrawAt = now;
 
-    this._syncCanvasResolution(true, { mode: 'high' });
+    this._syncCanvasResolution(false, { mode: 'high' });
     this._drawFullGrid();
   },
   
@@ -3509,13 +3564,20 @@ Page({
     };
 
     if (nextGridSize !== this.data.gridSize) {
-      const canvasSize = this._getAdaptiveCanvasSize(nextGridSize);
+      const layout = this._getSnappedCanvasLayout(nextGridSize);
+      const canvasSize = layout.canvasSize;
+      this._layoutRenderDpr = layout.renderDpr;
+      this._renderResolutionKey = '';
       updates.gridSize = nextGridSize;
       updates.canvasWidth = canvasSize;
       updates.canvasHeight = canvasSize;
-      updates.gridCellSize = canvasSize / nextGridSize;
-      updates.majorGridSizePx = canvasSize / nextGridSize * 5;
-      this._cellSize = canvasSize / nextGridSize;
+      updates.coordinateCellSize = layout.coordinateCellSize;
+      updates.boardInset = layout.boardInset;
+      updates.boardCanvasWidth = layout.boardCanvasWidth;
+      updates.boardCanvasHeight = layout.boardCanvasHeight;
+      updates.gridCellSize = layout.cellSize;
+      updates.majorGridSizePx = layout.cellSize * 5;
+      this._cellSize = layout.cellSize;
     }
 
     this.setData(updates);

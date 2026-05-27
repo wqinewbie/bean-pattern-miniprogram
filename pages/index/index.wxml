@@ -29,9 +29,10 @@
   <view class="banner-zone" wx:if="{{bannerList.length > 0}}">
     <view class="banner-frame">
       <swiper
+        wx:if="{{bannerSwiperVisible}}"
         class="banner-swiper"
-        circular
-        autoplay
+        circular="{{bannerList.length > 1}}"
+        autoplay="{{bannerAutoplay}}"
         interval="3600"
         duration="500"
         current="{{activeBanner}}"

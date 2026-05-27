@@ -2,7 +2,6 @@
   "navigationBarTitleText": "",
   "navigationStyle": "custom",
   "usingComponents": {
-    "card-shell": "/components/card-shell/index",
     "magic-panel": "/components/magic-panel/magic-panel",
     "gift-panel": "/components/gift-panel/gift-panel",
     "task-panel": "/components/task-panel/task-panel",

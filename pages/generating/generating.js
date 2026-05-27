@@ -44,31 +44,43 @@ Page({
 
   pollTaskStatus(taskId) {
     request.get(`/ai/task/${taskId}`).then(data => {
-      if (!data) {
+      const taskData = data && data.data ? data.data : data;
+      console.log('[AI_POLL]', taskId, taskData);
+
+      if (!taskData) {
         this.scheduleNextPoll(taskId);
         return;
       }
 
-      const status = data.status;
+      const status = String(taskData.status || '').trim().toUpperCase();
 
       if (status === 'SUCCESS') {
         clearTimeout(this._timeoutTimer);
         clearTimeout(this._pollingTimer);
 
-        const sizeMode = data.sizeMode || 'default';
-        const brand = data.brand || 'MARD';
-        const colorCount = data.colorCount || 0;
-        const mirror = data.mirror || false;
+        const sizeMode = taskData.sizeMode || 'default';
+        const brand = taskData.brand || 'MARD';
+        const colorCount = taskData.colorCount || 0;
+        const mirror = taskData.mirror || false;
+        const aiImageUrl = taskData.aiImageUrl || '';
+        const redirectUrl = `/pages/ai-result/ai-result?taskId=${encodeURIComponent(taskId)}&aiImageUrl=${encodeURIComponent(aiImageUrl)}&sizeMode=${encodeURIComponent(sizeMode)}&brand=${encodeURIComponent(brand)}&colorCount=${encodeURIComponent(colorCount)}&mirror=${mirror ? '1' : '0'}`;
 
         wx.redirectTo({
-          url: `/pages/ai-result/ai-result?taskId=${taskId}&aiImageUrl=${encodeURIComponent(data.aiImageUrl || '')}&sizeMode=${sizeMode}&brand=${brand}&colorCount=${colorCount}&mirror=${mirror ? '1' : '0'}`
+          url: redirectUrl,
+          success: () => {
+            console.log('[AI_REDIRECT_SUCCESS]', redirectUrl);
+          },
+          fail: (err) => {
+            console.error('[AI_REDIRECT_FAIL]', redirectUrl, err);
+            wx.showToast({ title: '打开结果页失败', icon: 'none' });
+          }
         });
       } else if (status === 'FAILED') {
         clearTimeout(this._timeoutTimer);
         clearTimeout(this._pollingTimer);
 
         wx.showToast({
-          title: data.errorMessage || '生成失败',
+          title: taskData.errorMessage || '生成失败',
           icon: 'none',
           duration: 2000
         });

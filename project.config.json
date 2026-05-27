@@ -26,7 +26,20 @@
   "compileType": "miniprogram",
   "simulatorPluginLibVersion": {},
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "glob",
+        "value": "**/*.backup"
+      },
+      {
+        "type": "glob",
+        "value": "**/*.md"
+      },
+      {
+        "type": "file",
+        "value": "project.private.config.json"
+      }
+    ],
     "include": []
   },
   "appid": "wx2adf2cf925983e1b",

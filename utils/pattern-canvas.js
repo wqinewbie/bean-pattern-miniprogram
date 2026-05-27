@@ -73,11 +73,27 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
   // 统计各色用量（优先从 gridData 计算，避免后端 count 缺失）
   const countById = new Map();
   const paletteByIndex = colorPalette || [];
+  const paletteById = new Map();
+  paletteByIndex.forEach((color) => {
+    if (!color) return;
+    if (color.id != null) paletteById.set(String(color.id), color);
+    if (color.name != null) paletteById.set(String(color.name), color);
+  });
+  const resolveColor = (value) => {
+    if (typeof value === 'number') return paletteByIndex[value];
+    if (value && typeof value === 'object') {
+      if (value.id != null && paletteById.has(String(value.id))) return paletteById.get(String(value.id));
+      return value;
+    }
+    const key = String(value == null ? '' : value);
+    if (paletteById.has(key)) return paletteById.get(key);
+    if (/^\d+$/.test(key)) return paletteByIndex[Number(key)];
+    return null;
+  };
   for (let y = 0; y < gridRows; y++) {
     for (let x = 0; x < gridCols; x++) {
-      const colorIndex = gridData[y] ? gridData[y][x] : -1;
-      if (colorIndex < 0) continue;
-      const color = paletteByIndex[colorIndex];
+      const colorValue = gridData[y] ? gridData[y][x] : null;
+      const color = resolveColor(colorValue);
       if (!color) continue;
       const id = String(color.id || color.name || '').trim();
       if (!id) continue;
@@ -223,8 +239,8 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
   ctx.setLineWidth(0.7);
   for (let y = 0; y < gridRows; y++) {
     for (let x = 0; x < gridCols; x++) {
-      const colorIndex = gridData[y] ? gridData[y][x] : 0;
-      const color = paletteByIndex[colorIndex];
+      const colorValue = gridData[y] ? gridData[y][x] : null;
+      const color = resolveColor(colorValue);
       ctx.setFillStyle(color ? `rgb(${color.r},${color.g},${color.b})` : '#ffffff');
       const cellX = startX + x * effectiveCellSize;
       const cellY = startY + y * effectiveCellSize;
@@ -238,8 +254,8 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
   ctx.setTextBaseline('middle');
   for (let y = 0; y < gridRows; y++) {
     for (let x = 0; x < gridCols; x++) {
-      const colorIndex = gridData[y] ? gridData[y][x] : 0;
-      const color = paletteByIndex[colorIndex];
+      const colorValue = gridData[y] ? gridData[y][x] : null;
+      const color = resolveColor(colorValue);
       if (!color) continue;
 
       const lum = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;

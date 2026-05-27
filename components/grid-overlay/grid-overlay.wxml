@@ -1,8 +1,0 @@
-<view class="grid-overlay-container" style="width: {{width}}px; height: {{height}}px; visibility: {{_visible}};">
-  <canvas 
-    type="2d" 
-    id="gridCanvas"
-    class="grid-canvas"
-    style="width: {{width}}px; height: {{height}}px;"
-  ></canvas>
-</view>

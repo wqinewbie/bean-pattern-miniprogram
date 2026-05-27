@@ -29,6 +29,8 @@ Page({
     bannerTop: 120,
     bannerList: [],
     activeBanner: 0,
+    bannerSwiperVisible: true,
+    bannerAutoplay: true,
     currentBanner: {
       title: '初夏限定拼豆',
       subTitle: '一键生成专属图纸',
@@ -59,6 +61,7 @@ Page({
 
   onShow() {
     this.syncTabBar();
+    this._resumeBannerSwiper();
     const loggedIn = hasSession();
     const nickName = storage.get(storage.KEYS.NICK_NAME, '');
     const avatarUrl = storage.get(storage.KEYS.AVATAR_URL, '');
@@ -171,9 +174,12 @@ Page({
           };
         });
         if (!list.length) {
+          this._clearBannerResumeTimer();
           this.setData({
             bannerList: [],
             activeBanner: 0,
+            bannerSwiperVisible: true,
+            bannerAutoplay: false,
             currentBanner: null
           });
           return;
@@ -182,6 +188,8 @@ Page({
         this.setData({
           bannerList: list,
           activeBanner: 0,
+          bannerSwiperVisible: true,
+          bannerAutoplay: list.length > 1,
           currentBanner: {
             title: pickText(first.title, '初夏限定拼豆'),
             subTitle: pickText(first.subTitle, '一键生成专属图纸'),
@@ -190,9 +198,45 @@ Page({
             linkType: first.linkType || 'NONE',
             linkValue: first.linkValue || ''
           }
-        });
+        }, () => this._resumeBannerSwiper());
       })
       .catch(() => {});
+  },
+
+  _clearBannerResumeTimer() {
+    if (this._bannerResumeTimer) {
+      clearTimeout(this._bannerResumeTimer);
+      this._bannerResumeTimer = null;
+    }
+  },
+
+  _resumeBannerSwiper() {
+    const list = this.data.bannerList || [];
+    if (!list.length) return;
+
+    this._clearBannerResumeTimer();
+
+    const activeBanner = Math.min(Math.max(Number(this.data.activeBanner) || 0, 0), list.length - 1);
+    this.setData({
+      bannerAutoplay: false,
+      bannerSwiperVisible: false,
+      activeBanner
+    });
+
+    const showSwiper = () => {
+      this.setData({
+        bannerSwiperVisible: true,
+        bannerAutoplay: list.length > 1
+      });
+    };
+
+    if (typeof wx.nextTick === 'function') {
+      wx.nextTick(() => {
+        this._bannerResumeTimer = setTimeout(showSwiper, 80);
+      });
+    } else {
+      this._bannerResumeTimer = setTimeout(showSwiper, 80);
+    }
   },
 
   loadTutorials() {
@@ -440,7 +484,15 @@ Page({
     setTimeout(() => wx.stopPullDownRefresh(), 400);
   },
 
+  onHide() {
+    this._clearBannerResumeTimer();
+    if ((this.data.bannerList || []).length) {
+      this.setData({ bannerAutoplay: false });
+    }
+  },
+
   onUnload() {
+    this._clearBannerResumeTimer();
     if (this._loginModalTimer) clearTimeout(this._loginModalTimer);
     this._loginModalTimer = null;
     this._loginCallback = null;
