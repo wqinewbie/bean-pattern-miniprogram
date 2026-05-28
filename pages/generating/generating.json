@@ -1,3 +1,6 @@
 {
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "bead-canvas2d": "/components/bead-canvas2d/index"
+  }
 }

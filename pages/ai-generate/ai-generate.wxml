@@ -120,11 +120,6 @@
       </view>
     </view>
 
-    <view class="scroll-more-hint">
-      <text>上滑查看更多参数</text>
-      <text class="scroll-more-arrow">⌄</text>
-    </view>
-
     <view style="height: 40rpx;"></view>
   </scroll-view>
 

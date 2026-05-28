@@ -606,6 +606,27 @@ page {
   display: block;
 }
 
+.board-canvas-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  pointer-events: none;
+}
+
+.board-canvas-pixel {
+  z-index: 1;
+}
+
+.board-canvas-text {
+  z-index: 2;
+}
+
+.board-canvas-grid {
+  z-index: 3;
+  transition: opacity 80ms linear;
+}
+
 .coord-corner,
 .coord-strip {
   position: absolute;

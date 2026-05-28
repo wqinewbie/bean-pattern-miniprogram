@@ -1,6 +1,10 @@
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
+const { API_BASE_URL } = require('../../utils/config');
+const { processAiResult } = require('../../utils/ai-result-processor');
+
+const PENDING_AI_HISTORY_KEY = 'pending_ai_history_tasks';
 
 Page({
   data: {
@@ -26,6 +30,9 @@ Page({
     isSwiping: false,
   },
 
+  _pendingAiTimer: null,
+  _pendingAiRunning: false,
+
   onLoad() {
     this.calcNavTop();
   },
@@ -34,6 +41,15 @@ Page({
     if (!this._dataLoaded || this._needsRefresh) {
       this.loadHistory(true);
     }
+    this.resumePendingAiTasks();
+  },
+
+  onHide() {
+    this.clearPendingAiTimer();
+  },
+
+  onUnload() {
+    this.clearPendingAiTimer();
   },
 
   calcNavTop() {
@@ -127,6 +143,125 @@ Page({
           wx.showToast({ title: '加载失败', icon: 'none' });
         });
     });
+  },
+
+  getPendingAiTasks() {
+    try {
+      const stored = wx.getStorageSync(PENDING_AI_HISTORY_KEY);
+      return Array.isArray(stored) ? stored.filter(item => item && item.taskId) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  setPendingAiTasks(tasks) {
+    wx.setStorageSync(PENDING_AI_HISTORY_KEY, (tasks || []).filter(item => item && item.taskId).slice(0, 10));
+  },
+
+  clearPendingAiTimer() {
+    if (this._pendingAiTimer) {
+      clearTimeout(this._pendingAiTimer);
+      this._pendingAiTimer = null;
+    }
+  },
+
+  schedulePendingAiResume() {
+    this.clearPendingAiTimer();
+    if (!this.getPendingAiTasks().length) return;
+    this._pendingAiTimer = setTimeout(() => {
+      this.resumePendingAiTasks();
+    }, 5000);
+  },
+
+  toReadableImageUrl(imageUrl) {
+    if (!imageUrl || !/^https?:\/\//.test(imageUrl)) return imageUrl;
+    return `${API_BASE_URL}/api/image/proxy?url=${encodeURIComponent(imageUrl)}`;
+  },
+
+  buildAiHistoryPayload(taskData, prepared) {
+    const fallbackGridSize = taskData.sizeMode === 'small' ? 32 : 48;
+    const gridSize = Number(prepared.gridSize || taskData.finalGridWidth || taskData.finalGridHeight || fallbackGridSize);
+    const colorList = prepared.colorList || [];
+    return {
+      sourceType: 'AI',
+      brand: prepared.brand || taskData.brand || 'MARD',
+      colorCount: Array.isArray(colorList) ? colorList.length : Number(taskData.colorCount || 0),
+      name: 'AI记录#' + Date.now(),
+      gridSize,
+      mappedPixelData: JSON.stringify(prepared.mappedPixelData || []),
+      sourceUrl: taskData.aiImageUrl || '',
+      boxId: null
+    };
+  },
+
+  async saveCompletedAiTaskToHistory(taskData) {
+    const aiImageUrl = taskData.aiImageUrl || '';
+    if (!aiImageUrl) return false;
+
+    const sizeMode = taskData.sizeMode || 'default';
+    const fallbackGridSize = sizeMode === 'small' ? 32 : 48;
+    const gridSize = Number(taskData.finalGridWidth || taskData.finalGridHeight || fallbackGridSize);
+    const brand = taskData.brand || 'MARD';
+    const prepared = await processAiResult(this, this.toReadableImageUrl(aiImageUrl), {
+      gridSize,
+      brand,
+      mirror: !!taskData.mirror
+    });
+
+    if (!prepared || !prepared.mappedPixelData || !prepared.mappedPixelData.length) {
+      return false;
+    }
+
+    await request.post('/history/save', this.buildAiHistoryPayload(taskData, {
+      ...prepared,
+      gridSize,
+      brand
+    }));
+    return true;
+  },
+
+  async resumePendingAiTasks() {
+    const pending = this.getPendingAiTasks();
+    if (!pending.length || this._pendingAiRunning) return;
+
+    this._pendingAiRunning = true;
+    let changed = false;
+    let savedAny = false;
+    const remaining = [];
+
+    for (const item of pending) {
+      try {
+        const data = await request.get(`/ai/task/${item.taskId}`);
+        const taskData = data && data.data ? data.data : data;
+        const status = String((taskData && taskData.status) || '').trim().toUpperCase();
+
+        if (status === 'SUCCESS') {
+          const saved = await this.saveCompletedAiTaskToHistory(taskData);
+          changed = true;
+          savedAny = savedAny || saved;
+        } else if (status === 'FAILED') {
+          changed = true;
+        } else {
+          remaining.push(item);
+        }
+      } catch (err) {
+        console.warn('[history] resume pending AI task failed', item.taskId, err);
+        remaining.push(item);
+      }
+    }
+
+    if (changed) {
+      this.setPendingAiTasks(remaining);
+    }
+
+    this._pendingAiRunning = false;
+
+    if (savedAny) {
+      wx.showToast({ title: 'AI结果已加入时光机', icon: 'success' });
+      this.loadHistory(true);
+    }
+
+    this.schedulePendingAiResume();
   },
 
   onReachBottom() {

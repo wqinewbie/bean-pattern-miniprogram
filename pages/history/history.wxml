@@ -90,4 +90,9 @@
 
     <view style="height: 48rpx;"></view>
   </scroll-view>
+  <view style="position: fixed; left: -10000px; top: -10000px; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;">
+    <bead-canvas2d id="sampleCanvas2dComp" canvasId="historySampleCanvas2d" width="512" height="512" />
+    <bead-canvas2d id="resultCanvas2dComp" canvasId="historyResultCanvas2d" width="1024" height="1024" />
+    <bead-canvas2d id="patternCanvas2dComp" canvasId="historyPatternCanvas2d" width="2048" height="2048" />
+  </view>
 </view>

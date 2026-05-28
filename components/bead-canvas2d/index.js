@@ -141,6 +141,26 @@ Component({
       this._doResize(width, height);
     },
 
+    resizeWithDpr(width, height, dpr) {
+      if (this._destroyed || !this._canvas || !this._ctx) return;
+      if (this._resizeTimer) {
+        clearTimeout(this._resizeTimer);
+        this._resizeTimer = null;
+      }
+      const nextWidth = Number(width) || this.data.width;
+      const nextHeight = Number(height) || this.data.height;
+      const nextDpr = Math.max(1, Number(dpr) || this._dpr || 1);
+      this._dpr = nextDpr;
+      resize2dCanvas({
+        canvas: this._canvas,
+        ctx: this._ctx,
+        width: nextWidth,
+        height: nextHeight,
+        dpr: nextDpr
+      });
+      this.setData({ width: nextWidth, height: nextHeight, dpr: nextDpr });
+    },
+
     _doResize(width, height) {
       if (this._destroyed || !this._canvas || !this._ctx) return;
       const nextWidth = Number(width) || this.data.width;

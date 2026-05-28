@@ -52,6 +52,7 @@ Page({
     previewLeft: 0,
     previewTop: 0,
     previewBoxPx: 0,
+    scrollTop: 0,
   },
 
   onBack() {
@@ -65,6 +66,16 @@ Page({
       this.initPreviewMetrics(url);
     }
     this.loadBrandsFromServer();
+    this.addScrollHintAnimation();
+  },
+
+  addScrollHintAnimation() {
+    setTimeout(() => {
+      this.setData({ scrollTop: 50 });
+      setTimeout(() => {
+        this.setData({ scrollTop: 0 });
+      }, 400);
+    }, 500);
   },
 
   loadBrandsFromServer() {

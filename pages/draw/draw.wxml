@@ -238,16 +238,39 @@
       <view
         id="canvasLayer"
         class="canvas-layer {{activeLayer=='canvas'?'active-canvas':''}} {{activeLayer=='background'?'active-background':''}}"
-        style="position: absolute; left: {{canvasOffsetX - boardInset * canvasScale}}px; top: {{canvasOffsetY - boardInset * canvasScale}}px; transform: scale({{canvasScale}}); transform-origin: 0 0; z-index: 2;"
+        style="position: absolute; left: 0px; top: 0px; transform: none; transform-origin: 0 0; z-index: 2;"
       >
-        <view class="canvas-wrapper" style="width: {{boardCanvasWidth}}px; height: {{boardCanvasHeight}}px;">
+        <view class="canvas-wrapper" style="width: {{canvasAreaWidth || boardCanvasWidth}}px; height: {{canvasAreaHeight || boardCanvasHeight}}px;">
           <bead-canvas2d
-            id="drawCanvas2d"
-            canvas-id="drawCanvas"
-            width="{{boardCanvasWidth}}"
-            height="{{boardCanvasHeight}}"
+            id="drawPixelCanvas2d"
+            canvas-id="drawPixelCanvas"
+            width="{{canvasAreaWidth || boardCanvasWidth}}"
+            height="{{canvasAreaHeight || boardCanvasHeight}}"
             auto-init="{{true}}"
-            style="background: {{backgroundImage ? 'transparent' : '#FFFFFF'}}; width: {{boardCanvasWidth}}px; height: {{boardCanvasHeight}}px;"
+            class="board-canvas-layer board-canvas-pixel"
+            style="position: absolute; left: 0; top: 0; z-index: 1; pointer-events: none; background: {{backgroundImage ? 'transparent' : '#FFFFFF'}}; width: {{canvasAreaWidth || boardCanvasWidth}}px; height: {{canvasAreaHeight || boardCanvasHeight}}px;"
+            bind:ready="onCanvasReady"
+            bind:error="onCanvasError"
+          />
+          <bead-canvas2d
+            id="drawTextCanvas2d"
+            canvas-id="drawTextCanvas"
+            width="{{canvasAreaWidth || boardCanvasWidth}}"
+            height="{{canvasAreaHeight || boardCanvasHeight}}"
+            auto-init="{{true}}"
+            class="board-canvas-layer board-canvas-text"
+            style="position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; width: {{canvasAreaWidth || boardCanvasWidth}}px; height: {{canvasAreaHeight || boardCanvasHeight}}px;"
+            bind:ready="onCanvasReady"
+            bind:error="onCanvasError"
+          />
+          <bead-canvas2d
+            id="drawGridCanvas2d"
+            canvas-id="drawGridCanvas"
+            width="{{canvasAreaWidth || boardCanvasWidth}}"
+            height="{{canvasAreaHeight || boardCanvasHeight}}"
+            auto-init="{{true}}"
+            class="board-canvas-layer board-canvas-grid"
+            style="position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; width: {{canvasAreaWidth || boardCanvasWidth}}px; height: {{canvasAreaHeight || boardCanvasHeight}}px; opacity: {{isPinching ? 0 : 1}};"
             bind:ready="onCanvasReady"
             bind:error="onCanvasError"
           />

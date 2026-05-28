@@ -15,7 +15,7 @@ Page({
     resultImageUrl: '',
     colorNumberImageUrl: '', // 色号图
     sizeMode: 'default',
-    gridSize: 64,
+    gridSize: 48,
     colorCount: 0,
     brand: 'MARD',
     mirror: false,
@@ -58,7 +58,8 @@ Page({
     const taskId = options.taskId || '';
     const aiImageUrl = decodeURIComponent(options.aiImageUrl || '');
     const sizeMode = options.sizeMode || 'default';
-    const gridSize = sizeMode === 'small' ? 36 : 64;
+    const fallbackGridSize = sizeMode === 'small' ? 32 : 48;
+    const gridSize = parseInt(options.finalGridWidth || options.finalGridHeight, 10) || fallbackGridSize;
     const brand = options.brand || 'MARD';
     const colorCount = parseInt(options.colorCount) || 0;
     const mirror = options.mirror === '1';
@@ -75,7 +76,60 @@ Page({
     });
 
     // 处理AI图片，生成效果图和色号图
+    const resultToken = options.resultToken || '';
+    if (resultToken && this.loadPreparedResult(resultToken, {
+      taskId,
+      aiImageUrl,
+      sizeMode,
+      gridSize,
+      brand,
+      colorCount,
+      mirror
+    })) {
+      return;
+    }
+
     this.processAiImage(this.toReadableImageUrl(aiImageUrl));
+  },
+
+  loadPreparedResult(resultToken, meta) {
+    const app = getApp();
+    const map = app && app.globalData ? (app.globalData.resultDataMap || {}) : {};
+    const prepared = map[resultToken];
+
+    if (!prepared || !prepared.mappedPixelData || !prepared.mappedPixelData.length) {
+      return false;
+    }
+
+    this.setData({
+      taskId: prepared.taskId || meta.taskId,
+      aiImageUrl: prepared.aiImageUrl || meta.aiImageUrl,
+      sizeMode: prepared.sizeMode || meta.sizeMode,
+      gridSize: prepared.gridSize || meta.gridSize,
+      brand: prepared.brand || meta.brand,
+      colorCount: prepared.colorCount || meta.colorCount,
+      mirror: prepared.mirror !== undefined ? prepared.mirror : meta.mirror,
+      mappedPixelData: prepared.mappedPixelData,
+      colorList: prepared.colorList || [],
+      colorPalette: prepared.colorPalette || [],
+      gridData: prepared.gridData || [],
+      totalBeads: prepared.totalBeads || 0,
+      resultImageUrl: prepared.resultImageUrl || '',
+      colorNumberImageUrl: prepared.colorNumberImageUrl || '',
+      isGenerating: false,
+      showCanvas: false
+    });
+
+    this._saveAiHistoryRecord({
+      mappedPixelData: prepared.mappedPixelData,
+      colorStats: prepared.colorList || [],
+      gridSize: prepared.gridSize || meta.gridSize,
+      brand: prepared.brand || meta.brand,
+      sourceUrl: prepared.aiImageUrl || meta.aiImageUrl
+    });
+
+    delete map[resultToken];
+    return true;
   },
 
   toReadableImageUrl(imageUrl) {
@@ -433,7 +487,7 @@ Page({
       brand: brand || this.data.brand || 'MARD',
       colorCount: Array.isArray(colorStats) ? colorStats.length : Number(this.data.colorCount || 0),
       name: name || 'AI记录#' + Date.now(),
-      gridSize: Number(gridSize || this.data.gridSize || 64),
+      gridSize: Number(gridSize || this.data.gridSize || 48),
       mappedPixelData: JSON.stringify(mappedPixelData || this.data.mappedPixelData || []),
       sourceUrl: sourceUrl || this.data.aiImageUrl || '',
       boxId: boxId || this.data.boxId || null

@@ -172,11 +172,11 @@ function drawCellGridRects(ctx, x, y, cellSize, row, col, viewScale, dpr) {
 function getCellCodeConfig(cellSize, viewScale, maxCodeLength = 2) {
   const scale = Math.max(Number(viewScale) || 1, 0.1);
   const visualCell = cellSize * scale;
-  const show = visualCell >= 20;
-  const targetVisualFontSize = 12;
+  const show = visualCell >= 6;
+  const targetVisualFontSize = visualCell < 12 ? 7 : 12;
   const maxByCell = visualCell * 0.58;
   const maxByLength = visualCell / Math.max(1.2, maxCodeLength * 0.62);
-  const visualFontSize = Math.max(8, Math.min(targetVisualFontSize, maxByCell, maxByLength));
+  const visualFontSize = Math.max(4.5, Math.min(targetVisualFontSize, maxByCell, maxByLength));
   const fontSize = Math.max(1, Math.round((visualFontSize / scale) * 4) / 4);
   return { show, fontSize, visualFontSize };
 }

@@ -67,9 +67,9 @@ function applyCanvasStyle(owner, offsetX, offsetY, scale, boardInset) {
   var layer = owner.selectComponent('#canvasLayer');
   if (!layer) return;
   layer.setStyle({
-    left: (offsetX - boardInset * scale) + 'px',
-    top: (offsetY - boardInset * scale) + 'px',
-    transform: 'scale(' + scale + ')',
+    left: '0px',
+    top: '0px',
+    transform: 'none',
     transformOrigin: '0 0'
   });
 }
@@ -93,6 +93,15 @@ function notifyPinchMove(owner) {
     backgroundOffsetX: state.finalBackgroundOffsetX,
     backgroundOffsetY: state.finalBackgroundOffsetY,
     backgroundScale: state.finalBackgroundScale
+  });
+}
+
+function notifyDragMove(owner) {
+  owner.callMethod('onWxsDragMove', {
+    canvasOffsetX: state.dragCanvasOffsetX,
+    canvasOffsetY: state.dragCanvasOffsetY,
+    backgroundOffsetX: state.dragBackgroundOffsetX,
+    backgroundOffsetY: state.dragBackgroundOffsetY
   });
 }
 
@@ -176,6 +185,7 @@ function applyDrag(event, owner) {
     state.dragBackgroundOffsetY = state.dragBaseBackgroundOffsetY + dy;
     applyCanvasStyle(owner, state.dragCanvasOffsetX, state.dragCanvasOffsetY, canvasScale, boardInset);
     applyBackgroundStyle(owner, state.dragBackgroundOffsetX, state.dragBackgroundOffsetY, backgroundScale);
+    notifyDragMove(owner);
     return true;
   }
 
@@ -183,12 +193,14 @@ function applyDrag(event, owner) {
     state.dragBackgroundOffsetX = state.dragBaseBackgroundOffsetX + dx;
     state.dragBackgroundOffsetY = state.dragBaseBackgroundOffsetY + dy;
     applyBackgroundStyle(owner, state.dragBackgroundOffsetX, state.dragBackgroundOffsetY, backgroundScale);
+    notifyDragMove(owner);
     return true;
   }
 
   state.dragCanvasOffsetX = state.dragBaseCanvasOffsetX + dx;
   state.dragCanvasOffsetY = state.dragBaseCanvasOffsetY + dy;
   applyCanvasStyle(owner, state.dragCanvasOffsetX, state.dragCanvasOffsetY, canvasScale, boardInset);
+  notifyDragMove(owner);
   return true;
 }
 

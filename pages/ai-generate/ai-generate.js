@@ -676,6 +676,12 @@ Page({
     this.setData({ isMirrored: !this.data.isMirrored });
   },
 
+  getGridRange(sizeMode) {
+    return sizeMode === 'small'
+      ? { gridMin: 24, gridMax: 40 }
+      : { gridMin: 30, gridMax: 80 };
+  },
+
   onGenerate() {
     const { uploadedImage, selectedStyle, sizeMode, brandIndex, brands, colorSetIndex, colorSets, isMirrored, magicCount } = this.data;
 
@@ -718,6 +724,7 @@ Page({
         if (match) colorCount = parseInt(match[1]);
       }
 
+      const gridRange = this.getGridRange(sizeMode);
       wx.showLoading({ title: '正在上传图片...', mask: true });
 
       this.uploadImage(uploadedImage).then(imageUrl => {
@@ -728,6 +735,8 @@ Page({
           style: selectedStyle,
           prompt: this.data.aiInstruction || '',
           sizeMode: sizeMode,
+          gridMin: gridRange.gridMin,
+          gridMax: gridRange.gridMax,
           brand: brand,
           colorCount: colorCount,
           mirror: isMirrored

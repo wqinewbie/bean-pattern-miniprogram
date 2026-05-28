@@ -1,7 +1,7 @@
 <view class="generate-page">
   <page-nav-bar title="魔法参数设置" showBack="{{true}}" bind:back="onBack" />
 
-  <scroll-view scroll-y class="generate-scroll">
+  <scroll-view scroll-y class="generate-scroll" scroll-top="{{scrollTop}}" scroll-with-animation="{{true}}">
   <!-- 重新选择图片 -->
   <view class="reselect-bar">
     <view class="btn-reselect-top" bindtap="onChooseImage">
@@ -108,11 +108,6 @@
           <text>{{mirrorOn ? '开' : '关'}}</text>
         </view>
       </view>
-    </view>
-
-    <view class="scroll-more-hint">
-      <text>上滑查看更多参数</text>
-      <text class="scroll-more-arrow">⌄</text>
     </view>
 
     <!-- 生成按钮 -->

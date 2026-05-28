@@ -5,7 +5,6 @@ const storage = require('../../utils/storage');
 const { drawBoard, drawPixel } = require('../../utils/canvas2d/renderers/boardRenderer');
 const { getScheduler } = require('../../utils/canvas2d/renderScheduler');
 const { resize2dCanvas } = require('../../utils/canvas2d/core');
-const { exportCanvasToTempFilePath } = require('../../utils/canvas2d/export');
 const HistoryManager = require('../../utils/canvas2d/HistoryManager');
 const PixelStore = require('./module/pixelStore');
 const CanvasRenderer = require('./module/canvasRenderer');
@@ -27,9 +26,6 @@ const PINCH_SCALE_DEADZONE = 0.018;
 const PINCH_PAN_DEADZONE_PX = 2;
 const PINCH_SMOOTHING = 0.28;
 const MAX_REALTIME_PHYSICAL_SIZE = 3072;
-const PINCH_MAX_RENDER_DPR = 3;
-const HIGH_MAX_RENDER_DPR = 3.5;
-const RENDER_DPR_STEPS = [1, 1.5, 2, 2.5, 3, 3.5];
 
 Page({
   data: {
@@ -137,16 +133,6 @@ Page({
 
   _canvas: null,
   _ctx: null,
-  _pixelCanvas: null,
-  _pixelCtx: null,
-  _pixelCanvasComponent: null,
-  _textCanvas: null,
-  _textCtx: null,
-  _textCanvasComponent: null,
-  _gridCanvas: null,
-  _gridCtx: null,
-  _gridCanvasComponent: null,
-  _canvasLayerReady: null,
   _dpr: 1,
   _gridData: null,
   _cellSize: 10,
@@ -233,9 +219,9 @@ Page({
   _getInitialQualityScale(gridSize = this.data.gridSize) {
     const size = Math.max(1, Number(gridSize) || 1);
     if (size <= 52) return 3;
-    if (size <= 78) return 2.75;
-    if (size <= 104) return 2.5;
-    return 1.5;
+    if (size <= 78) return 2;
+    if (size <= 104) return 1.5;
+    return 1.15;
   },
 
   _getGridOverlayMetrics(viewScale) {
@@ -426,10 +412,7 @@ Page({
     this._isDragging = false;
     this._viewportHistoryBefore = this._viewportHistoryBefore || this._createViewportMetaSnapshot();
 
-    if (this._canvasRenderer) {
-      this._canvasRenderer.setLowQualityMode(false);
-      this._canvasRenderer.setGridLayerVisible(false);
-    }
+    if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(true);
     this.setData({ isPinching: true, overlayScale: this.data.canvasScale });
 
     if (this.data.showMagnifier) {
@@ -494,10 +477,7 @@ Page({
     this._isDragging = false;
     this._viewportHistoryBefore = this._viewportHistoryBefore || this._createViewportMetaSnapshot();
 
-    if (this._canvasRenderer) {
-      this._canvasRenderer.setLowQualityMode(false);
-      this._canvasRenderer.setGridLayerVisible(false);
-    }
+    if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(true);
     if (this.data.showMagnifier) {
       this.setData({ showMagnifier: false });
     }
@@ -530,23 +510,8 @@ Page({
   },
 
   _renderRealtimePinchResolution(state = {}) {
-    if (!state || !this.data.canvasReady) return;
-    const scale = Number(state.canvasScale);
-    if (!Number.isFinite(scale) || scale <= 0) return;
-
-    this._pinchRenderState = {
-      canvasScale: scale,
-      canvasOffsetX: Number.isFinite(Number(state.canvasOffsetX)) ? Number(state.canvasOffsetX) : this.data.canvasOffsetX,
-      canvasOffsetY: Number.isFinite(Number(state.canvasOffsetY)) ? Number(state.canvasOffsetY) : this.data.canvasOffsetY
-    };
-
-    if (this._canvasRenderer) {
-      this._canvasRenderer.setLowQualityMode(false);
-      this._canvasRenderer.setGridLayerVisible(false);
-    }
-
-    this._syncCanvasResolution(false, { mode: 'pinch', scale });
-    this._drawFullGrid({ skipResolutionSync: true });
+    // 固定高清预算模式：双指缩放期间只让 WXS/CSS transform 改视觉尺寸，
+    // 不再按实时 scale 重分配 canvas backing store，避免内存抖动。
   },
 
   onWxsPinchEnd(state = {}) {
@@ -600,14 +565,7 @@ Page({
     }
 
     this.setData(updates, () => {
-      this._pinchRenderState = null;
-      if (this._canvasRenderer) {
-        this._canvasRenderer.setLowQualityMode(false);
-        this._canvasRenderer.setGridLayerVisible(true);
-        this._canvasRenderer.clearCaches();
-      }
-      this._syncCanvasResolution(true, { mode: 'high', scale: nextScale });
-      this._drawFullGrid({ skipResolutionSync: true });
+      if (this._canvasRenderer) this._canvasRenderer.setLowQualityMode(false);
       this._updateAxisLabels();
       this._updateCanvasAreaRect();
       this._updateCanvasRect();
@@ -626,36 +584,6 @@ Page({
     if (this._renderScheduler) {
       this._renderScheduler.startGesture();
     }
-  },
-
-  onWxsDragMove(state = {}) {
-    this._lastCanvasTouchEventAt = Date.now();
-    const toFinite = (value, fallback) => {
-      const n = Number(value);
-      return Number.isFinite(n) ? n : fallback;
-    };
-
-    this._pinchRenderState = {
-      canvasScale: this.data.canvasScale
-    };
-
-    const updates = {};
-    if (this.data.locked && this.data.backgroundImage) {
-      updates.canvasOffsetX = toFinite(state.canvasOffsetX, this.data.canvasOffsetX);
-      updates.canvasOffsetY = toFinite(state.canvasOffsetY, this.data.canvasOffsetY);
-      updates.backgroundOffsetX = toFinite(state.backgroundOffsetX, this.data.backgroundOffsetX);
-      updates.backgroundOffsetY = toFinite(state.backgroundOffsetY, this.data.backgroundOffsetY);
-    } else if (this._getActiveTransformTarget() === 'background') {
-      updates.backgroundOffsetX = toFinite(state.backgroundOffsetX, this.data.backgroundOffsetX);
-      updates.backgroundOffsetY = toFinite(state.backgroundOffsetY, this.data.backgroundOffsetY);
-    } else {
-      updates.canvasOffsetX = toFinite(state.canvasOffsetX, this.data.canvasOffsetX);
-      updates.canvasOffsetY = toFinite(state.canvasOffsetY, this.data.canvasOffsetY);
-    }
-
-    this.setData(updates, () => {
-      this._drawFullGrid({ skipResolutionSync: true });
-    });
   },
 
   onWxsDragEnd(state = {}) {
@@ -683,10 +611,8 @@ Page({
     }
 
     this.setData(updates, () => {
-      this._pinchRenderState = null;
       this._updateCanvasAreaRect();
       this._updateCanvasRect();
-      this._drawFullGrid();
       this._pushViewportHistory(this._viewportHistoryBefore, 'viewport');
       this._viewportHistoryBefore = null;
       this._scheduleLocalRecoveryDraft();
@@ -694,41 +620,26 @@ Page({
   },
 
   _getTargetRenderDpr(scale, mode) {
-    const activeScale = Math.max(0.1, Number(scale == null ? this.data.canvasScale : scale) || 1);
-    const qualityMode = mode || 'high';
-    if (this._layoutRenderDpr && activeScale <= 1.001 && qualityMode !== 'pinch') {
+    if (this._layoutRenderDpr) {
       return Math.max(1, Number(this._layoutRenderDpr) || 1);
     }
 
-    const baseWidth = Math.max(1, Number(this.data.canvasAreaWidth || this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
-    const baseHeight = Math.max(1, Number(this.data.canvasAreaHeight || this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
+    const baseWidth = Math.max(1, Number(this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
+    const baseHeight = Math.max(1, Number(this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
     const systemDpr = Math.max(1, this._dpr || this._getSystemPixelRatio());
     const maxDprByWidth = MAX_REALTIME_PHYSICAL_SIZE / baseWidth;
     const maxDprByHeight = MAX_REALTIME_PHYSICAL_SIZE / baseHeight;
-    const scaleBoost = Math.sqrt(activeScale);
-    const rawTargetDpr = systemDpr * this._getInitialQualityScale() * scaleBoost;
-    const modeCap = qualityMode === 'pinch' ? PINCH_MAX_RENDER_DPR : HIGH_MAX_RENDER_DPR;
-    const cappedTargetDpr = Math.min(rawTargetDpr, modeCap, maxDprByWidth, maxDprByHeight);
-    const targetDpr = this._snapRenderDpr(cappedTargetDpr, qualityMode);
+    const targetDpr = Math.min(systemDpr * this._getInitialQualityScale(), maxDprByWidth, maxDprByHeight);
 
     return Math.max(1, targetDpr);
-  },
-
-  _snapRenderDpr(dpr, mode = 'high') {
-    const value = Math.max(1, Number(dpr) || 1);
-    if (mode !== 'pinch') return value;
-    for (let i = 0; i < RENDER_DPR_STEPS.length; i++) {
-      if (value <= RENDER_DPR_STEPS[i]) return RENDER_DPR_STEPS[i];
-    }
-    return RENDER_DPR_STEPS[RENDER_DPR_STEPS.length - 1];
   },
 
   _syncCanvasResolution(force = false, options = {}) {
     if (!this._canvas || !this._ctx) return false;
 
-    const width = Math.max(1, Number(this.data.canvasAreaWidth || this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
-    const height = Math.max(1, Number(this.data.canvasAreaHeight || this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
-    const targetDpr = this._getTargetRenderDpr(options.scale, options.mode);
+    const width = Math.max(1, Number(this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
+    const height = Math.max(1, Number(this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
+    const targetDpr = this._getTargetRenderDpr();
     const resolutionKey = [width, height, targetDpr.toFixed(3)].join(':');
 
     if (!force && this._renderResolutionKey === resolutionKey) {
@@ -736,36 +647,17 @@ Page({
       return false;
     }
 
-    this._resizeCanvasLayers(width, height, targetDpr);
+    resize2dCanvas({
+      canvas: this._canvas,
+      ctx: this._ctx,
+      width,
+      height,
+      dpr: targetDpr
+    });
 
     this._renderDpr = targetDpr;
     this._renderResolutionKey = resolutionKey;
     return true;
-  },
-
-  _resizeCanvasLayers(width, height, dpr) {
-    const layers = [
-      { canvas: this._pixelCanvas || this._canvas, ctx: this._pixelCtx || this._ctx, component: this._pixelCanvasComponent || this.data.canvas2dComponent },
-      { canvas: this._textCanvas, ctx: this._textCtx, component: this._textCanvasComponent },
-      { canvas: this._gridCanvas, ctx: this._gridCtx, component: this._gridCanvasComponent }
-    ];
-
-    const seen = new Set();
-    layers.forEach((layer) => {
-      if (!layer.canvas || !layer.ctx || seen.has(layer.canvas)) return;
-      seen.add(layer.canvas);
-      if (layer.component && typeof layer.component.resizeWithDpr === 'function') {
-        layer.component.resizeWithDpr(width, height, dpr);
-        return;
-      }
-      resize2dCanvas({
-        canvas: layer.canvas,
-        ctx: layer.ctx,
-        width,
-        height,
-        dpr
-      });
-    });
   },
 
   _clampGridSize(size) {
@@ -840,8 +732,8 @@ Page({
         indicesPacked: this._packPixelIndices(pixelSnapshot.indices)
       } : null,
       gridSize: this.data.gridSize,
-      canvasOffsetX: pinchRenderState.canvasOffsetX == null ? this.data.canvasOffsetX : pinchRenderState.canvasOffsetX,
-      canvasOffsetY: pinchRenderState.canvasOffsetY == null ? this.data.canvasOffsetY : pinchRenderState.canvasOffsetY,
+      canvasOffsetX: this.data.canvasOffsetX,
+      canvasOffsetY: this.data.canvasOffsetY,
       canvasScale: this.data.canvasScale,
       backgroundOffsetX: this.data.backgroundOffsetX,
       backgroundOffsetY: this.data.backgroundOffsetY,
@@ -1078,15 +970,9 @@ Page({
       boardCanvasWidth: this.data.boardCanvasWidth || this.data.canvasWidth,
       boardCanvasHeight: this.data.boardCanvasHeight || this.data.canvasHeight,
       boardInset: this.data.boardInset || 0,
-      surfaceWidth: this.data.canvasAreaWidth || this.data.boardCanvasWidth || this.data.canvasWidth,
-      surfaceHeight: this.data.canvasAreaHeight || this.data.boardCanvasHeight || this.data.canvasHeight,
       gridSize: this.data.gridSize,
-      showGrid: !this._isPinching,
+      showGrid: true,
       renderCodes: true,
-      viewportMode: true,
-      isPinching: this._isPinching,
-      canvasOffsetX: pinchRenderState.canvasOffsetX == null ? this.data.canvasOffsetX : pinchRenderState.canvasOffsetX,
-      canvasOffsetY: pinchRenderState.canvasOffsetY == null ? this.data.canvasOffsetY : pinchRenderState.canvasOffsetY,
       canvasScale: pinchRenderState.canvasScale == null ? this.data.canvasScale : pinchRenderState.canvasScale,
       backgroundImage: this.data.backgroundImage,
       dpr: this._dpr,
@@ -1475,17 +1361,9 @@ Page({
   },
 
   onCanvasReady(e) {
-    const canvasId = e && e.detail && e.detail.canvasId ? e.detail.canvasId : 'drawPixelCanvas';
-    const componentIdMap = {
-      drawPixelCanvas: '#drawPixelCanvas2d',
-      drawTextCanvas: '#drawTextCanvas2d',
-      drawGridCanvas: '#drawGridCanvas2d',
-      drawCanvas: '#drawPixelCanvas2d'
-    };
-    const componentSelector = componentIdMap[canvasId] || '#drawPixelCanvas2d';
-    const canvas2dComponent = this.selectComponent(componentSelector);
+    const canvas2dComponent = this.selectComponent('#drawCanvas2d');
     if (!canvas2dComponent) {
-      console.error('Canvas 组件未找到', canvasId);
+      console.error('Canvas 组件未找到');
       return;
     }
     const context = canvas2dComponent.getContext();
@@ -1493,35 +1371,15 @@ Page({
       console.error('Canvas context 未就绪');
       return;
     }
-    if (!this._canvasLayerReady) this._canvasLayerReady = {};
-    this._canvasLayerReady[canvasId] = true;
+    this._canvas = context.canvas;
+    this._ctx = context.ctx;
     this._dpr = context.dpr;
-
-    if (canvasId === 'drawTextCanvas') {
-      this._textCanvas = context.canvas;
-      this._textCtx = context.ctx;
-      this._textCanvasComponent = canvas2dComponent;
-    } else if (canvasId === 'drawGridCanvas') {
-      this._gridCanvas = context.canvas;
-      this._gridCtx = context.ctx;
-      this._gridCanvasComponent = canvas2dComponent;
-    } else {
-      this._pixelCanvas = context.canvas;
-      this._pixelCtx = context.ctx;
-      this._pixelCanvasComponent = canvas2dComponent;
-      this._canvas = context.canvas;
-      this._ctx = context.ctx;
-      this.setData({ canvas2dComponent: canvas2dComponent });
-    }
-
-    const allReady = !!(this._pixelCtx && this._textCtx && this._gridCtx);
-    if (!allReady) return;
 
     if (this._magnifierModule) {
       this._magnifierModule.init(this._canvas, this._ctx);
     }
     
-    this.setData({ canvasReady: true });
+    this.setData({ canvasReady: true, canvas2dComponent: canvas2dComponent });
     this._updateCanvasRect();
     this._syncCanvasResolution(false, { mode: 'high' });
     
@@ -1911,15 +1769,7 @@ Page({
     }
 
     if (this._canvasRenderer) {
-      if (this._textCtx && this._gridCtx) {
-        this._canvasRenderer.renderLayered({
-          pixelCtx: this._pixelCtx || this._ctx,
-          textCtx: this._textCtx,
-          gridCtx: this._gridCtx
-        }, this._gridData);
-      } else {
-        this._canvasRenderer.renderFull(this._ctx);
-      }
+      this._canvasRenderer.renderFull(this._ctx);
       return;
     }
 
@@ -1947,15 +1797,7 @@ Page({
 
     if (this._canvasRenderer) {
       this._canvasRenderer.markDirtyBatch(changedCells);
-      if (this._textCtx && this._gridCtx) {
-        this._canvasRenderer.renderLayered({
-          pixelCtx: this._pixelCtx || this._ctx,
-          textCtx: this._textCtx,
-          gridCtx: this._gridCtx
-        }, this._gridData);
-      } else {
-        this._canvasRenderer.renderDirty(this._ctx);
-      }
+      this._canvasRenderer.renderDirty(this._ctx);
       return;
     }
 
@@ -4119,7 +3961,9 @@ Page({
     }
     this.setData({ loading: true, loadingText: '生成中...' });
     try {
-      const tempFilePath = await this._exportFullBoardTempFilePath();
+      const canvas2dComponent = this.data.canvas2dComponent;
+      if (!canvas2dComponent) throw new Error('Canvas组件未就绪');
+      const tempFilePath = await canvas2dComponent.exportTempFilePath({ fileType: 'png', quality: 1 });
       this.setData({ loading: false });
       wx.previewImage({ urls: [tempFilePath], current: tempFilePath });
     } catch (err) {
@@ -4127,70 +3971,6 @@ Page({
       this.setData({ loading: false });
       wx.showToast({ title: '导出失败', icon: 'none' });
     }
-  },
-
-  _getExportDpr() {
-    const baseWidth = Math.max(1, Number(this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
-    const baseHeight = Math.max(1, Number(this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
-    const systemDpr = Math.max(1, this._dpr || this._getSystemPixelRatio());
-    const maxExportSide = 4096;
-    return Math.max(1, Math.min(systemDpr * this._getInitialQualityScale(), maxExportSide / baseWidth, maxExportSide / baseHeight));
-  },
-
-  _exportFullBoardTempFilePath() {
-    return new Promise((resolve, reject) => {
-      wx.createSelectorQuery()
-        .select('#tempCanvas2d')
-        .node()
-        .exec((res) => {
-          try {
-            if (!res || !res[0] || !res[0].node) {
-              reject(new Error('导出画布未就绪'));
-              return;
-            }
-
-            this._ensurePixelStoreFromGrid();
-            const canvas = res[0].node;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              reject(new Error('导出画布上下文不可用'));
-              return;
-            }
-
-            const width = Math.max(1, Number(this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
-            const height = Math.max(1, Number(this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
-            const dpr = this._getExportDpr();
-            resize2dCanvas({ canvas, ctx, width, height, dpr });
-            ctx.clearRect(0, 0, width, height);
-
-            drawBoard(ctx, {
-              width: this.data.canvasWidth,
-              height: this.data.canvasHeight,
-              gridSize: this.data.gridSize,
-              gridData: this._gridData,
-              showGrid: true,
-              dpr,
-              hasBackground: !!this.data.backgroundImage,
-              viewScale: dpr,
-              colorCodeMap: this._getOverlayColorCodeMap(),
-              getCellColor: (row, col) => this._getPixelColor(row, col),
-              boardInset: this.data.boardInset || 0
-            });
-
-            exportCanvasToTempFilePath(canvas, {
-              width: canvas.width,
-              height: canvas.height,
-              sourceWidth: canvas.width,
-              sourceHeight: canvas.height,
-              fileType: 'png',
-              quality: 1,
-              timeout: 15000
-            }).then(resolve).catch(reject);
-          } catch (err) {
-            reject(err);
-          }
-        });
-    });
   },
 
   _updateUsedColors() {

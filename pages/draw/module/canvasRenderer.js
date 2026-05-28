@@ -24,6 +24,7 @@ class CanvasRenderer {
     this._pixelCache = null;
     this._pixelCacheKey = '';
     this._pixelLayerDirty = true;
+    this._renderGridLayer = true;
   }
 
   markDirty(row, col) {
@@ -51,6 +52,10 @@ class CanvasRenderer {
     if (this._isLowQualityMode) {
       this.clearCaches();
     }
+  }
+
+  setGridLayerVisible(visible) {
+    this._renderGridLayer = visible !== false;
   }
 
   clearCaches() {
@@ -121,7 +126,7 @@ class CanvasRenderer {
     if (!width || !gridSize) return false;
     const cellSize = width / gridSize;
     const visualCell = cellSize * Math.max(Number(state.canvasScale) || 1, 1);
-    return visualCell >= 20;
+    return visualCell >= 6;
   }
 
   _getGridCache(ctx, state) {
@@ -419,6 +424,266 @@ class CanvasRenderer {
       }
     }
 
+    this._dirtyCells.clear();
+  }
+
+  renderLayered(layers = {}, gridData = null) {
+    const state = this._getState() || {};
+    if (state.viewportMode) {
+      this._renderViewportLayered(layers, gridData, state);
+      return;
+    }
+
+    const pixelCtx = layers.pixelCtx || null;
+    const textCtx = layers.textCtx || null;
+    const gridCtx = layers.gridCtx || null;
+    const boardWidth = state.boardCanvasWidth || state.canvasWidth;
+    const boardHeight = state.boardCanvasHeight || state.canvasHeight;
+
+    if (pixelCtx) {
+      if (this._isLowQualityMode) {
+        this._renderLowQuality(pixelCtx, gridData, state);
+      } else {
+        const pixelCache = this._getPixelCache(state);
+        pixelCtx.clearRect(0, 0, boardWidth, boardHeight);
+        if (pixelCache) {
+          this._drawCacheImage(pixelCtx, pixelCache, state);
+        } else {
+          drawBoard(pixelCtx, {
+            width: state.canvasWidth,
+            height: state.canvasHeight,
+            gridSize: state.gridSize,
+            gridData,
+            showGrid: false,
+            dpr: state.renderDpr || state.dpr || 1,
+            hasBackground: !!state.backgroundImage,
+            viewScale: state.canvasScale || 1,
+            colorCodeMap: this._getColorCodeMap(),
+            getCellColor: this._getPixelColor,
+            skipGridLayer: true,
+            skipCodeLayer: true,
+            boardInset: state.boardInset || 0
+          });
+        }
+      }
+    }
+
+    if (textCtx) {
+      textCtx.clearRect(0, 0, boardWidth, boardHeight);
+      if (this._shouldRenderCodeLayer(state)) {
+        const codeCache = this._getCodeCache(textCtx, state);
+        if (codeCache) {
+          this._drawCacheImage(textCtx, codeCache, state, false);
+        } else {
+          const boardInset = Number(state.boardInset) || 0;
+          textCtx.save();
+          textCtx.translate(boardInset, boardInset);
+          drawCodeLayer(textCtx, {
+            width: state.canvasWidth,
+            gridSize: state.gridSize,
+            viewScale: state.canvasScale || 1,
+            colorCodeMap: this._getColorCodeMap(),
+            getCellColor: (row, col) => this._getCellColor(row, col, state.gridSize)
+          });
+          textCtx.restore();
+        }
+      }
+    }
+
+    if (gridCtx) {
+      gridCtx.clearRect(0, 0, boardWidth, boardHeight);
+      if (state.showGrid && this._renderGridLayer) {
+        const gridCache = this._getGridCache(gridCtx, state);
+        if (gridCache) {
+          this._drawCacheImage(gridCtx, gridCache, state, false);
+        } else {
+          const cellSize = state.gridSize ? state.canvasWidth / state.gridSize : 0;
+          if (cellSize) {
+            const boardInset = Number(state.boardInset) || 0;
+            gridCtx.save();
+            gridCtx.translate(boardInset, boardInset);
+            drawGridLineRects(gridCtx, state.canvasWidth, state.canvasHeight, state.gridSize, cellSize, state.canvasScale || 1, state.renderDpr || state.dpr || 1);
+            gridCtx.restore();
+          }
+        }
+      }
+    }
+
+    this._dirtyCells.clear();
+  }
+
+  _withViewportTransform(ctx, state, draw) {
+    if (!ctx || typeof draw !== 'function') return;
+    const scale = Math.max(Number(state.canvasScale) || 1, 0.0001);
+    const boardInset = Number(state.boardInset) || 0;
+    const offsetX = Number(state.canvasOffsetX) || 0;
+    const offsetY = Number(state.canvasOffsetY) || 0;
+    ctx.save();
+    ctx.translate(offsetX - boardInset * scale, offsetY - boardInset * scale);
+    ctx.scale(scale, scale);
+    draw();
+    ctx.restore();
+  }
+
+  _getSurfaceSize(state) {
+    return {
+      width: Math.max(1, Number(state.surfaceWidth || state.boardCanvasWidth || state.canvasWidth) || 1),
+      height: Math.max(1, Number(state.surfaceHeight || state.boardCanvasHeight || state.canvasHeight) || 1)
+    };
+  }
+
+  _getVisibleCellRange(state) {
+    const gridSize = Math.max(1, Number(state.gridSize) || 1);
+    const canvasWidth = Math.max(1, Number(state.canvasWidth) || 1);
+    const cellSize = canvasWidth / gridSize;
+    const scale = Math.max(Number(state.canvasScale) || 1, 0.0001);
+    const boardInset = Number(state.boardInset) || 0;
+    const offsetX = Number(state.canvasOffsetX) || 0;
+    const offsetY = Number(state.canvasOffsetY) || 0;
+    const surface = this._getSurfaceSize(state);
+    const layerLeft = offsetX - boardInset * scale;
+    const layerTop = offsetY - boardInset * scale;
+    const bufferPx = state.isPinching ? Math.max(surface.width, surface.height) * 0.5 : cellSize * scale * 4;
+    const contentLeft = (0 - layerLeft - bufferPx) / scale - boardInset;
+    const contentTop = (0 - layerTop - bufferPx) / scale - boardInset;
+    const contentRight = (surface.width - layerLeft + bufferPx) / scale - boardInset;
+    const contentBottom = (surface.height - layerTop + bufferPx) / scale - boardInset;
+
+    return {
+      startCol: Math.max(0, Math.floor(contentLeft / cellSize)),
+      endCol: Math.min(gridSize - 1, Math.ceil(contentRight / cellSize)),
+      startRow: Math.max(0, Math.floor(contentTop / cellSize)),
+      endRow: Math.min(gridSize - 1, Math.ceil(contentBottom / cellSize))
+    };
+  }
+
+  _drawViewportCodeLayer(ctx, state) {
+    const width = Number(state.canvasWidth) || 0;
+    const gridSize = Number(state.gridSize) || 0;
+    const colorCodeMap = this._getColorCodeMap();
+    if (!ctx || !width || !gridSize || !colorCodeMap) return;
+
+    const cellSize = width / gridSize;
+    const viewScale = Number(state.canvasScale) || 1;
+    const codes = Object.keys(colorCodeMap).map((key) => String(colorCodeMap[key] || ''));
+    const maxCodeLength = codes.reduce((max, code) => Math.max(max, code.length), 1);
+    const range = this._getVisibleCellRange(state);
+    const codeCfg = this._getViewportCodeConfig(cellSize, viewScale, maxCodeLength);
+    if (!codeCfg.show) return;
+
+    for (let row = range.startRow; row <= range.endRow; row++) {
+      for (let col = range.startCol; col <= range.endCol; col++) {
+        const color = this._getCellColor(row, col, gridSize);
+        if (!color || color === '#FFFFFF') continue;
+        const code = colorCodeMap[String(color).toUpperCase()];
+        if (!code) continue;
+        ctx.fillStyle = this._getCodeTextColor(color);
+        ctx.font = `600 ${codeCfg.fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(code, col * cellSize + cellSize / 2, row * cellSize + cellSize / 2);
+      }
+    }
+  }
+
+  _getViewportCodeConfig(cellSize, viewScale, maxCodeLength) {
+    const scale = Math.max(Number(viewScale) || 1, 0.1);
+    const visualCell = cellSize * scale;
+    const show = visualCell >= 6;
+    const targetVisualFontSize = visualCell < 12 ? 7 : 12;
+    const maxByCell = visualCell * 0.58;
+    const maxByLength = visualCell / Math.max(1.2, maxCodeLength * 0.62);
+    const visualFontSize = Math.max(4.5, Math.min(targetVisualFontSize, maxByCell, maxByLength));
+    const fontSize = Math.max(1, Math.round((visualFontSize / scale) * 4) / 4);
+    return { show, fontSize };
+  }
+
+  _getCodeTextColor(hexColor) {
+    if (!hexColor || typeof hexColor !== 'string' || hexColor.length < 7) return '#222222';
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.62 ? '#222222' : '#FFFFFF';
+  }
+
+  _renderViewportPixelLayer(ctx, gridData, state) {
+    if (!ctx) return;
+    const surface = this._getSurfaceSize(state);
+    const width = Number(state.canvasWidth) || 0;
+    const height = Number(state.canvasHeight) || 0;
+    const gridSize = Number(state.gridSize) || 0;
+    const boardInset = Number(state.boardInset) || 0;
+    if (!width || !height || !gridSize) return;
+
+    ctx.clearRect(0, 0, surface.width, surface.height);
+    this._withViewportTransform(ctx, state, () => {
+      drawCoordinateFrame(ctx, {
+        width,
+        height,
+        gridSize,
+        inset: boardInset,
+        viewScale: state.canvasScale || 1,
+        dpr: state.renderDpr || state.dpr || 1,
+        showLabels: true
+      });
+      if (!state.backgroundImage) {
+        drawCheckerboard(ctx, width, height, gridSize, boardInset, boardInset);
+      }
+
+      const cellSize = width / gridSize;
+      const range = this._getVisibleCellRange(state);
+      for (let row = range.startRow; row <= range.endRow; row++) {
+        for (let col = range.startCol; col <= range.endCol; col++) {
+          const color = this._getCellColor(row, col, gridSize);
+          if (color === null || color === undefined || (state.backgroundImage && color === '#FFFFFF')) continue;
+          ctx.fillStyle = color;
+          ctx.fillRect(boardInset + col * cellSize, boardInset + row * cellSize, cellSize, cellSize);
+        }
+      }
+    });
+  }
+
+  _renderViewportTextLayer(ctx, state) {
+    if (!ctx) return;
+    const surface = this._getSurfaceSize(state);
+    const width = Number(state.canvasWidth) || 0;
+    const gridSize = Number(state.gridSize) || 0;
+    const boardInset = Number(state.boardInset) || 0;
+    ctx.clearRect(0, 0, surface.width, surface.height);
+    if (!width || !gridSize || !this._shouldRenderCodeLayer(state)) return;
+
+    this._withViewportTransform(ctx, state, () => {
+      ctx.save();
+      ctx.translate(boardInset, boardInset);
+      this._drawViewportCodeLayer(ctx, state);
+      ctx.restore();
+    });
+  }
+
+  _renderViewportGridLayer(ctx, state) {
+    if (!ctx) return;
+    const surface = this._getSurfaceSize(state);
+    const width = Number(state.canvasWidth) || 0;
+    const height = Number(state.canvasHeight) || 0;
+    const gridSize = Number(state.gridSize) || 0;
+    const boardInset = Number(state.boardInset) || 0;
+    ctx.clearRect(0, 0, surface.width, surface.height);
+    if (!state.showGrid || !this._renderGridLayer || !width || !height || !gridSize) return;
+
+    this._withViewportTransform(ctx, state, () => {
+      const cellSize = width / gridSize;
+      ctx.save();
+      ctx.translate(boardInset, boardInset);
+      drawGridLineRects(ctx, width, height, gridSize, cellSize, state.canvasScale || 1, state.renderDpr || state.dpr || 1);
+      ctx.restore();
+    });
+  }
+
+  _renderViewportLayered(layers, gridData, state) {
+    this._renderViewportPixelLayer(layers.pixelCtx || null, gridData, state);
+    this._renderViewportTextLayer(layers.textCtx || null, state);
+    this._renderViewportGridLayer(layers.gridCtx || null, state);
     this._dirtyCells.clear();
   }
 

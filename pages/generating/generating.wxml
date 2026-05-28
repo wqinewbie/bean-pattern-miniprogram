@@ -25,7 +25,7 @@
 
     <view class="status-badge">
       <view class="spinner-small"></view>
-      <text class="status-text">正在注入魔法能量</text>
+      <text class="status-text">{{statusText}}</text>
     </view>
 
     <text class="sub">AI正在为您精心绘制像素图纸\n请耐心等待，见证奇迹时刻✨</text>
@@ -58,5 +58,9 @@
       </view>
     </view>
   </view>
-
+  <view wx:if="{{showCanvas}}" style="position: fixed; left: -10000px; top: -10000px; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;">
+    <bead-canvas2d id="sampleCanvas2dComp" canvasId="generatingSampleCanvas2d" width="512" height="512" />
+    <bead-canvas2d id="resultCanvas2dComp" canvasId="generatingResultCanvas2d" width="1024" height="1024" />
+    <bead-canvas2d id="patternCanvas2dComp" canvasId="generatingPatternCanvas2d" width="2048" height="2048" />
+  </view>
 </view>
