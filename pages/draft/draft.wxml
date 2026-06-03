@@ -32,7 +32,7 @@
     <!-- 缩略图模式 -->
     <view wx:elif="{{viewMode === 'thumb'}}" class="patterns-grid">
       <view wx:for="{{filteredDrafts}}" wx:key="id" class="pattern-card">
-        <view class="pattern-thumb" bindtap="onItemTap" data-item="{{item}}">
+        <view class="pattern-thumb" bindtap="onItemTap" data-id="{{item.id}}">
           <image wx:if="{{item.sourceUrl}}" class="thumb-img" src="{{item.sourceUrl}}" mode="aspectFill" />
           <canvas wx:elif="{{item.hasCanvas}}" id="draftCanvas{{item.id}}" class="thumb-canvas" type="2d"/>
           <view wx:else class="thumb-ph">{{item.gridSize || 16}}x{{item.gridSize || 16}}</view>
@@ -41,7 +41,7 @@
           <view class="pattern-name-row">
             <text class="pattern-name">{{item.name || '未命名草稿'}}</text>
             <view class="pattern-name-actions">
-              <view class="icon-btn icon-btn--rename" catchtap="onRename" data-item="{{item}}">
+              <view class="icon-btn icon-btn--rename" catchtap="onRename" data-id="{{item.id}}">
                 <text class="icon-btn-emoji">✏️</text>
               </view>
               <view class="icon-btn icon-btn--delete" catchtap="onDeleteDraft" data-id="{{item.id}}">
@@ -58,7 +58,7 @@
       <view wx:for="{{filteredDrafts}}" wx:key="id" class="list-item-wrapper">
         <!-- 操作按钮背景层 -->
         <view class="list-actions-bg">
-          <view class="list-action-bg list-action-bg--rename" catchtap="onRename" data-item="{{item}}">
+          <view class="list-action-bg list-action-bg--rename" catchtap="onRename" data-id="{{item.id}}">
             <text>重命名</text>
           </view>
           <view class="list-action-bg list-action-bg--delete" catchtap="onDeleteDraft" data-id="{{item.id}}">
@@ -72,7 +72,7 @@
               bindtouchmove="onTouchMove"
               bindtouchend="onTouchEnd"
               data-id="{{item.id}}">
-          <view class="list-item-main" bindtap="onItemTap" data-item="{{item}}">
+          <view class="list-item-main" bindtap="onItemTap" data-id="{{item.id}}">
             <image wx:if="{{item.sourceUrl}}" class="list-thumb" src="{{item.sourceUrl}}" mode="aspectFill" />
             <canvas wx:elif="{{item.hasCanvas}}" id="draftListCanvas{{item.id}}" class="list-thumb" type="2d"/>
             <view wx:else class="list-thumb list-thumb--ph">{{item.gridSize || 16}}</view>

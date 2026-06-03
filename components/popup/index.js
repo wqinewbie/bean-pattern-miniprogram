@@ -1,6 +1,17 @@
 const storage = require('../../utils/storage');
 
 function getPopupVersionKey(popupKey, config) {
+  const version = config ? [
+    config.title || '',
+    config.content || '',
+    config.imageUrl || config.image_url || '',
+    config.buttonText || config.button_text || '',
+    config.buttonUrl || config.button_url || ''
+  ].join('|') : '';
+  return popupKey + ':' + version;
+}
+
+function getLegacyPopupVersionKey(popupKey, config) {
   const version = (config && (config.updatedAt || config.updated_at || config.content || config.title)) || '';
   return popupKey + ':' + version;
 }
@@ -20,7 +31,8 @@ Component({
     show(popupKey, config) {
       const hidden = storage.getJSON(storage.KEYS.POPUP_HIDDEN, {});
       const versionKey = getPopupVersionKey(popupKey, config || {});
-      if (hidden[versionKey]) return;
+      const legacyKey = getLegacyPopupVersionKey(popupKey, config || {});
+      if (hidden[versionKey] || hidden[legacyKey]) return;
 
       this.setData({
         visible: true,

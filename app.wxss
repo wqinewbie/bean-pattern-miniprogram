@@ -51,3 +51,6 @@ page {
   color: #666;
   font-weight: 500;
 }
+
+/* ========== AppSelect Dropdown 全局覆盖 ========== */
+/* 选项面板 */

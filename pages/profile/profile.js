@@ -82,8 +82,11 @@ Page({
 
     // 防重复点击
     processing: false,
+    taskActionProcessingCode: '',
     pendingShareTaskCode: '',
   },
+  _taskRefreshSeq: 0,
+  _navigatingFromPanel: false,
 
   syncTabBar() {
     const tabBar = this.getTabBar && this.getTabBar();
@@ -96,8 +99,36 @@ Page({
   updateTabBarVisibility() {
     const tabBar = this.getTabBar && this.getTabBar();
     if (tabBar && typeof tabBar.setHidden === 'function') {
-      tabBar.setHidden(!!(this.data.showMagicPanel || this.data.showGiftPanel || this.data.showTaskPanel || this.data.showSettingsPanel));
+      tabBar.setHidden(this.shouldHideTabBar());
     }
+  },
+
+  shouldHideTabBar() {
+    return !!(this._navigatingFromPanel || this.data.showMagicPanel || this.data.showGiftPanel || this.data.showTaskPanel || this.data.showSettingsPanel);
+  },
+
+  setTabBarHidden(hidden) {
+    const tabBar = this.getTabBar && this.getTabBar();
+    if (tabBar && typeof tabBar.setHidden === 'function') {
+      tabBar.setHidden(!!hidden);
+    }
+  },
+
+  numberPatch(nextValues) {
+    const patch = {};
+    Object.keys(nextValues || {}).forEach((key) => {
+      const value = Number(nextValues[key] || 0);
+      if (Number(this.data[key] || 0) !== value) {
+        patch[key] = value;
+      }
+    });
+    return patch;
+  },
+
+  persistGiftCount(gifts) {
+    const availableGiftCount = this.calcAvailableGiftCount(gifts || []);
+    storage.set(storage.KEYS.AVAILABLE_GIFT_COUNT, availableGiftCount);
+    return availableGiftCount;
   },
 
   onLoad() {
@@ -124,19 +155,20 @@ Page({
   },
 
   onShow() {
+    this._navigatingFromPanel = false;
     this.syncTabBar();
     this.calcSafeAreas();
     this.loadProfile();
     this.syncWatermarkConfigFromServer();
     this.loadLocalData();
     this.loadNotifications();
-    this.setData({ processing: false });
+    this.setData({ processing: false, taskActionProcessingCode: '' });
   },
 
   onHide() {
     const tabBar = this.getTabBar && this.getTabBar();
     if (tabBar && typeof tabBar.setHidden === 'function') {
-      tabBar.setHidden(!!(this.data.showMagicPanel || this.data.showGiftPanel || this.data.showTaskPanel || this.data.showSettingsPanel));
+      tabBar.setHidden(this.shouldHideTabBar());
     }
   },
 
@@ -151,6 +183,8 @@ Page({
     // 加载本地存储的数据
     const checkedIn = storage.get(storage.KEYS.CHECKED_IN, false);
     const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
+    const cachedMagicCount = Number(storage.get(storage.KEYS.MAGIC_COUNT, this.data.magicCount || 0) || 0);
+    const cachedAvailableGiftCount = Number(storage.get(storage.KEYS.AVAILABLE_GIFT_COUNT, this.data.availableGiftCount || 0) || 0);
     const gifts = sessionId
       ? (this.data.gifts || [])
       : (storage.getJSON(storage.KEYS.GIFTS, null) || this.getDefaultGifts());
@@ -160,9 +194,12 @@ Page({
     
     this.setData({
       checkedIn,
+      ...this.numberPatch({
+        magicCount: sessionId ? cachedMagicCount : 0,
+        availableGiftCount: sessionId ? cachedAvailableGiftCount : this.calcAvailableGiftCount(gifts),
+      }),
       ...(sessionId ? {} : {
         gifts,
-        availableGiftCount: this.calcAvailableGiftCount(gifts),
       }),
       watermarkText,
       draftCount,
@@ -211,6 +248,16 @@ Page({
   loadTasksFromServer() {
     const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (!sessionId) return Promise.resolve([]);
+    const refreshSeq = ++this._taskRefreshSeq;
+    const applyTasks = (tasks) => {
+      if (refreshSeq === this._taskRefreshSeq) {
+        this.setData({
+          tasks,
+          pendingTaskCount: this.calcPendingTaskCountFromServer(tasks)
+        });
+      }
+      return tasks;
+    };
 
     return request.get('/task/list')
       .then((taskListData) => {
@@ -221,11 +268,7 @@ Page({
           const tasks = this.filterVisibleTasks(
             taskConfigs.map((task) => this.normalizeTaskCenterItem(task))
           );
-          this.setData({
-            tasks,
-            pendingTaskCount: this.calcPendingTaskCountFromServer(tasks)
-          });
-          return tasks;
+          return applyTasks(tasks);
         }
 
         return request.get('/task/progress').then((taskProgress) => {
@@ -242,18 +285,47 @@ Page({
             return this.normalizeTaskCenterItem(config, progress);
           }));
 
-          this.setData({
-            tasks,
-            pendingTaskCount: this.calcPendingTaskCountFromServer(tasks)
-          });
-
-          return tasks;
+          return applyTasks(tasks);
         });
       })
       .catch((err) => {
         console.log('加载任务失败', err);
         return [];
       });
+  },
+
+  updateTaskLocally(taskCode, patch) {
+    const tasks = (this.data.tasks || []).map((task) => {
+      if (task.taskCode !== taskCode) return task;
+      const nextPatch = typeof patch === 'function' ? patch(task) : patch;
+      return { ...task, ...nextPatch };
+    });
+    this.setData({
+      tasks,
+      pendingTaskCount: this.calcPendingTaskCountFromServer(tasks)
+    });
+  },
+
+  markTaskClaimedLocally(taskCode) {
+    this.updateTaskLocally(taskCode, {
+      status: 2,
+      done: true,
+      canClaim: false,
+      actionText: '已完成'
+    });
+  },
+
+  markTaskProgressLocally(taskCode, progress) {
+    const status = Number((progress && progress.status !== undefined ? progress.status : 1) || 0);
+    this.updateTaskLocally(taskCode, (task) => ({
+      status,
+      done: status === 2,
+      canClaim: status === 1,
+      progressId: progress && progress.id ? progress.id : task.progressId,
+      currentCount: progress && progress.currentCount !== undefined ? progress.currentCount : task.currentCount,
+      targetCount: progress && progress.targetCount !== undefined ? progress.targetCount : task.targetCount,
+      actionText: status === 1 ? '领取奖励' : (status === 2 ? '已完成' : task.actionText)
+    }));
   },
 
   normalizeTaskCenterItem(config, progress) {
@@ -416,7 +488,7 @@ Page({
     if (!sessionId) return;
 
     if (showLoading) this.setData({ loading: true });
-    Promise.all([
+    return Promise.all([
       request.get('/user/profile'),
       request.get('/user/stats'),
       request.get('/gift/my'),
@@ -433,10 +505,8 @@ Page({
           storage.set(storage.KEYS.MAGIC_COUNT, Number(profile.aiQuota || 0));
         }
 
-        const pendingTaskCount = this.calcPendingTaskCountFromServer(tasks || []);
-
         const normalizedGifts = Array.isArray(gifts) ? this.normalizeGifts(gifts) : [];
-        const availableGiftCount = this.calcAvailableGiftCount(normalizedGifts);
+        const availableGiftCount = this.persistGiftCount(normalizedGifts);
         const giftTabs = this.buildGiftTabs(normalizedGifts);
         const visibleGifts = this.filterGiftsByTab(normalizedGifts, this.data.giftTab);
 
@@ -454,12 +524,13 @@ Page({
           inviteCode,
           isVip: serverIsVip,
           canCustomizeWatermark: this.data.watermarkPrivilegeLoaded ? this.data.canCustomizeWatermark : serverIsVip,
-          magicCount: profile && profile.aiQuota !== undefined ? Number(profile.aiQuota || 0) : this.data.magicCount,
+          ...this.numberPatch({
+            magicCount: profile && profile.aiQuota !== undefined ? Number(profile.aiQuota || 0) : this.data.magicCount,
+            availableGiftCount,
+          }),
           gifts: normalizedGifts,
-          availableGiftCount,
           giftTabs,
           visibleGifts,
-          pendingTaskCount: pendingTaskCount,
           ...(showLoading ? { loading: false } : {})
         });
 
@@ -473,8 +544,7 @@ Page({
   },
 
   refreshProfileQuietly() {
-    this.loadProfile();
-    this.loadTasksFromServer();
+    return this.loadProfile();
   },
 
   // ─── 弹框控制 ───
@@ -529,6 +599,7 @@ Page({
   },
 
   onCloseAllPanels() {
+    this._navigatingFromPanel = false;
     this.setData({
       showMagicPanel: false,
       showGiftPanel: false,
@@ -539,12 +610,36 @@ Page({
 
   // ─── AI魔法弹框操作 ───
   onGoCards() {
-    this.onCloseAllPanels();
-    this.navigateToVipTab('cards');
+    this.navigateFromPanel('/pages/vip/vip?tab=cards');
   },
 
   navigateToVipTab(tab = 'vip') {
-    wx.navigateTo({ url: '/pages/vip/vip?tab=' + tab });
+    const url = '/pages/vip/vip?tab=' + tab;
+    if (this.shouldHideTabBar()) {
+      this.navigateFromPanel(url);
+      return;
+    }
+    wx.navigateTo({ url });
+  },
+
+  navigateFromPanel(url) {
+    this._navigatingFromPanel = true;
+    this.setTabBarHidden(true);
+    this.setData({
+      showMagicPanel: false,
+      showGiftPanel: false,
+      showTaskPanel: false,
+      showSettingsPanel: false,
+    }, () => {
+      this.setTabBarHidden(true);
+      wx.navigateTo({
+        url,
+        fail: () => {
+          this._navigatingFromPanel = false;
+          this.updateTabBarVisibility();
+        }
+      });
+    });
   },
 
   normalizeGifts(gifts) {
@@ -625,25 +720,31 @@ Page({
     const giftCode = String(gift.giftCode || '').toUpperCase();
     const usageMode = String(gift.usageMode || '').toUpperCase();
     const targetTab = String(gift.targetTab || '').toLowerCase();
+    const giftCategory = String(gift.giftCategory || '').toUpperCase();
 
-    // 优先使用后端明确返回的使用方式（纯跳转，不需防重复）
+    // 优先使用后端明确返回的使用方式（纯跳转，不消耗）
     if (usageMode === 'JUMP_VIP' && (targetTab === 'vip' || targetTab === 'cards')) {
-      wx.navigateTo({
-        url: `/pages/vip/vip?tab=${targetTab}&couponId=${gift.id}`
-      });
+      this.navigateFromPanel(`/pages/vip/vip?tab=${targetTab}&couponId=${gift.id}`);
       return;
     }
 
-    // 兜底：兼容老数据（纯跳转，不需防重复）
-    if (giftCode === 'VIP_COUPON' || giftCode === 'CARD_COUPON' || giftCode === 'VIP_CARD_COUPON') {
-      const fallbackTab = giftCode === 'VIP_COUPON' ? 'vip' : 'cards';
-      wx.navigateTo({
-        url: `/pages/vip/vip?tab=${fallbackTab}&couponId=${gift.id}`
-      });
+    // 优惠券类型：跳转到VIP页面预选，不消耗（在支付时才核销）
+    const isCouponType = giftCategory === 'COUPON'
+      || giftCode === 'VIP_COUPON'
+      || giftCode === 'CARD_COUPON'
+      || giftCode === 'VIP_CARD_COUPON'
+      || giftCode.endsWith('_COUPON');
+    if (isCouponType) {
+      let tab = targetTab;
+      if (tab !== 'vip' && tab !== 'cards') {
+        tab = giftCode.includes('CARD') ? 'cards' : 'vip';
+      }
+      this.navigateFromPanel(`/pages/vip/vip?tab=${tab}&couponId=${gift.id}`);
       return;
     }
 
-    // 其他礼品统一走后端使用逻辑
+    // 礼包类型：走后端兑换（拆包获取内容物）
+    // 其他礼品：走后端使用逻辑
     this.setData({ processing: true });
     const redeemNow = giftCode === 'GIFT_PACKAGE';
     request.post('/gift/use', { giftId: gift.id, redeemNow })
@@ -669,7 +770,7 @@ Page({
     if (user.aiQuota !== undefined) {
       const magicCount = Number(user.aiQuota || 0);
       storage.set(storage.KEYS.MAGIC_COUNT, magicCount);
-      nextData.magicCount = magicCount;
+      Object.assign(nextData, this.numberPatch({ magicCount }));
     }
     if (user.vipExpireAt !== undefined) {
       const vipExpireAt = user.vipExpireAt || '';
@@ -693,9 +794,10 @@ Page({
         : gift
     ));
     const normalizedGifts = this.normalizeGifts(gifts);
+    const availableGiftCount = this.persistGiftCount(normalizedGifts);
     this.setData({
       gifts: normalizedGifts,
-      availableGiftCount: this.calcAvailableGiftCount(normalizedGifts),
+      ...this.numberPatch({ availableGiftCount }),
       giftTabs: this.buildGiftTabs(normalizedGifts),
       visibleGifts: this.filterGiftsByTab(normalizedGifts, this.data.giftTab)
     });
@@ -709,18 +811,20 @@ Page({
     ])
       .then(([profile, stats, gifts]) => {
         const normalizedGifts = Array.isArray(gifts) ? this.normalizeGifts(gifts) : this.data.gifts;
+        const availableGiftCount = this.persistGiftCount(normalizedGifts);
         const nextData = {
           gifts: normalizedGifts,
-          availableGiftCount: this.calcAvailableGiftCount(normalizedGifts),
+          ...this.numberPatch({ availableGiftCount }),
           giftTabs: this.buildGiftTabs(normalizedGifts),
           visibleGifts: this.filterGiftsByTab(normalizedGifts, this.data.giftTab)
         };
 
         if (profile) {
           nextData.isVip = !!(profile.vipExpireAt && new Date(profile.vipExpireAt) > new Date());
-          nextData.magicCount = profile.aiQuota !== undefined ? Number(profile.aiQuota || 0) : this.data.magicCount;
           if (profile.aiQuota !== undefined) {
-            storage.set(storage.KEYS.MAGIC_COUNT, nextData.magicCount);
+            const magicCount = Number(profile.aiQuota || 0);
+            storage.set(storage.KEYS.MAGIC_COUNT, magicCount);
+            Object.assign(nextData, this.numberPatch({ magicCount }));
           }
         }
         if (stats) {
@@ -741,9 +845,10 @@ Page({
   removeGift(giftId) {
     const gifts = this.data.gifts.filter(g => g.id !== giftId);
     storage.setJSON(storage.KEYS.GIFTS, gifts);
+    const availableGiftCount = this.persistGiftCount(gifts);
     this.setData({
       gifts,
-      availableGiftCount: this.calcAvailableGiftCount(gifts),
+      ...this.numberPatch({ availableGiftCount }),
       giftTabs: this.buildGiftTabs(gifts),
       visibleGifts: this.filterGiftsByTab(gifts, this.data.giftTab)
     });
@@ -943,6 +1048,7 @@ Page({
     if (this.data.processing) return;
     const task = (e.detail && e.detail.task) || e.currentTarget.dataset.task;
     if (!task) return;
+    const taskCode = task.taskCode || '';
 
     if (task.handlerType === 'CHECKIN') {
       if (task.canClaim) {
@@ -955,20 +1061,21 @@ Page({
 
     if (task.handlerType === 'FIRST_RECHARGE_GIFT' || task.handlerType === 'REGISTER_GIFT') {
       if (task.canClaim) {
-        this.setData({ processing: true });
+        this.setData({ processing: true, taskActionProcessingCode: taskCode });
         request.post('/task/claim-benefit', { taskCode: task.taskCode })
           .then(() => {
             wx.showToast({ title: '领取成功！', icon: 'success' });
+            this.markTaskClaimedLocally(task.taskCode);
             this.refreshProfileQuietly();
           })
           .catch((err) => {
             wx.showToast({ title: err.message || '领取失败', icon: 'none' });
           })
           .finally(() => {
-            this.setData({ processing: false });
+            this.setData({ processing: false, taskActionProcessingCode: '' });
           });
       } else if (task.handlerType === 'FIRST_RECHARGE_GIFT') {
-        wx.navigateTo({ url: '/pages/vip/vip' });
+        this.navigateFromPanel('/pages/vip/vip');
       } else {
         wx.showToast({ title: '注册成功后即可领取', icon: 'none' });
       }
@@ -977,58 +1084,59 @@ Page({
 
     if (task.handlerType === 'INVITE_REGISTER' || task.handlerType === 'INVITE_RECHARGE') {
       if (task.canClaim) {
-        this.setData({ processing: true });
+        this.setData({ processing: true, taskActionProcessingCode: taskCode });
         request.post('/task/claim-benefit', { taskCode: task.taskCode })
           .then(() => {
             wx.showToast({ title: '礼包已入包', icon: 'success' });
+            this.markTaskClaimedLocally(task.taskCode);
             this.refreshProfileQuietly();
           })
           .catch((err) => {
             wx.showToast({ title: err.message || '领取失败', icon: 'none' });
           })
           .finally(() => {
-            this.setData({ processing: false });
+            this.setData({ processing: false, taskActionProcessingCode: '' });
           });
       } else {
-        wx.navigateTo({ url: '/pages/invite/invite' })
+        this.navigateFromPanel('/pages/invite/invite');
       }
       return;
     }
 
     if (task.handlerType === 'REVIEW_TASK') {
       if (task.canClaim && task.progressId) {
-        this.setData({ processing: true });
+        this.setData({ processing: true, taskActionProcessingCode: taskCode });
         request.post('/task/claim', { progressId: task.progressId })
           .then(() => {
             wx.showToast({ title: '领取成功！', icon: 'success' });
+            this.markTaskClaimedLocally(task.taskCode);
             this.refreshProfileQuietly();
           })
           .catch((err) => {
             wx.showToast({ title: err.message || '领取失败', icon: 'none' });
           })
           .finally(() => {
-            this.setData({ processing: false });
+            this.setData({ processing: false, taskActionProcessingCode: '' });
           });
         return;
       }
-      wx.navigateTo({
-        url: `/pages/review-task-submit/review-task-submit?taskCode=${encodeURIComponent(task.taskCode)}&taskName=${encodeURIComponent(task.taskName || '')}`
-      })
+      this.navigateFromPanel(`/pages/review-task-submit/review-task-submit?taskCode=${encodeURIComponent(task.taskCode)}&taskName=${encodeURIComponent(task.taskName || '')}`);
       return;
     }
 
     if (task.canClaim && task.progressId) {
-      this.setData({ processing: true });
+      this.setData({ processing: true, taskActionProcessingCode: taskCode });
       request.post('/task/claim', { progressId: task.progressId })
         .then(() => {
           wx.showToast({ title: '领取成功！', icon: 'success' });
+          this.markTaskClaimedLocally(task.taskCode);
           this.refreshProfileQuietly();
         })
         .catch((err) => {
           wx.showToast({ title: err.message || '领取失败', icon: 'none' });
         })
         .finally(() => {
-          this.setData({ processing: false });
+          this.setData({ processing: false, taskActionProcessingCode: '' });
         });
       return;
     }
@@ -1049,17 +1157,18 @@ Page({
       return;
     }
 
-    this.setData({ processing: true });
+    this.setData({ processing: true, taskActionProcessingCode: taskCode });
     request.post('/task/complete', { taskCode: task.taskCode })
-      .then(() => {
+      .then((progress) => {
         wx.showToast({ title: '任务完成！', icon: 'success' });
+        this.markTaskProgressLocally(task.taskCode, progress);
         this.refreshProfileQuietly();
       })
       .catch((err) => {
         wx.showToast({ title: err.message || '操作失败', icon: 'none' });
       })
       .finally(() => {
-        this.setData({ processing: false });
+        this.setData({ processing: false, taskActionProcessingCode: '' });
       });
   },
 
@@ -1073,8 +1182,9 @@ Page({
     const taskCode = this.data.pendingShareTaskCode;
     if (taskCode === 'daily_share') {
       request.post('/task/complete', { taskCode })
-        .then(() => {
+        .then((progress) => {
           this.setData({ pendingShareTaskCode: '' });
+          this.markTaskProgressLocally(taskCode, progress);
           this.refreshProfileQuietly();
         })
         .catch(() => {});

@@ -27,7 +27,7 @@
         <view wx:else class="upload-placeholder">
           <image class="upload-icon" src="/assets/icons/upload-icon.png" mode="aspectFit"/>
           <text class="upload-title">点击上传图片</text>
-          <text class="upload-desc">支持正方形图片,自动居中裁剪</text>
+          <text class="upload-desc">支持正方形图片 自动居中裁剪</text>
         </view>
         <view wx:if="{{uploadedImage}}" class="grid-overlay">
           <view class="grid-line h" style="top:33.3%"></view>
@@ -90,7 +90,7 @@
             </view>
           </view>
           <view class="param-hint-box">
-            <text class="param-hint">{{sizeMode==='default'?'默认则根据图片自动匹配尺寸 (区间在30~80)':'小图模式会将拼豆尺寸控制在 40 以内'}}</text>
+            <text class="param-hint">{{sizeMode==='default'?'默认则根据图片自动匹配尺寸(区间在30~80)':'小图模式会将拼豆尺寸控制在 40 以内'}}</text>
           </view>
         </view>
 
@@ -98,17 +98,11 @@
         <view class="param-row-three">
           <view class="param-col">
             <text class="param-label-small">拼豆品牌</text>
-            <view class="param-picker" bindtap="onShowBrandSheet">
-              <text>{{brands[brandIndex]}}</text>
-              <text class="param-picker-arrow">⌄</text>
-            </view>
+            <app-select id="aiBrandSelect" custom-class="ai-dropdown ai-dropdown--brand" value="{{brandIndex}}" title="{{brands[brandIndex]}}" options="{{brandOptionsSelect}}" active-color="#9C27B0" panel-background="#FDF7FF" panel-border-color="#CE93D8" active-background="#F3E5F5" option-text-color="#7B1FA2" placement="top" bind:change="onBrandDropdownChange" bind:open="onBrandDropdownOpen" />
           </view>
           <view class="param-col">
             <text class="param-label-small">色号选择</text>
-            <view class="param-picker" bindtap="onShowColorSheet">
-              <text>{{colorSets[colorSetIndex]}}</text>
-              <text class="param-picker-arrow">⌄</text>
-            </view>
+            <app-select id="aiColorSelect" custom-class="ai-dropdown ai-dropdown--color" value="{{colorSetValue}}" title="{{colorSetLabel}}" options="{{colorSetOptionsSelect}}" active-color="#9C27B0" panel-background="#FDF7FF" panel-border-color="#CE93D8" active-background="#F3E5F5" option-text-color="#7B1FA2" placement="top" bind:change="onColorSetDropdownChange" bind:open="onColorSetDropdownOpen" />
           </view>
           <view class="param-col param-col--small">
             <text class="param-label-small">图纸镜像</text>
@@ -120,10 +114,7 @@
       </view>
     </view>
 
-    <view style="height: 40rpx;"></view>
   </scroll-view>
-
-  <!-- 图片调整浮层 -->
   <view wx:if="{{showAdjustModal}}" class="adjust-modal">
     <!-- 状态栏占位 -->
     <view class="adjust-status-bar" style="height:{{statusBarHeight}}px"></view>
@@ -140,10 +131,10 @@
     <!-- 中间调整区域 -->
     <view class="adjust-body">
       <view class="adjust-hint">
-        <text class="adjust-hint-icon">✦</text>
+        <text class="adjust-hint-icon">✨</text>
         <text class="adjust-hint-text">双指缩放、拖动以调整主体位置</text>
       </view>
-      
+
       <view class="adjust-preview-box">
         <!-- 预览区域 -->
         <view class="adjust-preview-area"
@@ -172,7 +163,7 @@
     <!-- 底部固定按钮区（在tabbar上方） -->
     <view class="adjust-footer-fixed">
       <view class="adjust-confirm-btn" bindtap="onConfirmAdjust">
-        <text class="adjust-confirm-icon">✓</text>
+        <text class="adjust-confirm-icon">✨</text>
         <text>完成调整</text>
       </view>
     </view>
@@ -181,38 +172,9 @@
   <!-- 隐藏的Canvas用于裁剪 -->
   <canvas type="2d" id="cropCanvas" style="width:{{previewBoxPx}}px;height:{{previewBoxPx}}px;position:fixed;left:-9999px;top:-9999px;"></canvas>
 
-  <!-- 品牌底部弹窗 -->
-  <view wx:if="{{showBrandSheet}}" class="sheet-mask" bindtap="onHideBrandSheet"></view>
-  <view class="color-sheet {{showBrandSheet?'color-sheet--show':''}}">
-    <view class="sheet-handle"></view>
-    <view class="sheet-title">选择拼豆品牌</view>
-    <view class="sheet-list">
-      <view wx:for="{{brands}}" wx:key="*this"
-        class="sheet-item {{brandIndex === index ? 'sheet-item--active':''}}"
-        bindtap="onSelectBrand" data-index="{{index}}">
-        {{item}}
-      </view>
-    </view>
-    <view class="sheet-btn-cancel" bindtap="onHideBrandSheet">取消</view>
-  </view>
-
-  <!-- 色号底部弹窗 -->
-  <view wx:if="{{showColorSheet}}" class="sheet-mask" bindtap="onHideColorSheet"></view>
-  <view class="color-sheet {{showColorSheet?'color-sheet--show':''}}">
-    <view class="sheet-handle"></view>
-    <view class="sheet-title">选择色号范围</view>
-    <view class="sheet-list">
-      <view wx:for="{{colorSets}}" wx:key="*this"
-        class="sheet-item {{colorSetIndex===index?'sheet-item--active':''}}"
-        bindtap="onSelectColorSet" data-index="{{index}}">
-        {{item}}
-      </view>
-    </view>
-    <view class="sheet-btn-cancel" bindtap="onHideColorSheet">取消</view>
-  </view>
 
   <!-- 底部固定按钮区 -->
-  <view class="bottom-action" wx:if="{{!showBrandSheet && !showColorSheet}}">
+  <view class="bottom-action">
     <view class="generate-btn {{!uploadedImage?'generate-btn--disabled':''}}" bindtap="onGenerate">
       <view class="btn-content">
         <view class="btn-main">

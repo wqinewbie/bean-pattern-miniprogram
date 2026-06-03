@@ -259,7 +259,7 @@ function getTaskLogs() {
  */
 function getMyGifts(params = {}) {
   const query = buildQueryString(params);
-  return request.get(`/gift/my-gifts${query ? '?' + query : ''}`);
+  return request.get(`/gift/my${query ? '?' + query : ''}`);
 }
 
 /**

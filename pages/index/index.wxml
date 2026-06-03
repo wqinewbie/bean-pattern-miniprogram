@@ -29,7 +29,6 @@
   <view class="banner-zone" wx:if="{{bannerList.length > 0}}">
     <view class="banner-frame">
       <swiper
-        wx:if="{{bannerSwiperVisible}}"
         class="banner-swiper"
         circular="{{bannerList.length > 1}}"
         autoplay="{{bannerAutoplay}}"
@@ -42,7 +41,6 @@
         <swiper-item wx:for="{{bannerList}}" wx:key="id">
           <view
             class="banner-slide"
-            style="background: {{item.bannerBgColor || '#FF9800'}};"
             bindtap="onBannerTap"
             data-banner="{{item}}"
           >

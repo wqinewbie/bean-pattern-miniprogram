@@ -2,6 +2,7 @@
   <page-nav-bar title="魔法参数设置" showBack="{{true}}" bind:back="onBack" />
 
   <scroll-view scroll-y class="generate-scroll" scroll-top="{{scrollTop}}" scroll-with-animation="{{true}}">
+  <view class="generate-scroll-content">
   <!-- 重新选择图片 -->
   <view class="reselect-bar">
     <view class="btn-reselect-top" bindtap="onChooseImage">
@@ -10,10 +11,10 @@
     </view>
   </view>
 
-  <!-- 图片预览区 -->
+  <!-- 图片预览区-->
   <view class="preview-zone">
     <view class="zoom-hint">
-      <text class="zoom-hint-icon">✦</text>
+      <text class="zoom-hint-icon"></text>
       <text>支持双指缩放调整图片</text>
     </view>
 
@@ -42,16 +43,11 @@
     <view class="setting-section">
       <view class="setting-label-row">
         <view class="label-bar label-bar--yellow"></view>
-        <text class="setting-label">图纸尺寸 (颗)</text>
+        <text class="setting-label">图纸尺寸</text>
       </view>
       <view class="size-row">
-        <view class="size-picker-wrap" bindtap="onShowSizeSheet">
-          <view class="size-half-box {{!customMode && !customConfirmed ? 'size-half-box--active' : ''}}">
-            <text class="picker-val">{{gridSizeOptions[gridSizeIndex].label}}</text>
-            <text class="picker-arrow">⌄</text>
-          </view>
-        </view>
-        <view class="size-half-box {{customMode || customConfirmed ? 'size-half-box--active' : ''}}" bindtap="onEditCustom">
+        <app-select id="genSizeSelect" custom-class="gen-dropdown gen-dropdown--size" style="flex:1 1 0;min-width:0;" value="{{gridSizeIndex}}" title="{{gridSizeOptions[gridSizeIndex].label}}" options="{{sizeOptionsSelect}}" placement="bottom" bind:change="onSizeDropdownChange" bind:open="onSizeDropdownOpen" />
+        <view class="size-half-box {{customMode || customConfirmed ? 'size-half-box--active' : ''}}" style="flex:1 1 0;min-width:0;" bindtap="onEditCustom">
           <input class="custom-size-input" type="number"
             value="{{customSizeVal}}" bindinput="onCustomSizeInput" bindblur="onCustomSizeBlur"
             focus="{{customMode}}" placeholder="自定义"/>
@@ -59,7 +55,7 @@
       </view>
     </view>
 
-    <!-- 颜色合并阈值 -->
+    <!-- 颜色合并阈值-->
     <view class="setting-section">
       <view class="setting-label-row">
         <view class="label-bar label-bar--red"></view>
@@ -84,20 +80,14 @@
           <view class="mini-label-bar mini-label-bar--green"></view>
           <text class="mini-label">拼豆品牌</text>
         </view>
-        <view class="picker-row" bindtap="onShowBrandSheet">
-          <text class="picker-val">{{(brandList[brandIndex] && (brandList[brandIndex].name || brandList[brandIndex].label)) || 'MARD'}}</text>
-          <text class="picker-arrow">⌄</text>
-        </view>
+        <app-select id="genBrandSelect" custom-class="gen-dropdown gen-dropdown--brand" value="{{brandIndex}}" title="{{brandDisplayTitle}}" options="{{brandOptionsSelect}}" placement="top" bind:change="onBrandDropdownChange" bind:open="onBrandDropdownOpen" />
       </view>
       <view class="setting-col">
         <view class="mini-label-row">
           <view class="mini-label-bar mini-label-bar--purple"></view>
           <text class="mini-label">指定色号</text>
         </view>
-        <view class="picker-row" bindtap="onShowColorSheet">
-          <text class="picker-val">{{colorCountLabel}}</text>
-          <text class="picker-arrow">⌄</text>
-        </view>
+        <app-select id="genColorSelect" custom-class="gen-dropdown gen-dropdown--color" value="{{colorCountValue}}" title="{{colorCountLabel}}" options="{{colorCountOptionsSelect}}" placement="top" bind:change="onColorCountDropdownChange" bind:open="onColorCountDropdownOpen" />
       </view>
       <view class="setting-col setting-col--small">
         <view class="mini-label-row">
@@ -110,56 +100,13 @@
       </view>
     </view>
 
-    <!-- 生成按钮 -->
-    <view class="generate-bottom-bar">
-      <view class="btn-generate" bindtap="onGenerate">立即生成图纸</view>
-    </view>
+  </view>
   </view>
   </scroll-view>
 
-  <!-- 尺寸底部弹窗 -->
-  <view wx:if="{{showSizeSheet}}" class="sheet-mask" bindtap="onHideSizeSheet"></view>
-  <view class="color-sheet {{showSizeSheet?'color-sheet--show':''}}">
-    <view class="sheet-handle"></view>
-    <view class="sheet-title">选择图纸尺寸</view>
-    <view class="sheet-list">
-      <view wx:for="{{gridSizeOptions}}" wx:key="value"
-        class="sheet-item {{gridSizeIndex === index && !customConfirmed ? 'sheet-item--active':''}}"
-        bindtap="onSelectGridSize" data-index="{{index}}">
-        {{item.label}}
-      </view>
-    </view>
-    <view class="sheet-btn-cancel" bindtap="onHideSizeSheet">取消</view>
-  </view>
-
-  <!-- 品牌底部弹窗 -->
-  <view wx:if="{{showBrandSheet}}" class="sheet-mask" bindtap="onHideBrandSheet"></view>
-  <view class="color-sheet {{showBrandSheet?'color-sheet--show':''}}">
-    <view class="sheet-handle"></view>
-    <view class="sheet-title">选择拼豆品牌</view>
-    <view class="sheet-list">
-      <view wx:for="{{brandList}}" wx:key="id"
-        class="sheet-item {{brandIndex === index ? 'sheet-item--active':''}}"
-        bindtap="onSelectBrand" data-index="{{index}}">
-        {{item.name || item.label || item.id}}
-      </view>
-    </view>
-    <view class="sheet-btn-cancel" bindtap="onHideBrandSheet">取消</view>
-  </view>
-
-  <!-- 色号底部弹窗 -->
-  <view wx:if="{{showColorSheet}}" class="sheet-mask" bindtap="onHideColorSheet"></view>
-  <view class="color-sheet {{showColorSheet?'color-sheet--show':''}}">
-    <view class="sheet-handle"></view>
-    <view class="sheet-title">选择使用色号范围</view>
-    <view class="sheet-list">
-      <view wx:for="{{colorCountOptions}}" wx:key="value"
-        class="sheet-item {{colorCountLabel===item.label?'sheet-item--active':''}}"
-        bindtap="onSelectColorCount" data-label="{{item.label}}" data-value="{{item.value}}">
-        {{item.label}}
-      </view>
-    </view>
-    <view class="sheet-btn-cancel" bindtap="onHideColorSheet">取消</view>
+  <!-- 生成按钮 -->
+  <view class="generate-bottom-bar">
+    <view class="btn-generate" bindtap="onGenerate">立即生成图纸</view>
   </view>
 
   <!-- 离屏 Canvas -->

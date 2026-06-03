@@ -1,10 +1,7 @@
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
-const { API_BASE_URL } = require('../../utils/config');
-const { processAiResult } = require('../../utils/ai-result-processor');
-
-const PENDING_AI_HISTORY_KEY = 'pending_ai_history_tasks';
+const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
 
 Page({
   data: {
@@ -30,9 +27,6 @@ Page({
     isSwiping: false,
   },
 
-  _pendingAiTimer: null,
-  _pendingAiRunning: false,
-
   onLoad() {
     this.calcNavTop();
   },
@@ -41,15 +35,6 @@ Page({
     if (!this._dataLoaded || this._needsRefresh) {
       this.loadHistory(true);
     }
-    this.resumePendingAiTasks();
-  },
-
-  onHide() {
-    this.clearPendingAiTimer();
-  },
-
-  onUnload() {
-    this.clearPendingAiTimer();
   },
 
   calcNavTop() {
@@ -90,6 +75,10 @@ Page({
           const newItems = (Array.isArray(res.list) ? res.list : []).map((item) => {
             const sourceType = String(item.sourceType || '').toUpperCase();
             const isAiSource = sourceType === 'AI' || sourceType.includes('AI');
+            const createdAt = this.formatTime(item.createdAt);
+            const aiStyle = item.aiStyle || item.style || '';
+            const brand = item.brand || 'MARD';
+            const colorCount = item.colorCount || 0;
             let mappedPixelData = [];
             try {
               mappedPixelData = item.mappedPixelData
@@ -101,16 +90,21 @@ Page({
               id: item.id,
               name: item.name || ('记录#' + item.id),
               gridSize: item.gridSize,
-              colorCount: item.colorCount,
-              brand: item.brand,
+              colorCount,
+              brand,
+              aiStyle,
+              metaText: isAiSource
+                ? this.buildMetaText([brand, colorCount + '色', aiStyle, createdAt])
+                : this.buildMetaText([(item.gridSize || 64) + 'x' + (item.gridSize || 64), brand, colorCount + '色', createdAt]),
               gridData: item.gridData,
               colorPalette: item.colorPalette,
               sourceUrl: isAiSource ? '' : (item.sourceUrl || ''),
               mappedPixelData,
               isAiSource,
               hasCanvasCover: isAiSource && hasMappedData,
+              hasMappedData,
               boxId: item.boxId,
-              createdAt: this.formatTime(item.createdAt),
+              createdAt,
               expiresAt: this.formatTime(item.expiresAt),
               expireText: item.expiresAt ? ('到期 ' + this.formatTime(item.expiresAt)) : '',
             };
@@ -118,7 +112,6 @@ Page({
 
           const history = reset ? newItems : [...this.data.history, ...newItems];
 
-          // 立即计算 filteredHistory，避免显示空状态闪烁
           const kw = (this.data.keyword || '').trim().toLowerCase();
           const filteredHistory = kw
             ? history.filter(h => (h.name || '').toLowerCase().includes(kw))
@@ -145,125 +138,6 @@ Page({
     });
   },
 
-  getPendingAiTasks() {
-    try {
-      const stored = wx.getStorageSync(PENDING_AI_HISTORY_KEY);
-      return Array.isArray(stored) ? stored.filter(item => item && item.taskId) : [];
-    } catch (e) {
-      return [];
-    }
-  },
-
-  setPendingAiTasks(tasks) {
-    wx.setStorageSync(PENDING_AI_HISTORY_KEY, (tasks || []).filter(item => item && item.taskId).slice(0, 10));
-  },
-
-  clearPendingAiTimer() {
-    if (this._pendingAiTimer) {
-      clearTimeout(this._pendingAiTimer);
-      this._pendingAiTimer = null;
-    }
-  },
-
-  schedulePendingAiResume() {
-    this.clearPendingAiTimer();
-    if (!this.getPendingAiTasks().length) return;
-    this._pendingAiTimer = setTimeout(() => {
-      this.resumePendingAiTasks();
-    }, 5000);
-  },
-
-  toReadableImageUrl(imageUrl) {
-    if (!imageUrl || !/^https?:\/\//.test(imageUrl)) return imageUrl;
-    return `${API_BASE_URL}/api/image/proxy?url=${encodeURIComponent(imageUrl)}`;
-  },
-
-  buildAiHistoryPayload(taskData, prepared) {
-    const fallbackGridSize = taskData.sizeMode === 'small' ? 32 : 48;
-    const gridSize = Number(prepared.gridSize || taskData.finalGridWidth || taskData.finalGridHeight || fallbackGridSize);
-    const colorList = prepared.colorList || [];
-    return {
-      sourceType: 'AI',
-      brand: prepared.brand || taskData.brand || 'MARD',
-      colorCount: Array.isArray(colorList) ? colorList.length : Number(taskData.colorCount || 0),
-      name: 'AI记录#' + Date.now(),
-      gridSize,
-      mappedPixelData: JSON.stringify(prepared.mappedPixelData || []),
-      sourceUrl: taskData.aiImageUrl || '',
-      boxId: null
-    };
-  },
-
-  async saveCompletedAiTaskToHistory(taskData) {
-    const aiImageUrl = taskData.aiImageUrl || '';
-    if (!aiImageUrl) return false;
-
-    const sizeMode = taskData.sizeMode || 'default';
-    const fallbackGridSize = sizeMode === 'small' ? 32 : 48;
-    const gridSize = Number(taskData.finalGridWidth || taskData.finalGridHeight || fallbackGridSize);
-    const brand = taskData.brand || 'MARD';
-    const prepared = await processAiResult(this, this.toReadableImageUrl(aiImageUrl), {
-      gridSize,
-      brand,
-      mirror: !!taskData.mirror
-    });
-
-    if (!prepared || !prepared.mappedPixelData || !prepared.mappedPixelData.length) {
-      return false;
-    }
-
-    await request.post('/history/save', this.buildAiHistoryPayload(taskData, {
-      ...prepared,
-      gridSize,
-      brand
-    }));
-    return true;
-  },
-
-  async resumePendingAiTasks() {
-    const pending = this.getPendingAiTasks();
-    if (!pending.length || this._pendingAiRunning) return;
-
-    this._pendingAiRunning = true;
-    let changed = false;
-    let savedAny = false;
-    const remaining = [];
-
-    for (const item of pending) {
-      try {
-        const data = await request.get(`/ai/task/${item.taskId}`);
-        const taskData = data && data.data ? data.data : data;
-        const status = String((taskData && taskData.status) || '').trim().toUpperCase();
-
-        if (status === 'SUCCESS') {
-          const saved = await this.saveCompletedAiTaskToHistory(taskData);
-          changed = true;
-          savedAny = savedAny || saved;
-        } else if (status === 'FAILED') {
-          changed = true;
-        } else {
-          remaining.push(item);
-        }
-      } catch (err) {
-        console.warn('[history] resume pending AI task failed', item.taskId, err);
-        remaining.push(item);
-      }
-    }
-
-    if (changed) {
-      this.setPendingAiTasks(remaining);
-    }
-
-    this._pendingAiRunning = false;
-
-    if (savedAny) {
-      wx.showToast({ title: 'AI结果已加入时光机', icon: 'success' });
-      this.loadHistory(true);
-    }
-
-    this.schedulePendingAiResume();
-  },
-
   onReachBottom() {
     if (this.data.keyword) return;
     this.loadHistory(false);
@@ -278,7 +152,6 @@ Page({
   onItemTap(e) {
     const item = e.currentTarget.dataset.item;
     const isAi = item.isAiSource ? '&isAi=1' : '';
-    // 跳转到预加载页面，先渲染再显示预览
     wx.navigateTo({
       url: '/pages/preview/preview?historyId=' + item.id + '&sourceType=HISTORY' + isAi
     });
@@ -429,19 +302,11 @@ Page({
       request.post('/history/to-box', { historyId: item.id })
         .then((result) => {
           wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
-          if (result && result.capacityFull) {
-            setTimeout(() => {
-              wx.showToast({ title: result.capacityMessage || '图纸箱容量已满', icon: 'none', duration: 2200 });
-            }, 1200);
-          }
+          showCapacityFullIfNeeded(result, { type: 'box' });
           this.loadHistory();
         })
         .catch((err) => {
-          if (err && err.message) {
-            wx.showToast({ title: err.message, icon: 'none' });
-            return;
-          }
-          wx.showToast({ title: '保存失败', icon: 'none' });
+          showRequestErrorToast(err, '保存失败');
         });
     });
   },
@@ -474,5 +339,9 @@ Page({
     const pad = (n) => String(n).padStart(2, '0');
     return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
            ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  },
+
+  buildMetaText(parts) {
+    return (parts || []).filter(part => part !== undefined && part !== null && String(part).trim() !== '').join(' · ');
   },
 });

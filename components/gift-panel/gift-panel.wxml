@@ -16,7 +16,7 @@
         </view>
         <text wx:if="{{item.expireText}}" class="gift-expire">有效期至：{{item.expireText}}</text>
       </view>
-      <view wx:if="{{item.canUse}}" class="gift-use-btn {{processing ? 'gift-use-btn--disabled' : ''}}" bindtap="onUse" data-gift="{{item}}">{{processing ? '使用中...' : '使用'}}</view>
+      <view wx:if="{{item.canUse}}" class="gift-use-btn {{processing ? 'gift-use-btn--disabled' : ''}}" bindtap="onUse" data-gift="{{item}}">{{processing ? '处理中...' : (item.isPackageGift ? '兑换' : '使用')}}</view>
     </view>
   </view>
   <view wx:else class="gift-empty">

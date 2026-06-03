@@ -2,6 +2,7 @@ const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const { generateDraftName } = require('../../utils/name-helper');
+const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
 
 Page({
   data: {
@@ -36,6 +37,9 @@ Page({
   },
   _pendingSwipeOffset: null,
   _swipeRaf: null,
+  _draftById: null,
+  _draftRenderCache: null,
+  _thumbnailRenderToken: 0,
 
   onLoad() {
     this.calcNavTop();
@@ -87,6 +91,7 @@ Page({
   },
 
   loadDrafts(reset = false) {
+    this._thumbnailRenderToken++;
     if (reset) {
       this.setData({
         page: 1,
@@ -103,34 +108,28 @@ Page({
       pageSize: this.data.pageSize
     })
       .then((res) => {
+        this._draftById = this._draftById || {};
+        this._draftRenderCache = this._draftRenderCache || {};
+        if (reset) {
+          const nextIds = {};
+          (res.list || []).forEach((draft) => { nextIds[String(draft.id)] = true; });
+          Object.keys(this._draftById).forEach((id) => {
+            if (!nextIds[id]) {
+              delete this._draftById[id];
+              delete this._draftRenderCache[id];
+            }
+          });
+        }
+
         const newItems = (res.list || []).map((draft) => {
-          let mappedPixelData = [];
-          try {
-            mappedPixelData = draft.mappedPixelData
-              ? (typeof draft.mappedPixelData === 'string' ? JSON.parse(draft.mappedPixelData) : draft.mappedPixelData)
-              : [];
-          } catch (e) {
-            mappedPixelData = [];
-          }
+          const id = String(draft.id);
+          const previous = this._draftById[id];
+          const changed = !previous || String(previous.updatedAt || '') !== String(draft.updatedAt || '');
+          this._draftById[id] = draft;
+          if (changed) delete this._draftRenderCache[id];
 
-          let gridData = [];
-          let colorPalette = [];
-          try {
-            gridData = draft.gridData ? (typeof draft.gridData === 'string' ? JSON.parse(draft.gridData) : draft.gridData) : [];
-            colorPalette = draft.colorPalette ? (typeof draft.colorPalette === 'string' ? JSON.parse(draft.colorPalette) : draft.colorPalette) : [];
-          } catch (e) {
-            gridData = [];
-            colorPalette = [];
-          }
-
-          const hasCanvas = mappedPixelData.length > 0 || (gridData.length > 0 && colorPalette.length > 0);
-          return {
-            ...draft,
-            hasCanvas,
-            mappedPixelData,
-            gridData,
-            colorPalette,
-          };
+          const hasCanvas = !!draft.mappedPixelData || (!!draft.gridData && !!draft.colorPalette);
+          return this._buildDraftListItem(draft, hasCanvas);
         });
 
         const drafts = reset ? newItems : [...this.data.drafts, ...newItems];
@@ -167,11 +166,69 @@ Page({
     this.loadDrafts(false);
   },
 
+  _buildDraftListItem(draft, hasCanvas) {
+    return {
+      id: draft.id,
+      sourceType: draft.sourceType,
+      brand: draft.brand,
+      colorCount: draft.colorCount,
+      name: draft.name,
+      gridSize: draft.gridSize,
+      boxId: draft.boxId,
+      sourceUrl: draft.sourceUrl || draft.coverUrl || '',
+      createdAt: draft.createdAt,
+      updatedAt: draft.updatedAt,
+      expiresAt: draft.expiresAt,
+      hasCanvas
+    };
+  },
+
+  _getDraftById(id) {
+    const key = String(id || '');
+    return (this._draftById && this._draftById[key]) || (this.data.drafts || []).find(d => String(d.id) === key) || null;
+  },
+
+  _parseMaybeJSON(value, fallback) {
+    if (!value) return fallback;
+    if (typeof value !== 'string') return value;
+    try {
+      return JSON.parse(value);
+    } catch (e) {
+      return fallback;
+    }
+  },
+
+  _getDraftRenderData(id) {
+    const key = String(id || '');
+    const draft = this._getDraftById(key);
+    if (!draft) return null;
+
+    const signature = [
+      draft.updatedAt || '',
+      draft.mappedPixelData ? draft.mappedPixelData.length : 0,
+      draft.gridData ? draft.gridData.length : 0,
+      draft.colorPalette ? draft.colorPalette.length : 0
+    ].join(':');
+    const cached = this._draftRenderCache && this._draftRenderCache[key];
+    if (cached && cached.signature === signature) return cached.data;
+
+    const data = {
+      gridSize: draft.gridSize || 16,
+      mappedPixelData: this._parseMaybeJSON(draft.mappedPixelData, []),
+      gridData: this._parseMaybeJSON(draft.gridData, []),
+      colorPalette: this._parseMaybeJSON(draft.colorPalette, [])
+    };
+    this._draftRenderCache = this._draftRenderCache || {};
+    this._draftRenderCache[key] = { signature, data };
+    return data;
+  },
+
   // 渲染可见区域的缩略图（分批渲染，避免性能问题）
   renderVisibleThumbnails() {
     const { drafts, viewMode } = this.data;
     const displayDrafts = this.data.filteredDrafts || drafts;
     const needRenderDrafts = displayDrafts.filter(d => d.hasCanvas);
+    const renderToken = ++this._thumbnailRenderToken;
 
     if (needRenderDrafts.length === 0) return;
 
@@ -180,11 +237,12 @@ Page({
     let currentIndex = 0;
 
     const renderBatch = () => {
+      if (renderToken !== this._thumbnailRenderToken) return;
       const batch = needRenderDrafts.slice(currentIndex, currentIndex + batchSize);
       if (batch.length === 0) return;
 
       batch.forEach(draft => {
-        this.renderSingleThumbnail(draft, viewMode);
+        this.renderSingleThumbnail(draft.id, viewMode);
       });
 
       currentIndex += batchSize;
@@ -197,8 +255,10 @@ Page({
   },
 
   // 渲染单个缩略图
-  renderSingleThumbnail(draft, viewMode) {
-    const canvasId = viewMode === 'thumb' ? ('draftCanvas' + draft.id) : ('draftListCanvas' + draft.id);
+  renderSingleThumbnail(draftId, viewMode) {
+    const draft = this._getDraftRenderData(draftId);
+    if (!draft) return;
+    const canvasId = viewMode === 'thumb' ? ('draftCanvas' + draftId) : ('draftListCanvas' + draftId);
     const query = wx.createSelectorQuery();
     query.select('#' + canvasId)
       .fields({ node: true, size: true })
@@ -256,7 +316,8 @@ Page({
 
   // 点击草稿查看详情
   onItemTap(e) {
-    const { item } = e.currentTarget.dataset;
+    const item = this._getDraftById(e.currentTarget.dataset.id);
+    if (!item) return;
     wx.navigateTo({
       url: '/pages/preview/preview?draftId=' + item.id + '&sourceType=DRAFT'
     });
@@ -266,7 +327,8 @@ Page({
   onContinueEdit(e) {
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
-      const { item } = e.currentTarget.dataset;
+      const item = this._getDraftById(e.currentTarget.dataset.id);
+      if (!item) return;
       this._needsRefresh = true;
       wx.navigateTo({
         url: '/pages/draw/draw?draftId=' + item.id +
@@ -282,7 +344,8 @@ Page({
     this.closeSwipe();
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
-      const { item } = e.currentTarget.dataset;
+      const item = this._getDraftById(e.currentTarget.dataset.id);
+      if (!item) return;
       this.setData({
         showSaveModal: true,
         selectedDraft: item,
@@ -314,26 +377,19 @@ Page({
           wx.showToast({ title: '该草稿已保存到图纸箱', icon: 'none' });
         } else {
           wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
-          if (result && result.capacityFull) {
-            setTimeout(() => {
-              wx.showToast({ title: result.capacityMessage || '图纸箱容量已满', icon: 'none', duration: 2200 });
-            }, 900);
-          }
+          showCapacityFullIfNeeded(result, { type: 'box' });
         }
         this.setData({ showSaveModal: false, selectedDraft: null, patternName: '' });
-        this.loadDrafts();
+        this.loadDrafts(true);
       })
       .catch((err) => {
-        if (err && err.message) {
-          wx.showToast({ title: err.message, icon: 'none' });
-          return;
-        }
-        wx.showToast({ title: '保存失败', icon: 'none' });
+        showRequestErrorToast(err, '保存失败');
       });
   },
 
   onRename(e) {
-    const item = e.currentTarget.dataset.item;
+    const item = this._getDraftById(e.currentTarget.dataset.id);
+    if (!item) return;
     this.closeSwipe();
     wx.showModal({
       title: '重命名',
@@ -346,6 +402,8 @@ Page({
           if (!newName || newName === item.name) return;
           request.put('/draft/rename', { id: item.id, name: newName })
             .then(() => {
+              const cached = this._getDraftById(item.id);
+              if (cached) cached.name = newName;
               const drafts = this.data.drafts.map(d => {
                 if (String(d.id) === String(item.id)) {
                   return { ...d, name: newName };

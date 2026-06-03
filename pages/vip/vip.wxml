@@ -1,7 +1,7 @@
 <view class="vip-page">
   <!-- 安全区域占位 -->
   <view style="height: {{statusBarHeight}}px; width: 100%;"></view>
-  
+
   <!-- 顶部导航 -->
   <view class="nav-bar">
     <view class="nav-back" bindtap="onBack"><text class="nav-back-icon">←</text></view>
@@ -50,19 +50,14 @@
       <!-- 优惠券选择 -->
       <view class="coupon-zone" wx:if="{{availableCoupons.length > 0}}">
         <view class="coupon-label">选择优惠券</view>
-        <picker mode="selector" range="{{couponRange}}" bindchange="onSelectCoupon">
-          <view class="coupon-picker">
-            <text class="coupon-picker-text">{{selectedCouponDescription}}</text>
-            <text class="coupon-picker-arrow">▼</text>
-          </view>
-        </picker>
+        <app-select custom-class="vip-dropdown" active-color="#FFD54F" value="{{selectedCouponIndex}}" title="{{selectedCouponDescription}}" options="{{couponOptionsSelect}}" bind:change="onCouponDropdownChange" />
       </view>
 
       <!-- 权益对比表 -->
       <view class="privilege-table">
         <view class="privilege-header">
           <text class="privilege-col-title">魔法特权对比</text>
-          <text class="privilege-col">普通学徒</text>
+          <text class="privilege-col">普通学员</text>
           <text class="privilege-col privilege-col-vip">至尊会员</text>
         </view>
         <view wx:for="{{privileges}}" wx:key="name" class="privilege-row">
@@ -117,26 +112,21 @@
       <!-- 优惠券选择 -->
       <view class="coupon-zone" wx:if="{{availableCoupons.length > 0}}">
         <view class="coupon-label">选择优惠券</view>
-        <picker mode="selector" range="{{couponRange}}" bindchange="onSelectCoupon">
-          <view class="coupon-picker">
-            <text class="coupon-picker-text">{{selectedCouponDescription}}</text>
-            <text class="coupon-picker-arrow">▼</text>
-          </view>
-        </picker>
+        <app-select custom-class="vip-dropdown" active-color="#FFD54F" value="{{selectedCouponIndex}}" title="{{selectedCouponDescription}}" options="{{couponOptionsSelect}}" bind:change="onCouponDropdownChange" />
       </view>
 
       <!-- 次卡说明 -->
       <view class="cards-notice">
         <text class="notice-item">· 购买成功后，魔法次数即刻到账，次卡不区分使用期限，但建议及时使用。</text>
         <text class="notice-item">· 多次购买次卡，AI魔法次数可无限叠加。</text>
-        <text class="notice-item">· 次卡购买后7天内未使用可申请退款；已使用或超时除特殊原因外不支持退款。</text>
+        <text class="notice-item">· 次卡购买 7 天内未使用可申请退款；已使用或超时除特殊原因外不支持退款。</text>
       </view>
 
       <!-- 权益对比表 -->
       <view class="privilege-table">
         <view class="privilege-header">
           <text class="privilege-col-title">魔法特权对比</text>
-          <text class="privilege-col">普通学徒</text>
+          <text class="privilege-col">普通学员</text>
           <text class="privilege-col privilege-col-vip">至尊会员</text>
         </view>
         <view wx:for="{{privileges}}" wx:key="name" class="privilege-row">
@@ -151,7 +141,7 @@
     <view wx:if="{{vipTab==='orders'}}" class="tab-content">
       <!-- 提示 -->
       <view class="orders-tip">
-        <text class="orders-tip-icon">ℹ</text>
+        <text class="orders-tip-icon">ℹ️</text>
         <text class="orders-tip-text">赠送类型（含活动附赠、任务奖励等）属于额外发放权益，无法进行售后退款。</text>
       </view>
 

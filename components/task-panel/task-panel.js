@@ -2,6 +2,7 @@ Component({
   properties: {
     show: { type: Boolean, value: false },
     processing: { type: Boolean, value: false },
+    taskActionProcessingCode: { type: String, value: '' },
     checkinStatus: { type: Object, value: {} },
     tasks: { type: Array, value: [] },
   },

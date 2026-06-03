@@ -1,5 +1,5 @@
 const request = require('../../utils/request');
-const { ensureProfileComplete } = require('../../utils/profile-guard');
+const { ensureProfileComplete, hasSession } = require('../../utils/profile-guard');
 const { API_BASE_URL } = require('../../utils/config');
 const previewGesture = require('../../mixins/preview-gesture');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
@@ -27,13 +27,14 @@ Page({
     sizeMode: 'default',
     brands: [],
     brandIndex: 0,
-    colorSets: [],
-    colorSetIndex: 0,
+    colorSets: [{ value: 0, label: '全部色号' }],
+    colorSetLabel: '全部色号',
+    colorSetValue: 0,
     isMirrored: false,
 
-    // 底部弹窗
-    showBrandSheet: false,
-    showColorSheet: false,
+    // AppSelect 下拉选项
+    brandOptionsSelect: [],
+    colorSetOptionsSelect: [],
 
     magicCount: 3,
     scrollHeight: 400,
@@ -65,6 +66,8 @@ Page({
     previewBoxPx: 640,
   },
 
+  noop() {},
+
   onLoad() {
     const layout = getSafeAreaLayout();
     const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
@@ -93,9 +96,7 @@ Page({
   },
 
   addScrollHintAnimation() {
-    // 延迟执行，确保页面已渲染
     setTimeout(() => {
-      // 先向下滚动 50px
       this.setData({ scrollTop: 50 });
 
       // 然后弹回顶部
@@ -114,6 +115,11 @@ Page({
    * 加载AI魔法次数
    */
   loadAiQuota() {
+    if (!hasSession()) {
+      this.setData({ magicCount: 0 });
+      return;
+    }
+
     vipApi.getAiQuotaInfo().then(data => {
       const quota = data && typeof data.aiQuota === 'number'
         ? data.aiQuota
@@ -135,21 +141,27 @@ Page({
       if (brandList.length === 0) return;
       const firstBrand = brandList[0];
       const kits = data[firstBrand] || [];
-      const colorSets = ['全部色号', ...kits.map(k => k + '色')];
+      const colorSets = this._buildColorSetOptions(kits);
       this.setData({
         brands: brandList,
         brandIndex: 0,
         colorSets,
-        colorSetIndex: 0,
+        colorSetLabel: '全部色号',
+        colorSetValue: 0,
         _brandsData: data
       });
+      this._updateBrandOptionsSelect();
+      this._updateColorSetOptionsSelect();
     }).catch(() => {
       this.setData({
         brands: [],
         brandIndex: 0,
-        colorSets: [],
-        colorSetIndex: 0
+        colorSets: [{ value: 0, label: '全部色号' }],
+        colorSetLabel: '全部色号',
+        colorSetValue: 0
       });
+      this._updateBrandOptionsSelect();
+      this._updateColorSetOptionsSelect();
     });
   },
 
@@ -185,7 +197,6 @@ Page({
       sourceType: ['album', 'camera'],
       success: (res) => {
         const tempImage = res.tempFilePaths[0];
-        // 弹出调整浮层
         this.setData({
           tempImage,
           showAdjustModal: true
@@ -202,7 +213,7 @@ Page({
         const imgW = info.width || 1;
         const imgH = info.height || 1;
         const box = 340;
-        const ratio = Math.max(box / imgW, box / imgH);
+        const ratio = Math.min(box / imgW, box / imgH);
         const baseW = imgW * ratio;
         const baseH = imgH * ratio;
         const left = (box - baseW) / 2;
@@ -257,7 +268,7 @@ Page({
       const p1 = touches[0];
       const p2 = touches[1];
 
-      // 计算当前双指中心点
+      // 计算双指中心点
       const centerX = (p1.pageX + p2.pageX) / 2;
       const centerY = (p1.pageY + p2.pageY) / 2;
 
@@ -266,13 +277,10 @@ Page({
       const scaleRatio = dist / this._adjustPinchStartDistance;
       const nextScale = this._adjustPinchStartScale * scaleRatio;
 
-      // 计算双指中心点的移动距离（支持双指拖拽）
       const centerDx = centerX - this._adjustPinchCenterX;
       const centerDy = centerY - this._adjustPinchCenterY;
 
       // 计算缩放导致的位移补偿
-      // 以双指中心为缩放原点，需要调整translate值
-      const scaleDelta = nextScale - this._adjustPinchStartScale;
       const nextX = this._adjustPinchStartX + centerDx;
       const nextY = this._adjustPinchStartY + centerDy;
 
@@ -356,15 +364,12 @@ Page({
     const canvasSize = previewBoxPx || 640;
 
     try {
-      // 使用 Canvas 2D API
       const { canvas, ctx, dpr } = await core.init2dCanvas(this, '#cropCanvas');
       core.resize2dCanvas({ canvas, ctx, width: canvasSize, height: canvasSize, dpr });
 
-      // 白色背景
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, canvasSize, canvasSize);
 
-      // 获取原始图片信息
       const imgInfo = await new Promise((resolve, reject) => {
         wx.getImageInfo({
           src: tempImage,
@@ -376,9 +381,7 @@ Page({
       const imgW = imgInfo.width;
       const imgH = imgInfo.height;
 
-      // 计算浮层中图片的实际显示位置
       // CSS transform: translate3d(adjustX, adjustY, 0) scale(adjustScale)
-      // transform-origin 默认是 center
       const baseW = adjustBaseW;
       const baseH = adjustBaseH;
       const displayW = baseW * adjustScale;
@@ -392,11 +395,9 @@ Page({
       const centerXFinal = centerXBefore + adjustX;
       const centerYFinal = centerYBefore + adjustY;
 
-      // 最终图片左上角位置
       const displayX = centerXFinal - displayW / 2;
       const displayY = centerYFinal - displayH / 2;
 
-      // 计算可视区域在图片坐标系中的位置
       const cropLeftInImg = -displayX;
       const cropTopInImg = -displayY;
       const cropWidthInImg = adjustBoxPx;
@@ -417,28 +418,11 @@ Page({
       let srcW = srcRight - srcX;
       let srcH = srcBottom - srcY;
 
-      // 计算目标区域：根据源区域在原始裁剪框中的位置
-      let destX = 0;
-      let destY = 0;
-      let destW = canvasSize;
-      let destH = canvasSize;
-
-      if (srcXRaw < 0) {
-        destX = (-srcXRaw / srcWRaw) * canvasSize;
-      }
-      if (srcYRaw < 0) {
-        destY = (-srcYRaw / srcHRaw) * canvasSize;
-      }
-      if (srcXRaw + srcWRaw > imgW) {
-        destW = ((imgW - srcXRaw) / srcWRaw) * canvasSize;
-      } else {
-        destW = (srcW / srcWRaw) * canvasSize;
-      }
-      if (srcYRaw + srcHRaw > imgH) {
-        destH = ((imgH - srcYRaw) / srcHRaw) * canvasSize;
-      } else {
-        destH = (srcH / srcHRaw) * canvasSize;
-      }
+      // 计算目标区域：按比例将源有效区域映射到画布
+      const destX = srcXRaw < 0 ? (-srcXRaw / srcWRaw) * canvasSize : 0;
+      const destY = srcYRaw < 0 ? (-srcYRaw / srcHRaw) * canvasSize : 0;
+      const destW = (srcW / srcWRaw) * canvasSize;
+      const destH = (srcH / srcHRaw) * canvasSize;
 
       // 加载图片
       const image = canvas.createImage();
@@ -455,7 +439,6 @@ Page({
         destX, destY, destW, destH
       );
 
-      // 导出图片
       const tempFilePath = await new Promise((resolve, reject) => {
         wx.canvasToTempFilePath({
           canvas,
@@ -482,7 +465,7 @@ Page({
         const imgW = info.width || 1;
         const imgH = info.height || 1;
         const box = this.data.previewBoxPx || 640;
-        const ratio = Math.max(box / imgW, box / imgH);
+        const ratio = Math.min(box / imgW, box / imgH);
         const baseW = imgW * ratio;
         const baseH = imgH * ratio;
         const left = (box - baseW) / 2;
@@ -543,7 +526,7 @@ Page({
       const p1 = touches[0];
       const p2 = touches[1];
 
-      // 计算当前双指中心点
+      // 计算双指中心点
       const centerX = (p1.pageX + p2.pageX) / 2;
       const centerY = (p1.pageY + p2.pageY) / 2;
 
@@ -552,7 +535,6 @@ Page({
       const scaleRatio = dist / this._pinchStartDistance;
       const nextScale = this._pinchStartScale * scaleRatio;
 
-      // 计算双指中心点的移动距离（支持双指拖拽）
       const centerDx = centerX - this._pinchCenterX;
       const centerDy = centerY - this._pinchCenterY;
 
@@ -617,59 +599,62 @@ Page({
     this.setData({ sizeMode: e.currentTarget.dataset.mode });
   },
 
-  onShowBrandSheet() {
-    this.setData({ showBrandSheet: true });
+  _updateBrandOptionsSelect() {
+    const opts = (this.data.brands || []).map((item, index) => ({
+      text: item,
+      value: index
+    }));
+    this.setData({ brandOptionsSelect: opts });
   },
 
-  onHideBrandSheet() {
-    this.setData({ showBrandSheet: false });
+  _updateColorSetOptionsSelect() {
+    const opts = (this.data.colorSets || []).map((item) => ({
+      text: item.label,
+      value: item.value
+    }));
+    this.setData({ colorSetOptionsSelect: opts });
   },
 
-  onSelectBrand(e) {
-    const idx = parseInt(e.currentTarget.dataset.index);
+  _buildColorSetOptions(kits) {
+    return [
+      { value: 0, label: '全部色号' },
+      ...(kits || []).map(k => {
+        const value = Number(k) || 0;
+        return { value, label: `${value}色` };
+      }).filter(item => item.value > 0)
+    ];
+  },
+
+  onBrandDropdownChange(e) {
+    const idx = e.detail;
     const brand = this.data.brands[idx];
     const brandsData = this.data._brandsData || {};
     const kits = brandsData[brand] || [];
-    const colorSets = ['全部色号', ...kits.map(k => k + '色')];
+    const colorSets = this._buildColorSetOptions(kits);
     this.setData({
       brandIndex: idx,
       colorSets,
-      colorSetIndex: 0,
-      showBrandSheet: false
+      colorSetLabel: '全部色号',
+      colorSetValue: 0
     });
+    this._updateColorSetOptionsSelect();
   },
 
-  onShowColorSheet() {
-    this.setData({ showColorSheet: true });
+  onBrandDropdownOpen() {
+    this.selectComponent('#aiColorSelect')?.close();
   },
 
-  onHideColorSheet() {
-    this.setData({ showColorSheet: false });
-  },
-
-  onSelectColorSet(e) {
-    const idx = parseInt(e.currentTarget.dataset.index);
+  onColorSetDropdownChange(e) {
+    const value = Number(e.detail) || 0;
+    const item = (this.data.colorSets || []).find(option => option.value === value);
     this.setData({
-      colorSetIndex: idx,
-      showColorSheet: false
+      colorSetValue: value,
+      colorSetLabel: item ? item.label : '全部色号'
     });
   },
 
-  onBrandChange(e) {
-    const idx = parseInt(e.detail.value);
-    const brand = this.data.brands[idx];
-    const brandsData = this.data._brandsData || {};
-    const kits = brandsData[brand] || [];
-    const colorSets = ['全部色号', ...kits.map(k => k + '色')];
-    this.setData({
-      brandIndex: idx,
-      colorSets,
-      colorSetIndex: 0
-    });
-  },
-
-  onColorSetChange(e) {
-    this.setData({ colorSetIndex: e.detail.value });
+  onColorSetDropdownOpen() {
+    this.selectComponent('#aiBrandSelect')?.close();
   },
 
   onMirrorToggle() {
@@ -683,7 +668,7 @@ Page({
   },
 
   onGenerate() {
-    const { uploadedImage, selectedStyle, sizeMode, brandIndex, brands, colorSetIndex, colorSets, isMirrored, magicCount } = this.data;
+    const { uploadedImage, selectedStyle, sizeMode, brandIndex, brands, colorSetValue, isMirrored, magicCount } = this.data;
 
     if (!uploadedImage) {
       wx.showToast({ title: '请先上传图片', icon: 'none' });
@@ -695,34 +680,28 @@ Page({
       return;
     }
 
-    if (magicCount <= 0) {
-      wx.showModal({
-        title: '魔法次数不足',
-        content: '您的AI魔法次数已用完，购买次卡或开通会员即可继续使用',
-        confirmText: '去购买',
-        cancelText: '取消',
-        success: (res) => {
-          if (res.confirm) {
-            wx.navigateTo({
-              url: '/pages/vip/vip?tab=cards'
-            });
-          }
-        }
-      });
-      return;
-    }
-
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
 
-      const brand = brands[brandIndex];
-      const colorSet = colorSets[colorSetIndex];
-
-      let colorCount = 0;
-      if (colorSet !== '全部色号') {
-        const match = colorSet.match(/(\d+)/);
-        if (match) colorCount = parseInt(match[1]);
+      if (magicCount <= 0) {
+        wx.showModal({
+          title: '魔法次数不足',
+          content: 'AI魔法次数已用完，购买次卡或开通会员即可继续使用',
+          confirmText: '去购买',
+          cancelText: '取消',
+          success: (res) => {
+            if (res.confirm) {
+              wx.navigateTo({
+                url: '/pages/vip/vip?tab=cards'
+              });
+            }
+          }
+        });
+        return;
       }
+
+      const brand = brands[brandIndex];
+      const colorCount = Number(colorSetValue) || 0;
 
       const gridRange = this.getGridRange(sizeMode);
       wx.showLoading({ title: '正在上传图片...', mask: true });

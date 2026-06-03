@@ -62,6 +62,7 @@
   "sitemapLocation": "sitemap.json",
   "usingComponents": {
     "global-popup": "/components/popup/index",
-    "bead-canvas2d": "/components/bead-canvas2d/index"
+    "bead-canvas2d": "/components/bead-canvas2d/index",
+    "app-select": "/components/app-select/index"
   }
 }

@@ -256,6 +256,7 @@ page {
   flex-wrap: nowrap;
   width: max-content;
   min-width: 100%;
+  align-items: center;
 }
 
 .cards-grid--expanded {
@@ -281,9 +282,20 @@ page {
 }
 
 .cards-grid--compact .card-item {
-  width: 300rpx;
-  min-width: 300rpx;
+  width: 80rpx;
+  min-width: 80rpx;
+  height: 80rpx;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  justify-content: center;
   flex-shrink: 0;
+}
+
+.cards-grid--compact .card-info {
+  display: none;
 }
 
 .card-item:active {
@@ -314,6 +326,13 @@ page {
   position: relative;
 }
 
+.cards-grid--compact .card-bead {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 20rpx;
+  border-width: 3rpx;
+}
+
 .card-id {
   font-size: 24rpx;
   font-weight: 800;
@@ -335,6 +354,17 @@ page {
   align-items: center;
   justify-content: center;
   box-shadow: 0 4rpx 12rpx rgba(34, 197, 94, 0.5);
+}
+
+.cards-grid--compact .card-check {
+  position: static;
+  width: auto;
+  height: auto;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  color: #FFFFFF;
+  text-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.4);
 }
 
 .card-info {

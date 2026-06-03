@@ -17,6 +17,7 @@ const KEYS = {
   EVER_REGISTERED: 'everRegistered',
   CHECKED_IN: 'checkedIn',
   GIFTS: 'gifts',
+  AVAILABLE_GIFT_COUNT: 'availableGiftCount',
   DRAFTS: 'drafts',
   WATERMARK_ENABLED: 'watermarkEnabled',
   WATERMARK_TEXT: 'watermarkText',
@@ -71,6 +72,8 @@ function clearSession() {
   remove(KEYS.NICK_NAME);
   remove(KEYS.AVATAR_URL);
   remove(KEYS.PHONE);
+  remove(KEYS.MAGIC_COUNT);
+  remove(KEYS.AVAILABLE_GIFT_COUNT);
 }
 
 module.exports = {

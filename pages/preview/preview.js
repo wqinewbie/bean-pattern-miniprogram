@@ -7,6 +7,8 @@ const { generatePatternName } = require('../../utils/name-helper');
 const { renderResult } = require('../../utils/canvas2d/renderers/resultRenderer');
 const { waitCanvas2dReady } = require('../../utils/canvas2d/controller');
 const { previewSize, resultExportSize, patternExportSize } = require('../../utils/canvas2d/size-strategies');
+const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
+const { getWatermarkConfig } = require('../../utils/watermark-helper');
 
 Page({
   data: {
@@ -49,6 +51,8 @@ Page({
     isVip: false,
     canCustomizeWatermark: false,
     isAiStyle: false,
+    mirrorOn: false,
+    mirroredOriginalUrl: '',
   },
 
   onLoad(options) {
@@ -65,8 +69,9 @@ Page({
       else if (draftId) sourceType = 'DRAFT';
       else sourceType = 'BOX';
     }
+    const mirrorOn = options.mirror === '1' || options.mirror === 'true';
     const isFromBox = sourceType === 'BOX';
-    this.setData({ navTop: layout.navTop, boxId: boxId || null, historyId: historyId || null, draftId: draftId || null, sourceType, isFromBox, canEnterFocusMode: isFromBox, isAiStyle: isAi });
+    this.setData({ navTop: layout.navTop, boxId: boxId || null, historyId: historyId || null, draftId: draftId || null, sourceType, isFromBox, canEnterFocusMode: isFromBox, isAiStyle: isAi, mirrorOn });
     const id = boxId || historyId || draftId;
     if (!id) {
       wx.showToast({ title: '图纸不存在', icon: 'none' });
@@ -77,25 +82,21 @@ Page({
   },
   async loadWatermarkConfig() {
     try {
-      const config = await request.get('/watermark/user-config');
-      const appName = config && config.appName ? config.appName : '';
-      const watermark = config && config.watermark ? config.watermark : null;
-      const isVip = config && config.isVip ? config.isVip : false;
-      const canCustomizeWatermark = config && config.canCustomize ? config.canCustomize : false;
+      const { appName, watermarkConfig } = await getWatermarkConfig();
       
       this.setData({ 
-        watermarkConfig: watermark,
+        watermarkConfig: watermarkConfig,
         appName: appName,
-        isVip: isVip,
-        canCustomizeWatermark: canCustomizeWatermark
+        isVip: watermarkConfig.isVip || false,
+        canCustomizeWatermark: watermarkConfig.canCustomize || false
       });
       
       console.log('[preview] 水印和小程序名称配置加载成功', {
-        watermarkEnabled: watermark && watermark.enabled,
-        watermarkText: watermark && watermark.text,
-        watermarkColor: watermark && watermark.color,
+        watermarkEnabled: watermarkConfig && watermarkConfig.enabled,
+        watermarkText: watermarkConfig && watermarkConfig.text,
+        watermarkColor: watermarkConfig && watermarkConfig.color,
         appName: appName,
-        isVip: isVip
+        isVip: watermarkConfig && watermarkConfig.isVip
       });
     } catch (e) {
       console.error('[preview] 加载水印配置失败', e);
@@ -142,17 +143,17 @@ Page({
       const hasPatternData = parsedGridData.length > 0 && parsedColorPalette.length > 0;
       const recordSourceType = String(data.sourceType || data.source || data.type || '').toUpperCase();
       const isAiStyle = recordSourceType.includes('AI');
-      const originalUrl = (sourceType === 'DRAFT' || isAiStyle) ? '' : (data.sourceUrl || data.coverUrl || '');
+      const originalUrl = (sourceType === 'DRAFT') ? '' : (data.sourceUrl || data.coverUrl || '');
       const totalBeads = parsedColorPalette.reduce((sum, c) => sum + (c.count || 0), 0);
       const renderedPatternUrl = data.renderedPatternUrl || '';
       const returnedBoxId = data.boxId ? String(data.boxId) : (this.data.boxId || null);
       const returnedDraftId = data.draftId ? String(data.draftId) : (this.data.draftId || null);
-      const isSaved = sourceType === 'BOX' || (!!returnedBoxId && returnedBoxId !== id);
+      const isSaved = sourceType === 'BOX' || (sourceType !== 'BOX' && !!returnedBoxId);
       const canEnterFocusMode = sourceType === 'BOX' || isSaved;
       let activeTab = 'pattern';
       if (sourceType === 'DRAFT' || isAiStyle) activeTab = hasPatternData ? 'result' : 'pattern';
       else { if (hasPatternData) activeTab = 'result'; else if (originalUrl) activeTab = 'original'; }
-      this.setData({ name: data.name || '', originalUrl, currentPreviewUrl: originalUrl, currentSize: data.gridSize || 64, brandName: (data.brand || 'MARD').toUpperCase(), colorCount: data.colorCount || parsedColorPalette.length, mappedPixelData: parsedMappedPixelData, gridData: parsedGridData, colorPalette: parsedColorPalette, totalBeads, hasPatternData, hasResultData: hasPatternData, renderedPatternUrl, patternRendered: !!renderedPatternUrl, activeTab, boxId: returnedBoxId, draftId: returnedDraftId, isSaved, canEnterFocusMode, loading: false, isHydrated: true, initialLoading: hasPatternData ? true : false, isAiStyle }, () => { if (hasPatternData && !renderedPatternUrl) setTimeout(() => this._generatePatternPreview2d(), 200); });
+      this.setData({ name: data.name || '', originalUrl, currentPreviewUrl: originalUrl, currentSize: data.gridSize || 64, brandName: (data.brand || 'MARD').toUpperCase(), colorCount: data.colorCount || parsedColorPalette.length, mappedPixelData: parsedMappedPixelData, gridData: parsedGridData, colorPalette: parsedColorPalette, totalBeads, hasPatternData, hasResultData: hasPatternData, renderedPatternUrl, patternRendered: !!renderedPatternUrl, activeTab, boxId: returnedBoxId, draftId: returnedDraftId, isSaved, canEnterFocusMode, loading: false, isHydrated: true, initialLoading: hasPatternData ? true : false, isAiStyle }, () => { if (hasPatternData && !renderedPatternUrl) setTimeout(() => this._generatePatternPreview2d(), 200); this.ensureMirroredOriginalUrl(); });
     }).catch((err) => {
       const message = (err && err.message) ? err.message : '加载失败';
       wx.showToast({ title: message.length > 8 ? '加载失败' : message, icon: 'none' });
@@ -175,23 +176,40 @@ Page({
 
   onCanvas2dError(e) { console.error('[preview][canvas2d] error', e.detail); },
 
-  onImageError(e) { console.error('[preview] image load error', e.detail, 'src:', this.data.renderedResultUrl); },
-  onImageLoad(e) { console.log('[preview] image load success', e.detail); },
 
   onBack() { wx.navigateBack({ fail: () => wx.switchTab({ url: '/pages/profile/profile' }) }); },
 
   onTabChange(e) {
     const tab = e.currentTarget.dataset.tab;
-    this.setData({ activeTab: tab, currentPreviewUrl: tab === 'original' ? this.data.originalUrl : '' });
+    if (tab === 'original') {
+      const url = (this.data.mirrorOn && this.data.mirroredOriginalUrl) || this.data.originalUrl || '';
+      this.setData({ activeTab: tab, currentPreviewUrl: url });
+    } else {
+      this.setData({ activeTab: tab, currentPreviewUrl: '' });
+    }
     if (tab === 'result' && this.data.hasResultData && !this.data.resultRendered && !this.data.renderedResultUrl) this._renderResultCanvas2d();
     else if (tab === 'pattern' && this.data.hasPatternData && !this.data.patternRendered && !this.data.renderedPatternUrl) this._renderPatternCanvas2d();
   },
 
   onPreviewImage() {
-    const { activeTab, currentPreviewUrl, renderedPatternUrl, renderedResultUrl, originalUrl } = this.data;
-    if (activeTab === 'original') { const url = currentPreviewUrl || originalUrl; if (!url) return; wx.previewImage({ urls: [url], current: url }); }
+    const { activeTab, currentPreviewUrl, renderedPatternUrl, renderedResultUrl, originalUrl, mirrorOn, mirroredOriginalUrl } = this.data;
+    if (activeTab === 'original') { const url = (mirrorOn && mirroredOriginalUrl) || currentPreviewUrl || originalUrl; if (!url) return; wx.previewImage({ urls: [url], current: url }); }
     else if (activeTab === 'result' && renderedResultUrl) wx.previewImage({ urls: [renderedResultUrl], current: renderedResultUrl });
     else if (activeTab === 'pattern' && renderedPatternUrl) wx.previewImage({ urls: [renderedPatternUrl], current: renderedPatternUrl });
+  },
+
+  ensureMirroredOriginalUrl() {
+    const { originalUrl, mirrorOn } = this.data;
+    if (!mirrorOn || !originalUrl) return;
+    if (this.data.mirroredOriginalUrl) return;
+
+    if (/^https?:\/\//i.test(originalUrl)) {
+      const mirrored = originalUrl + (originalUrl.includes('?') ? '&' : '?') + 'imageMogr2/flop';
+      this.setData({ mirroredOriginalUrl: mirrored });
+      if (this.data.activeTab === 'original') {
+        this.setData({ currentPreviewUrl: mirrored });
+      }
+    }
   },
 
   _renderResultCanvas2d() {
@@ -227,12 +245,16 @@ Page({
 
   _generatePatternPreview2d() {
     if (this._patternPreviewGenerating || this.data.renderedPatternUrl) return;
-    const { gridData, colorPalette, currentSize, watermarkConfig, appName } = this.data;
+    const { gridData, colorPalette, currentSize } = this.data;
     if (!gridData.length || !colorPalette.length) return;
     console.log('[preview] _generatePatternPreview2d start');
     this._patternPreviewGenerating = true;
-    waitCanvas2dReady(this, 'patternExport2dComp', { timeout: 5000 }).then(({ comp, ctx, canvas }) => {
+    waitCanvas2dReady(this, 'patternExport2dComp', { timeout: 5000 }).then(async ({ comp, ctx, canvas }) => {
       const boardSize = patternExportSize(currentSize);
+      const latestWatermark = await getWatermarkConfig();
+      const appName = latestWatermark.appName || this.data.appName || '';
+      const watermarkConfig = latestWatermark.watermarkConfig || this.data.watermarkConfig || null;
+      this.setData({ appName, watermarkConfig });
       const drawOptions = {
         maxCanvasSize: 4096,
         appName: appName || '',
@@ -265,26 +287,22 @@ Page({
     if (this.data.savingToBox) return;
     const name = (patternNameInput || '').trim() || generatePatternName();
     this.setData({ savingToBox: true });
-    request.post('/box/save', { name, sourceType: sourceType || 'LOCAL', brand: brandName, colorCount, gridSize: currentSize, mappedPixelData: JSON.stringify(mappedPixelData), historyId: historyId || null, draftId: draftId || null, sourceUrl: originalUrl || '' }).then((box) => {
-      const newBoxId = box && box.id ? String(box.id) : (box && box.box && box.box.id ? String(box.box.id) : null);
+    const saveRequest = sourceType === 'DRAFT' && draftId
+      ? request.post('/draft/to-box', { draftId: Number(draftId), name })
+      : request.post('/box/save', { name, sourceType: sourceType || 'LOCAL', brand: brandName, colorCount, gridSize: currentSize, mappedPixelData: JSON.stringify(mappedPixelData), historyId: historyId || null, draftId: draftId || null, sourceUrl: originalUrl || '' });
+    saveRequest.then((box) => {
+      const newBoxId = box && box.id ? String(box.id) : (box && box.boxId ? String(box.boxId) : (box && box.box && box.box.id ? String(box.box.id) : null));
       this.setData({ isSaved: true, boxId: newBoxId, canEnterFocusMode: true, showNameModal: false, savingToBox: false });
       wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
-      this._showCapacityFullIfNeeded(box);
+      showCapacityFullIfNeeded(box, { type: 'box' });
       const pages = getCurrentPages();
       const prevPage = pages.length > 1 ? pages[pages.length - 2] : null;
       if (prevPage) prevPage._needsRefresh = true;
-    }).catch(() => { this.setData({ savingToBox: false }); wx.showToast({ title: '保存失败，请重试', icon: 'none' }); });
+    }).catch((err) => { this.setData({ savingToBox: false }); showRequestErrorToast(err, '保存失败，请重试'); });
   },
 
   _showCapacityFullIfNeeded(result) {
-    if (!result || !result.capacityFull) return;
-    setTimeout(() => {
-      wx.showToast({
-        title: result.capacityMessage || '图纸箱容量已满',
-        icon: 'none',
-        duration: 2200
-      });
-    }, 900);
+    showCapacityFullIfNeeded(result, { type: 'box' });
   },
 
   onEnterFocusMode() {
@@ -323,10 +341,10 @@ Page({
 
   onSaveImage() {
     if (this.data.savingToAlbum) return;
-    const { activeTab, renderedPatternUrl, renderedResultUrl, originalUrl, currentPreviewUrl } = this.data;
+    const { activeTab, renderedPatternUrl, renderedResultUrl, originalUrl, currentPreviewUrl, mirrorOn, mirroredOriginalUrl } = this.data;
     if (activeTab === 'pattern') { if (renderedPatternUrl) { this.setData({ savingToAlbum: true }); this._saveToAlbum(renderedPatternUrl); } else this._exportPatternWith2d(); return; }
     if (activeTab === 'result') { if (renderedResultUrl) { this.setData({ savingToAlbum: true }); this._saveToAlbum(renderedResultUrl); } else this._exportResultWith2d(); return; }
-    const url = currentPreviewUrl || originalUrl;
+    const url = (mirrorOn && mirroredOriginalUrl) || currentPreviewUrl || originalUrl;
     if (!url) { wx.showToast({ title: '暂无图片', icon: 'none' }); return; }
     this.setData({ savingToAlbum: true });
     if (url.startsWith('http')) wx.downloadFile({ url, success: (res) => { if (res.statusCode === 200) this._saveToAlbum(res.tempFilePath); else { this.setData({ savingToAlbum: false }); wx.showToast({ title: '下载失败', icon: 'error' }); } }, fail: () => { this.setData({ savingToAlbum: false }); wx.showToast({ title: '下载失败', icon: 'error' }); } });
@@ -350,11 +368,15 @@ Page({
 
   _exportPatternWith2d() {
     this.setData({ savingToAlbum: true });
-    const { gridData, colorPalette, currentSize, watermarkConfig, appName } = this.data;
+    const { gridData, colorPalette, currentSize } = this.data;
     if (!gridData.length || !colorPalette.length) { this.setData({ savingToAlbum: false }); wx.showToast({ title: '暂无色号图', icon: 'none' }); return; }
     console.log('[preview] _exportPatternWith2d start');
-    waitCanvas2dReady(this, 'patternExport2dComp', { timeout: 5000 }).then(({ comp, ctx, canvas }) => {
+    waitCanvas2dReady(this, 'patternExport2dComp', { timeout: 5000 }).then(async ({ comp, ctx, canvas }) => {
       const boardSize = patternExportSize(currentSize);
+      const latestWatermark = await getWatermarkConfig();
+      const appName = latestWatermark.appName || this.data.appName || '';
+      const watermarkConfig = latestWatermark.watermarkConfig || this.data.watermarkConfig || null;
+      this.setData({ appName, watermarkConfig });
       const drawOptions = {
         maxCanvasSize: 4096,
         appName: appName || '',

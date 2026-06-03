@@ -14,6 +14,11 @@
   box-sizing: border-box;
 }
 
+.generate-scroll-content {
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
 .reselect-bar {
   padding: 18rpx 40rpx 8rpx;
   background: #FFF9ED;
@@ -208,21 +213,14 @@
 }
 
 .size-row > picker,
-.size-row > view {
+.size-row > view,
+.size-row > app-select {
   flex: 1;
   min-width: 0;
 }
 
-.size-picker-wrap {
-  display: block;
-}
-
-.size-picker-wrap .size-half-box {
-  width: 100%;
-}
-
 .size-half-box {
-  width: 100%;
+  width: auto;
   min-width: 0;
   height: 88rpx;
   border-radius: 24rpx;
@@ -233,6 +231,7 @@
   align-items: center;
   justify-content: space-between;
   box-sizing: border-box;
+  transition: all 0.2s;
 }
 
 .size-half-box--active {
@@ -369,6 +368,7 @@
   align-items: center;
   justify-content: space-between;
   box-sizing: border-box;
+  transition: all 0.2s;
 }
 
 .threshold-card {
@@ -433,6 +433,7 @@
   font-weight: 800;
 }
 
+
 .mirror-btn {
   height: 88rpx;
   background: #ffffff;
@@ -452,6 +453,37 @@
   border-color: #0288D1;
   color: #0288D1;
 }
+
+/* ========== AppSelect Dropdown 覆盖样式 ========== */
+.gen-dropdown {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.gen-dropdown--size {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.gen-dropdown .app-select__trigger {
+  min-height: 88rpx;
+  border-color: #F5E6D3;
+  background: #ffffff;
+}
+
+.gen-dropdown .app-select__value {
+  font-size: 28rpx;
+}
+
+.gen-dropdown .app-select__arrow {
+  width: 16rpx;
+  height: 16rpx;
+  color: #A1887F;
+  margin-left: auto;
+  position: static;
+}
+
+/* AppSelect 选项面板覆盖 */
 
 .generate-bottom-bar {
   position: fixed;
@@ -486,91 +518,6 @@
   transform: scale(0.95);
 }
 
-.sheet-mask {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  background: rgba(93, 64, 55, 0.4);
-  z-index: 50;
-}
-
-.color-sheet {
-  position: fixed;
-  bottom: -100%;
-  left: 0;
-  right: 0;
-  background: #ffffff;
-  border-radius: 80rpx 80rpx 0 0;
-  padding: 32rpx 64rpx calc(64rpx + env(safe-area-inset-bottom));
-  z-index: 51;
-  transition: bottom 0.3s ease;
-  box-shadow: 0 -40rpx 80rpx rgba(0, 0, 0, 0.1);
-  box-sizing: border-box;
-}
-
-.color-sheet--show {
-  bottom: 0;
-}
-
-.sheet-handle {
-  width: 96rpx;
-  height: 12rpx;
-  border-radius: 999rpx;
-  background: #F5E6D3;
-  margin: 0 auto 48rpx;
-}
-
-.sheet-title {
-  text-align: center;
-  font-size: 36rpx;
-  line-height: 1.2;
-  font-weight: 800;
-  color: #5D4037;
-  margin-bottom: 48rpx;
-}
-
-.sheet-list {
-  display: flex;
-  flex-direction: column;
-  gap: 24rpx;
-  margin-bottom: 48rpx;
-}
-
-.sheet-item {
-  width: 100%;
-  min-height: 96rpx;
-  border-radius: 32rpx;
-  border: 4rpx solid #F5E6D3;
-  background: #ffffff;
-  color: #A1887F;
-  font-size: 32rpx;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-}
-
-.sheet-item--active {
-  background: #FFF4DC;
-  border-color: #FFD54F;
-  color: #5D4037;
-}
-
-.sheet-btn-cancel {
-  width: 100%;
-  height: 96rpx;
-  border-radius: 48rpx;
-  background: #F5E6D3;
-  color: #A1887F;
-  font-size: 32rpx;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
 .offscreen-canvas {
   position: fixed;

@@ -18,7 +18,6 @@
  * @param {string} options.mode - 显示模式：'colorId' | 'horizontal' | 'vertical'
  * @param {Array<Array<number>>} options.hRun - 横向计数数组
  * @param {Array<Array<number>>} options.vRun - 竖向计数数组
- * @param {Object} options.recommendedCell - 推荐格子 {row, col}
  * @param {number} options.dpr - 设备像素比
  */
 function drawImmersiveGrid(ctx, options) {
@@ -35,21 +34,19 @@ function drawImmersiveGrid(ctx, options) {
     mode = 'colorId',
     hRun = [],
     vRun = [],
-    recommendedCell = null,
     dpr = 1
   } = options;
 
   const cellSize = width / gridSize;
   const dimAlpha = Math.max(0.15, (100 - contrast) / 100 * 0.65); // 数值越大，未选中背景越浅
   const hasFocus = !!highlightId;
-  const isCountMode = mode === 'horizontal' || mode === 'vertical';
 
   // 清空画布
   ctx.clearRect(0, 0, width, height);
 
-  // 绘制背景
-  // 字体大小
-  const baseFontSize = Math.max(8, Math.min(24, Math.floor(cellSize * 0.58)));
+  // 字体大小随格子缩放，小格子允许更细字号，避免文字被强行裁切后发糊。
+  const baseFontSize = Math.max(3, Math.min(20, Math.floor(cellSize * 0.64)));
+  const fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif';
 
   // 绘制拼豆
   for (let y = 0; y < gridSize; y++) {
@@ -63,44 +60,16 @@ function drawImmersiveGrid(ctx, options) {
       const cx = x * cellSize + cellSize / 2;
       const cy = y * cellSize + cellSize / 2;
 
-      // 设置透明度
-      if (done) {
-        ctx.globalAlpha = focused ? 0.75 : dimAlpha;
-      } else if (focused) {
-        ctx.globalAlpha = 1; // 高亮的完全不透明
+      // 设置透明度：完成格保持原色纯色，仅未选中的非目标色号降透明度
+      if (done || focused) {
+        ctx.globalAlpha = 1;
       } else {
-        ctx.globalAlpha = dimAlpha; // 未选中的很暗
+        ctx.globalAlpha = dimAlpha;
       }
 
       // 绘制方形像素块
       ctx.fillStyle = `rgb(${r},${g},${b})`;
       ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-
-      // 如果高亮且未完成，添加高亮边框
-      if (hasFocus && focused && !done && !isCountMode) {
-        const lineWidth = Math.max(1.5 / dpr, cellSize * 0.08);
-        const inset = lineWidth / 2;
-
-        ctx.globalAlpha = 0.95;
-        ctx.strokeStyle = '#FF9800';
-        ctx.lineWidth = lineWidth;
-        ctx.strokeRect(
-          x * cellSize + inset,
-          y * cellSize + inset,
-          cellSize - lineWidth,
-          cellSize - lineWidth
-        );
-
-        ctx.globalAlpha = 0.75;
-        ctx.strokeStyle = (r + g + b) > 560 ? '#1f2937' : '#FFFFFF';
-        ctx.lineWidth = Math.max(1 / dpr, lineWidth * 0.45);
-        ctx.strokeRect(
-          x * cellSize + lineWidth,
-          y * cellSize + lineWidth,
-          cellSize - lineWidth * 2,
-          cellSize - lineWidth * 2
-        );
-      }
 
       // 绘制文字标签（只在横竖计数模式下显示）
       let text = '';
@@ -119,51 +88,43 @@ function drawImmersiveGrid(ctx, options) {
       }
 
       if (text) {
-        const isLight = (r + g + b) > 560;
+        const isLight = getTextColor(r, g, b) === '#1f2937';
+        // 文字宽度尽量利用格子空间，减少不必要的缩小。
         const maxTextWidth = Math.max(1, cellSize * 0.82);
+        const minFontSize = Math.max(2.5, Math.min(5, cellSize * 0.58));
         let fontSize = baseFontSize;
         ctx.globalAlpha = 1;
         ctx.fillStyle = isLight ? '#1f2937' : '#ffffff';
-        ctx.font = `700 ${fontSize}px sans-serif`;
-        while (fontSize > 5 && ctx.measureText(text).width > maxTextWidth) {
-          fontSize -= 1;
-          ctx.font = `700 ${fontSize}px sans-serif`;
+        ctx.font = `700 ${fontSize}px ${fontFamily}`;
+        while (fontSize > minFontSize && ctx.measureText(text).width > maxTextWidth) {
+          fontSize = Math.max(minFontSize, fontSize - 0.5);
+          ctx.font = `700 ${fontSize}px ${fontFamily}`;
         }
+        ctx.font = `700 ${fontSize}px ${fontFamily}`;
         ctx.save();
+        // clip 留出 margin 避免 stroke 溢出格子
+        const clipMargin = Math.max(0.6 / dpr, cellSize * 0.025);
         ctx.beginPath();
-        ctx.rect(x * cellSize + 1 / dpr, y * cellSize + 1 / dpr, cellSize - 2 / dpr, cellSize - 2 / dpr);
+        ctx.rect(
+          x * cellSize + clipMargin,
+          y * cellSize + clipMargin,
+          cellSize - clipMargin * 2,
+          cellSize - clipMargin * 2
+        );
         ctx.clip();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.lineJoin = 'round';
         ctx.miterLimit = 2;
-        ctx.lineWidth = Math.max(1, Math.min(2.5, fontSize * 0.2));
-        ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.96)' : 'rgba(17,24,39,0.92)';
-        ctx.strokeText(text, cx, cy);
-        ctx.lineWidth = Math.max(1, fontSize * 0.1);
-        ctx.strokeStyle = isLight ? 'rgba(17,24,39,0.25)' : 'rgba(255,255,255,0.3)';
-        ctx.strokeText(text, cx, cy);
+        if (fontSize >= 4.5) {
+          ctx.lineWidth = Math.max(0.35, Math.min(1.25, fontSize * 0.12));
+          ctx.strokeStyle = isLight ? 'rgba(255,255,255,0.82)' : 'rgba(17,24,39,0.62)';
+          ctx.strokeText(text, cx, cy);
+        }
         ctx.fillText(text, cx, cy);
         ctx.restore();
       }
     }
-  }
-
-  // 绘制推荐格子高亮（方形边框）
-  if (recommendedCell && highlightId) {
-    const rx = recommendedCell.col * cellSize;
-    const ry = recommendedCell.row * cellSize;
-    
-    ctx.globalAlpha = 0.8;
-    ctx.strokeStyle = '#FF9800';
-    ctx.lineWidth = 2 / dpr;
-    ctx.strokeRect(rx, ry, cellSize, cellSize);
-    
-    // 绘制脉冲动画效果
-    ctx.globalAlpha = 0.4;
-    ctx.strokeStyle = '#FF9800';
-    ctx.lineWidth = 1 / dpr;
-    ctx.strokeRect(rx - 2, ry - 2, cellSize + 4, cellSize + 4);
   }
 
   ctx.globalAlpha = 1;

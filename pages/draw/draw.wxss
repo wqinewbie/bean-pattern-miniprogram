@@ -1468,6 +1468,17 @@ page {
   color: #FF9800;
 }
 
+.draw-dropdown .app-select__trigger {
+  min-height: 64rpx;
+  padding: 0 20rpx;
+  border-color: #FFEBB5;
+}
+
+.draw-dropdown .app-select__value {
+  color: #8C6B4B;
+  font-size: 24rpx;
+}
+
 /* 下拉面板 */
 .dropdown-panel {
   margin-top: 12rpx;

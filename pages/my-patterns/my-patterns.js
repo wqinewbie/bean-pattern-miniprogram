@@ -3,6 +3,17 @@ const { hasSession } = require('../../utils/profile-guard');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const { API_BASE_URL } = require('../../utils/config');
 
+const THUMB_RENDER_BATCH_SIZE = 4;
+const THUMB_MAX_SAMPLE_GRID = 80;
+
+function scheduleIdle(callback, delay = 0) {
+  if (typeof wx !== 'undefined' && wx.nextTick && delay === 0) {
+    wx.nextTick(callback);
+    return;
+  }
+  setTimeout(callback, delay);
+}
+
 function resolveImageUrl(url) {
   if (!url) return '';
   url = String(url).trim();
@@ -46,8 +57,11 @@ Page({
   },
   _pendingSwipeOffset: null,
   _swipeRaf: null,
+  _renderedThumbKeys: null,
+  _thumbRenderTimer: null,
 
   onLoad() {
+    this._renderedThumbKeys = new Set();
     this.calcNavTop();
   },
   onShow() {
@@ -58,6 +72,14 @@ Page({
     }
     const tab = this.selectComponent('#appTabBar');
     if (tab && tab.setSelected) tab.setSelected(3);
+  },
+
+  onUnload() {
+    if (this._thumbRenderTimer) {
+      clearTimeout(this._thumbRenderTimer);
+      this._thumbRenderTimer = null;
+    }
+    if (this._renderedThumbKeys) this._renderedThumbKeys.clear();
   },
 
   calcNavTop() {
@@ -94,6 +116,7 @@ Page({
 
   loadPatterns(reset = false) {
     if (reset) {
+      if (this._renderedThumbKeys) this._renderedThumbKeys.clear();
       this.setData({
         page: 1,
         hasMore: true,
@@ -129,11 +152,11 @@ Page({
           const rawSourceUrl = item.sourceUrl || '';
           const resolvedSourceUrl = resolveImageUrl(rawSourceUrl);
           const resolvedCoverUrl = resolveImageUrl(item.coverUrl || item.sourceUrl || '');
-          const hasOriginal = !!(resolvedSourceUrl && resolvedSourceUrl.trim());
-          const isDraftSource = !hasOriginal && (item.sourceType === 'DRAW' || !!item.draftId);
           const hasMappedData = Array.isArray(mappedPixelData) && mappedPixelData.length > 0;
           const sourceType = this.getPatternSourceType(item);
           const isAiSource = sourceType === 'ai';
+          const hasOriginal = !!(resolvedSourceUrl && resolvedSourceUrl.trim());
+          const isDraftSource = sourceType === 'draft';
 
           if (isDraftSource) {
             console.log('草稿箱来源记录:', {
@@ -166,7 +189,7 @@ Page({
             boxId: item.id,
             hasOriginal: isAiSource ? false : hasOriginal,
             isDraftSource,
-            hasCanvasCover: (isDraftSource || isAiSource) && hasMappedData,
+            hasCanvasCover: hasMappedData && (isDraftSource || isAiSource || !resolvedCoverUrl),
           };
         });
 
@@ -191,7 +214,7 @@ Page({
           loading: false,
           loadingMore: false
         }, () => {
-          setTimeout(() => this.renderThumbnails(), 60);
+          this.scheduleRenderThumbnails(60);
         });
       })
       .catch(() => {
@@ -239,7 +262,8 @@ Page({
               const patterns = this.data.patterns.filter(p => String(p.id) !== String(id));
               this.setData({ patterns }, () => {
                 this.applyFilter();
-                setTimeout(() => this.renderThumbnails(), 60);
+                if (this._renderedThumbKeys) this._renderedThumbKeys.clear();
+                this.scheduleRenderThumbnails(60);
               });
               wx.showToast({ title: '已删除', icon: 'success' });
             })
@@ -292,7 +316,7 @@ Page({
   onSearchInput(e) {
     this.setData({ keyword: (e.detail.value || '').trim() }, () => {
       this.applyFilter();
-      setTimeout(() => this.renderThumbnails(), 60);
+      this.scheduleRenderThumbnails(60);
     });
   },
 
@@ -308,11 +332,12 @@ Page({
     const nextMode = this.data.viewMode === 'thumb' ? 'list' : 'thumb';
     this.closeSwipe();
     this.setData({ viewMode: nextMode }, () => {
-      setTimeout(() => this.renderThumbnails(), 60);
+      this.scheduleRenderThumbnails(60);
     });
   },
 
   onRename(e) {
+    if (this._renaming) return;
     const item = e.currentTarget.dataset.item;
     this.closeSwipe();
     wx.showModal({
@@ -324,6 +349,8 @@ Page({
         if (res.confirm && res.content) {
           const newName = res.content.trim();
           if (!newName || newName === item.name) return;
+          this._renaming = true;
+          wx.showLoading({ title: '保存中...', mask: true });
           request.put('/box/rename', { id: item.id, name: newName })
             .then(() => {
               const patterns = this.data.patterns.map(p => {
@@ -337,7 +364,11 @@ Page({
               });
               wx.showToast({ title: '已重命名', icon: 'success' });
             })
-            .catch((err) => wx.showToast({ title: (err && err.message) || '操作失败', icon: 'none' }));
+            .catch((err) => wx.showToast({ title: (err && err.message) || '操作失败', icon: 'none' }))
+            .finally(() => {
+              this._renaming = false;
+              wx.hideLoading();
+            });
         }
       }
     });
@@ -433,45 +464,87 @@ Page({
     this.setData({ filteredPatterns: filtered });
   },
 
+  scheduleRenderThumbnails(delay = 0) {
+    if (this._thumbRenderTimer) {
+      clearTimeout(this._thumbRenderTimer);
+      this._thumbRenderTimer = null;
+    }
+    this._thumbRenderTimer = setTimeout(() => {
+      this._thumbRenderTimer = null;
+      this.renderThumbnails();
+    }, delay);
+  },
+
   renderThumbnails() {
-    // 仅对草稿来源且无原图的项用 canvas 渲染缩略图
-    const patterns = this.data.filteredPatterns || [];
-    patterns.forEach(item => {
-      if (!item.hasCanvasCover) return;
-      const canvasId = this.data.viewMode === 'thumb' ? '#boxThumbCanvas' + item.id : '#boxListCanvas' + item.id;
-      const query = wx.createSelectorQuery();
-      query.select(canvasId)
-        .fields({ node: true, size: true })
-        .exec((res) => {
-          if (!res || !res[0] || !res[0].node) return;
-          const canvas = res[0].node;
-          const ctx = canvas.getContext('2d');
-          const deviceInfo = wx.getDeviceInfo ? wx.getDeviceInfo() : {};
-          const dpr = Math.min(deviceInfo.pixelRatio || 2, 2);
-          const size = Math.min(res[0].width, res[0].height) || 200;
-          canvas.width = size * dpr;
-          canvas.height = size * dpr;
-          ctx.scale(dpr, dpr);
-          const gridSize = item.gridSize || 64;
-          const cellSize = size / gridSize;
-          const mappedPixelData = item.mappedPixelData || [];
+    const patterns = (this.data.filteredPatterns || []).filter(item => item && item.hasCanvasCover);
+    if (!patterns.length) return;
+    if (!this._renderedThumbKeys) this._renderedThumbKeys = new Set();
 
-          // 绘制底色
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, size, size);
+    const mode = this.data.viewMode;
+    const pending = patterns.filter(item => !this._renderedThumbKeys.has(this._getThumbRenderKey(item, mode)));
+    this._renderThumbnailBatch(pending, 0, mode);
+  },
 
-          // mappedPixelData 是二维数组，每个元素是 { id, name, r, g, b, hex, isExternal }
-          if (mappedPixelData.length > 0) {
-            for (let y = 0; y < gridSize; y++) {
-              for (let x = 0; x < gridSize; x++) {
-                const cell = mappedPixelData[y] && mappedPixelData[y][x];
-                if (!cell || cell.isExternal) continue;
-                ctx.fillStyle = 'rgb(' + cell.r + ', ' + cell.g + ', ' + cell.b + ')';
-                ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-              }
-            }
-          }
-        });
-    });
+  _renderThumbnailBatch(items, startIndex, mode) {
+    if (!items || startIndex >= items.length) return;
+    const batch = items.slice(startIndex, startIndex + THUMB_RENDER_BATCH_SIZE);
+
+    batch.forEach(item => this._renderOneThumbnail(item, mode));
+
+    if (startIndex + THUMB_RENDER_BATCH_SIZE < items.length) {
+      scheduleIdle(() => {
+        this._renderThumbnailBatch(items, startIndex + THUMB_RENDER_BATCH_SIZE, mode);
+      }, 16);
+    }
+  },
+
+  _getThumbRenderKey(item, mode) {
+    return `${mode}:${item.id}:${item.gridSize}:${item.updatedAt || item.createdAt || ''}`;
+  },
+
+  _renderOneThumbnail(item, mode) {
+    const canvasId = mode === 'thumb' ? '#boxThumbCanvas' + item.id : '#boxListCanvas' + item.id;
+    const renderKey = this._getThumbRenderKey(item, mode);
+    const query = wx.createSelectorQuery();
+    query.select(canvasId)
+      .fields({ node: true, size: true })
+      .exec((res) => {
+        if (!res || !res[0] || !res[0].node) return;
+        const canvas = res[0].node;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const deviceInfo = wx.getDeviceInfo ? wx.getDeviceInfo() : {};
+        const dpr = Math.min(deviceInfo.pixelRatio || 2, 2);
+        const size = Math.min(res[0].width, res[0].height) || 200;
+        canvas.width = size * dpr;
+        canvas.height = size * dpr;
+        ctx.setTransform ? ctx.setTransform(dpr, 0, 0, dpr, 0, 0) : ctx.scale(dpr, dpr);
+        ctx.imageSmoothingEnabled = false;
+
+        this._drawThumbnailGrid(ctx, item, size);
+        this._renderedThumbKeys.add(renderKey);
+      });
+  },
+
+  _drawThumbnailGrid(ctx, item, size) {
+    const gridSize = Number(item.gridSize || 64);
+    const mappedPixelData = item.mappedPixelData || [];
+    const sampleStep = Math.max(1, Math.ceil(gridSize / THUMB_MAX_SAMPLE_GRID));
+    const blockSize = size / Math.ceil(gridSize / sampleStep);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+
+    if (!mappedPixelData.length) return;
+
+    for (let y = 0, sy = 0; y < gridSize; y += sampleStep, sy++) {
+      for (let x = 0, sx = 0; x < gridSize; x += sampleStep, sx++) {
+        const cell = mappedPixelData[y] && mappedPixelData[y][x];
+        if (!cell || cell.isExternal) continue;
+        ctx.fillStyle = cell.hex || ('rgb(' + cell.r + ', ' + cell.g + ', ' + cell.b + ')');
+        ctx.fillRect(sx * blockSize, sy * blockSize, blockSize + 0.5, blockSize + 0.5);
+      }
+    }
   },
 });

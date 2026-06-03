@@ -128,7 +128,7 @@
               <text wx:else class="card-id" style="color:{{item.textColor}}">{{item.id}}</text>
             </view>
             <view class="card-info">
-              <text class="card-name">{{item.name || item.id}}</text>
+              <text class="card-name">{{item.id}}</text>
               <text class="card-count">剩余 {{remainingByColor[item.id] || 0}} 颗</text>
             </view>
           </view>

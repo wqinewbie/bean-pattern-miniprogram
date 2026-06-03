@@ -19,7 +19,7 @@
       </view>
       <view class="top-bar-right">
         <view wx:if="{{backgroundImage && activeLayer == 'canvas'}}" class="layer-badge canvas-layer">画布</view>
-        <view wx:elif="{{backgroundImage}}" class="layer-badge background-layer">背景</view>
+        <view wx:elif="{{backgroundImage}}" class="layer-badge background-layer">背景图</view>
       </view>
     </view>
   </view>
@@ -39,23 +39,15 @@
         <view class="settings-body">
           <view class="setting-section">
             <view class="setting-label-text">画布尺寸</view>
-            <view class="setting-dropdown {{sizeDropdownOpen?'open':''}}" bindtap="onToggleSizeDropdown">
-              <text class="dropdown-value">{{isPresetSize ? gridSize + "x" + gridSize : customSize + "x" + customSize}}</text>
-              <text class="dropdown-arrow">{{sizeDropdownOpen ? "^" : "v"}}</text>
-            </view>
-            <view wx:if="{{sizeDropdownOpen}}" class="dropdown-panel">
-              <view class="dropdown-list">
-                <view
-                  wx:for="{{presetSizes}}"
-                  wx:key="*this"
-                  class="dropdown-item {{isPresetSize && gridSize==item?'active':''}}"
-                  bindtap="onSelectPresetSize"
-                  data-size="{{item}}"
-                >
-                  <text class="item-text">{{item}}x{{item}}</text>
-                </view>
-              </view>
-            </view>
+            <app-select
+              id="drawSizeSelect"
+              custom-class="draw-dropdown"
+              value="{{gridSize}}"
+              title="{{isPresetSize ? gridSize + 'x' + gridSize : customSize + 'x' + customSize}}"
+              options="{{presetSizes}}"
+              bind:change="onSelectPresetSize"
+              bind:open="onDrawSizeSelectOpen"
+            />
           </view>
 
           <view class="setting-section">
@@ -77,47 +69,28 @@
 
           <view class="setting-section">
             <view class="setting-label-text">品牌</view>
-            <view class="setting-dropdown {{brandDropdownOpen?'open':''}}" bindtap="onToggleBrandDropdown">
-              <text class="dropdown-value">{{brand}}</text>
-              <text class="dropdown-arrow">{{brandDropdownOpen ? "^" : "v"}}</text>
-            </view>
-            <view wx:if="{{brandDropdownOpen}}" class="dropdown-panel">
-              <view class="dropdown-list">
-                <view
-                  wx:for="{{brandList}}"
-                  wx:key="*this"
-                  class="dropdown-item {{brand==item?'active':''}}"
-                  bindtap="onSelectBrand"
-                  data-brand="{{item}}"
-                >
-                  <text class="item-text">{{item}}</text>
-                  <text wx:if="{{brand==item}}" class="item-check">✓</text>
-                </view>
-              </view>
-            </view>
+            <app-select
+              id="drawBrandSelect"
+              custom-class="draw-dropdown"
+              value="{{brand}}"
+              title="{{brand}}"
+              options="{{brandList}}"
+              bind:change="onSelectBrand"
+              bind:open="onDrawBrandSelectOpen"
+            />
           </view>
 
           <view class="setting-section">
             <view class="setting-label-text">色板</view>
-            <view class="setting-dropdown {{paletteDropdownOpen?'open':''}}" bindtap="onTogglePaletteDropdown">
-              <text class="dropdown-value">{{selectedKitName || (colors.length + " colors")}}</text>
-              <text class="dropdown-arrow">{{paletteDropdownOpen ? "^" : "v"}}</text>
-            </view>
-            <view wx:if="{{paletteDropdownOpen}}" class="dropdown-panel">
-              <view class="dropdown-list">
-                <view
-                  wx:for="{{kitList}}"
-                  wx:key="id"
-                  class="dropdown-item {{selectedKitId==item.id?'active':''}}"
-                  bindtap="onSelectKit"
-                  data-kit-id="{{item.id}}"
-                  data-kit-name="{{item.name}}"
-                >
-                  <text class="item-text">{{item.name}}</text>
-                  <text wx:if="{{selectedKitId==item.id}}" class="item-check">✓</text>
-                </view>
-              </view>
-            </view>
+            <app-select
+              id="drawPaletteSelect"
+              custom-class="draw-dropdown"
+              value="{{selectedKitId}}"
+              title="{{selectedKitName || (colors.length + ' colors')}}"
+              options="{{kitList}}"
+              bind:change="onSelectKit"
+              bind:open="onDrawPaletteSelectOpen"
+            />
           </view>
 
           <view class="setting-section">
@@ -153,7 +126,7 @@
 
         <view class="tool-icon {{activeLayer=='background'?'active':''}} {{!backgroundImage?'disabled':''}}" bindtap="onSetActiveLayer" data-layer="background">
           <image class="icon" src="/assets/icons/draw-image.svg" mode="aspectFit" />
-          <text class="label">背景</text>
+          <text class="label">背景图</text>
         </view>
 
         <view class="tool-icon {{locked?'active':''}} {{!backgroundImage?'disabled':''}}" bindtap="onToggleLock">

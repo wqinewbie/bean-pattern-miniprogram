@@ -34,8 +34,7 @@
 
           <!-- 色号图 TAB -->
           <block wx:else>
-            <image wx:if="{{renderedPatternUrl !== '' && !isEditMode}}" class="preview-img preview-img--pattern" src="{{renderedPatternUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
-            <bead-canvas2d wx:elif="{{isEditMode && hasPatternData}}" id="patternCanvas2dComp" canvasId="patternCanvas2d" width="1024" height="1400" class="pattern-canvas {{isEditMode ? 'edit-mode' : ''}} {{patternRendered ? '' : 'canvas-rendering'}}" bind:ready="onCanvas2dReady" bind:error="onCanvas2dError" bindtap="onCanvasEditTap" />
+            <image wx:if="{{renderedPatternUrl !== ''}}" class="preview-img preview-img--pattern" src="{{renderedPatternUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
             <view wx:else class="image-placeholder">
               <text class="ph-icon">🖼️</text>
               <text class="ph-text">{{hasPatternData ? '正在生成色号图...' : '暂无色号图数据'}}</text>
@@ -73,7 +72,6 @@
       </view>
     </view>
 
-    <!-- 编辑工具栏已按需求移除 -->
 
     <!-- 色号清单 -->
     <view wx:if="{{colorPalette.length>0}}" class="stats-card">
@@ -91,7 +89,7 @@
             <text class="stat-idx">{{index+1}}.</text>
             <view class="stat-dot" style="background:rgb({{item.r}},{{item.g}},{{item.b}})"></view>
             <view class="stat-info">
-              <text class="stat-id">{{item.id || item.name}}</text>
+              <text class="stat-id">{{item.id}}</text>
             </view>
           </view>
           <text class="stat-count">x{{item.count}}</text>
@@ -149,38 +147,6 @@
     <view class="name-actions">
       <view class="name-btn name-btn--ghost" bindtap="onCloseNameModal">取消</view>
       <view class="name-btn name-btn--main" bindtap="onConfirmSavePattern">保存</view>
-    </view>
-  </view>
-
-  <!-- 颜色选择器弹窗（编辑模式下） -->
-  <view wx:if="{{showColorPicker}}" class="color-picker-mask" bindtap="onCloseColorPicker">
-    <view class="color-picker-box" catchtap="noop">
-      <view class="color-picker-header">
-        <text class="color-picker-title">选择颜色</text>
-        <text class="color-picker-pos">位置: ({{editCellCol}}, {{editCellRow}})</text>
-      </view>
-      <!-- 当前颜色 -->
-      <view class="color-picker-current">
-        <view class="current-color-swatch" style="background:rgb({{editCellColor.r}},{{editCellColor.g}},{{editCellColor.b}})"></view>
-        <text class="current-color-info">{{editCellColor.id || editCellColor.name || ''}}</text>
-      </view>
-      <!-- 颜色列表 -->
-      <scroll-view scroll-y class="color-picker-list">
-        <view class="color-grid">
-          <block wx:for="{{colorPalette}}" wx:key="id">
-            <view class="color-item {{selectedEditColor && selectedEditColor.id === item.id ? 'color-item--selected' : ''}}" 
-                  bindtap="onSelectEditColor" data-color="{{item}}" data-index="{{index}}">
-              <view class="color-swatch" style="background:rgb({{item.r}},{{item.g}},{{item.b}})"></view>
-              <text class="color-id">{{item.id}}</text>
-            </view>
-          </block>
-        </view>
-      </scroll-view>
-      <!-- 操作按钮 -->
-      <view class="color-picker-actions">
-        <view class="picker-btn picker-btn--cancel" bindtap="onCloseColorPicker">取消</view>
-        <view class="picker-btn picker-btn--confirm" bindtap="onConfirmEditColor">确认</view>
-      </view>
     </view>
   </view>
 

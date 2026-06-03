@@ -574,10 +574,11 @@ class CanvasRenderer {
     for (let row = range.startRow; row <= range.endRow; row++) {
       for (let col = range.startCol; col <= range.endCol; col++) {
         const color = this._getCellColor(row, col, gridSize);
-        if (!color || color === '#FFFFFF') continue;
-        const code = colorCodeMap[String(color).toUpperCase()];
+        if (!color) continue;
+        const normalizedColor = String(color).toUpperCase();
+        const code = colorCodeMap[normalizedColor];
         if (!code) continue;
-        ctx.fillStyle = this._getCodeTextColor(color);
+        ctx.fillStyle = this._getCodeTextColor(normalizedColor);
         ctx.font = `600 ${codeCfg.fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';

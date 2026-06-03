@@ -1,8 +1,9 @@
-﻿// 拼豆画板 - Canvas 2D 版本
+// 拼豆画板 - Canvas 2D 版本
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const storage = require('../../utils/storage');
 const { drawBoard, drawPixel } = require('../../utils/canvas2d/renderers/boardRenderer');
+const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
 const { getScheduler } = require('../../utils/canvas2d/renderScheduler');
 const { resize2dCanvas } = require('../../utils/canvas2d/core');
 const HistoryManager = require('../../utils/canvas2d/HistoryManager');
@@ -1199,8 +1200,9 @@ Page({
   },
 
   onSelectKit(e) {
-    const kitId = e.currentTarget.dataset.kitId;
-    const kitName = e.currentTarget.dataset.kitName;
+    const kitId = e.detail != null ? e.detail : e.currentTarget.dataset.kitId;
+    const selectedKit = (this.data.kitList || []).find(item => item.id === kitId);
+    const kitName = selectedKit ? selectedKit.name : e.currentTarget.dataset.kitName;
     
     this.setData({ 
       selectedKitId: kitId,
@@ -3811,14 +3813,10 @@ Page({
     }).then((result) => {
       this.setData({ loading: false });
       wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
-      if (result && result.capacityFull) {
-        setTimeout(() => {
-          wx.showToast({ title: result.capacityMessage || '图纸箱容量已满', icon: 'none', duration: 2200 });
-        }, 900);
-      }
-    }).catch(() => {
+      showCapacityFullIfNeeded(result, { type: 'box' });
+    }).catch((err) => {
       this.setData({ loading: false });
-      wx.showToast({ title: '保存失败', icon: 'none' });
+      showRequestErrorToast(err, '保存失败');
     });
   },
 
@@ -3870,14 +3868,10 @@ Page({
       });
       this._hasUnsavedChanges = false;
       wx.showToast({ title: saveMode === 'overwrite' ? '已覆盖原草稿' : (saveMode === 'link-box' ? '已关联保存' : '已保存'), icon: 'success' });
-      if (savedDraft && savedDraft.capacityFull) {
-        setTimeout(() => {
-          wx.showToast({ title: savedDraft.capacityMessage || '草稿箱容量已满', icon: 'none', duration: 2200 });
-        }, 900);
-      }
+      showCapacityFullIfNeeded(savedDraft, { type: 'draft' });
     }).catch((err) => {
       this.setData({ loading: false });
-      wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' });
+      showRequestErrorToast(err, '保存失败');
     });
   },
 
@@ -4484,7 +4478,7 @@ Page({
   },
 
   onSelectPresetSize(e) {
-    const rawSize = e.currentTarget.dataset.size;
+    const rawSize = e.detail != null ? e.detail : e.currentTarget.dataset.size;
     const size = this._clampGridSize(rawSize);
     if (!size) return;
 
@@ -4499,6 +4493,12 @@ Page({
       this._saveState();
       this._applyGridSize(size, true);
     }
+  },
+
+  onDrawSizeSelectOpen() {
+    this.selectComponent('#drawBrandSelect')?.close();
+    this.selectComponent('#drawPaletteSelect')?.close();
+    this.setData({ brandDropdownOpen: false, paletteDropdownOpen: false });
   },
 
   onCustomSizeInput(e) {
@@ -4534,7 +4534,7 @@ Page({
   },
 
   onSelectBrand(e) {
-    const brand = e.currentTarget.dataset.brand;
+    const brand = e.detail != null ? e.detail : e.currentTarget.dataset.brand;
     this.setData({ 
       brand: brand,
       brandDropdownOpen: false 
@@ -4542,6 +4542,18 @@ Page({
     
     // 重新加载该品牌的色卡
     this.loadPaletteColors(brand);
+  },
+
+  onDrawBrandSelectOpen() {
+    this.selectComponent('#drawSizeSelect')?.close();
+    this.selectComponent('#drawPaletteSelect')?.close();
+    this.setData({ sizeDropdownOpen: false, paletteDropdownOpen: false });
+  },
+
+  onDrawPaletteSelectOpen() {
+    this.selectComponent('#drawSizeSelect')?.close();
+    this.selectComponent('#drawBrandSelect')?.close();
+    this.setData({ sizeDropdownOpen: false, brandDropdownOpen: false });
   },
 
   // ========== 工具栏相关方法 ==========

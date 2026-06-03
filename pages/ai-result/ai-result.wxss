@@ -130,11 +130,6 @@ page {
   box-shadow: 0 0 80rpx rgba(156, 39, 176, 0.2), 0 0 40rpx rgba(255, 152, 0, 0.1);
 }
 
-/* 色号图：保持容器大小不变，图片居中显示 */
-.preview-wrap--pattern {
-  aspect-ratio: 1;
-}
-
 /* 加载占位 */
 .preview-placeholder {
   position: absolute;
@@ -185,10 +180,8 @@ page {
   pointer-events: none;
 }
 
-/* 色号图：移除高度限制，让图片完整显示 */
-.preview-img--pattern {
-  height: auto;
-  max-height: 100%;
+.preview-img--mirror {
+  transform: scaleX(-1);
 }
 
 /* Tab 切换栏 */
@@ -297,7 +290,6 @@ page {
 
 .action-btn--primary.action-btn--disabled {
   opacity: 0.5;
-  pointer-events: none;
 }
 
 /* 色号清单卡片 */
@@ -414,15 +406,6 @@ page {
   white-space: nowrap;
 }
 
-.stat-name {
-  font-size: 22rpx;
-  color: #FFD54F;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 300;
-  letter-spacing: 0.1em;
-}
 
 .stat-count {
   font-size: 26rpx;
@@ -549,17 +532,6 @@ page {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-}
-
-/* Canvas 隐藏 */
-.hidden-canvas {
-  position: fixed;
-  top: -9999rpx;
-  left: -9999rpx;
-  width: 1rpx;
-  height: 1rpx;
-  opacity: 0;
-  pointer-events: none;
 }
 
 /* 命名弹窗 */

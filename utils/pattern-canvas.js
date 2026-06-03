@@ -31,9 +31,18 @@ function adaptCtx(ctx) {
     setStrokeStyle(v) { if (typeof ctx.setStrokeStyle === 'function') ctx.setStrokeStyle(v); else ctx.strokeStyle = v; },
     setLineWidth(v) { if (typeof ctx.setLineWidth === 'function') ctx.setLineWidth(v); else ctx.lineWidth = v; },
     setFontSize(v) { if (typeof ctx.setFontSize === 'function') ctx.setFontSize(v); else ctx.font = `${v}px sans-serif`; },
+    setFont(v, weight) {
+      if (typeof ctx.setFontSize === 'function') ctx.setFontSize(v);
+      else ctx.font = `${weight || 700} ${v}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif`;
+    },
     setTextAlign(v) { if (typeof ctx.setTextAlign === 'function') ctx.setTextAlign(v); else ctx.textAlign = v; },
     setTextBaseline(v) { if (typeof ctx.setTextBaseline === 'function') ctx.setTextBaseline(v); else ctx.textBaseline = v; }
   };
+}
+
+function setTextFont(ctx, size, weight) {
+  if (ctx && typeof ctx.setFont === 'function') ctx.setFont(size, weight);
+  else if (ctx && typeof ctx.setFontSize === 'function') ctx.setFontSize(size);
 }
 
 /**
@@ -213,14 +222,12 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
   if (appName && headerHeight > 0) {
     ctx.setFillStyle('#5D4037');
     const titleFontSize = Math.max(20, Math.floor(headerHeight * 0.5));
-    ctx.setFontSize(titleFontSize);
+    setTextFont(ctx, titleFontSize, 800);
     ctx.setTextAlign('left');
     ctx.setTextBaseline('middle');
     const titleX = offsetX; // 左对齐，与网格区左边缘对齐
     const titleY = headerHeight / 2;
     ctx.fillText(appName, titleX, titleY);
-    // 模拟加粗
-    ctx.fillText(appName, titleX + 0.5, titleY + 0.5);
   }
 
   // 1. 外围坐标轴背景（浅蓝）
@@ -249,7 +256,7 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
     }
   }
 
-  // 3. 主网格色号文字（模拟加粗）
+  // 3. 主网格色号文字
   ctx.setTextAlign('center');
   ctx.setTextBaseline('middle');
   for (let y = 0; y < gridRows; y++) {
@@ -263,26 +270,25 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
       const text = String(color.id || color.name || '').trim();
 
       let fontSize = Math.max(4, Math.floor(effectiveCellSize * 0.45));
-      ctx.setFontSize(fontSize);
+      setTextFont(ctx, fontSize, 700);
       let textWidth = ctx.measureText(text).width || fontSize * text.length * 0.6;
       while (textWidth > effectiveCellSize * 0.85 && fontSize > 4) {
         fontSize--;
-        ctx.setFontSize(fontSize);
+        setTextFont(ctx, fontSize, 700);
         textWidth = ctx.measureText(text).width || fontSize * text.length * 0.6;
       }
 
-      ctx.setFontSize(fontSize);
+      setTextFont(ctx, fontSize, 700);
       ctx.setFillStyle(textColor);
       const centerX = startX + x * effectiveCellSize + effectiveCellSize / 2;
       const centerY = startY + y * effectiveCellSize + effectiveCellSize / 2;
       ctx.fillText(text, centerX, centerY);
-      ctx.fillText(text, centerX + 0.3, centerY + 0.3); // 模拟加粗
     }
   }
 
   // 4. 坐标轴数字
   const axisFont = Math.max(8, Math.floor(effectiveCellSize * 0.36));
-  ctx.setFontSize(axisFont);
+  setTextFont(ctx, axisFont, 700);
   ctx.setFillStyle('#5D4037');
   for (let x = 0; x < gridCols; x++) {
     const label = String(x + 1);
@@ -345,12 +351,10 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
         const lum = 0.299 * color.r + 0.587 * color.g + 0.114 * color.b;
         ctx.setFillStyle(lum > 140 ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.95)');
         const fontSize = Math.max(10, Math.floor(blockSize * 0.25));
-        ctx.setFontSize(fontSize);
+        setTextFont(ctx, fontSize, 700);
         const lineHeight = blockSize / 3;
         ctx.fillText(item.id, bx + blockSize / 2, by + lineHeight);
-        ctx.fillText(item.id, bx + blockSize / 2 + 0.5, by + lineHeight + 0.5);
         ctx.fillText(`×${item.count}`, bx + blockSize / 2, by + lineHeight * 2);
-        ctx.fillText(`×${item.count}`, bx + blockSize / 2 + 0.5, by + lineHeight * 2 + 0.5);
       } else {
         ctx.setFillStyle('#E0E0E0');
         ctx.beginPath();
@@ -361,7 +365,7 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
         ctx.closePath();
         ctx.fill();
         ctx.setFillStyle('#5D4037');
-        ctx.setFontSize(Math.max(10, Math.floor(blockSize * 0.2)));
+        setTextFont(ctx, Math.max(10, Math.floor(blockSize * 0.2)), 700);
         ctx.fillText(`${item.id}×${item.count}`, bx + blockSize / 2, by + blockSize / 2);
       }
     });
@@ -394,7 +398,7 @@ function drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, o
       watermarkSpacingY
     });
 
-    ctx.setFontSize(watermarkFontSize);
+    setTextFont(ctx, watermarkFontSize, 600);
     ctx.setFillStyle(watermarkColor);
     ctx.setTextAlign('center');
     ctx.setTextBaseline('middle');

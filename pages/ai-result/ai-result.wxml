@@ -25,18 +25,25 @@
           <text class="preview-placeholder-text">AI 重构晶格中...</text>
         </view>
 
+        <!-- 原图 tab -->
+        <image wx:if="{{!isGenerating && displayOriginalUrl}}" class="preview-img {{activeImageTab === 0 ? '' : 'preview-img--hidden'}} {{mirror && !mirroredAiImageUrl ? 'preview-img--mirror' : ''}}" src="{{mirror && mirroredAiImageUrl ? mirroredAiImageUrl : displayOriginalUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+
         <!-- 效果图 tab -->
-        <image wx:if="{{!isGenerating && resultImageUrl}}" class="preview-img {{activeImageTab === 0 ? '' : 'preview-img--hidden'}}" src="{{resultImageUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+        <image wx:if="{{!isGenerating && resultImageUrl}}" class="preview-img {{activeImageTab === 1 ? '' : 'preview-img--hidden'}}" src="{{resultImageUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
 
         <!-- 色号图 tab -->
-        <image wx:if="{{!isGenerating && colorNumberImageUrl}}" class="preview-img {{activeImageTab === 1 ? '' : 'preview-img--hidden'}}" src="{{colorNumberImageUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
+        <image wx:if="{{!isGenerating && colorNumberImageUrl}}" class="preview-img {{activeImageTab === 2 ? '' : 'preview-img--hidden'}}" src="{{colorNumberImageUrl}}" mode="aspectFit" bindtap="onPreviewImage"/>
 
         <!-- 无图片占位 -->
-        <view wx:if="{{!isGenerating && activeImageTab === 0 && !resultImageUrl}}" class="image-placeholder">
+        <view wx:if="{{!isGenerating && activeImageTab === 0 && !displayOriginalUrl}}" class="image-placeholder">
+          <text class="ph-icon">🖼️</text>
+          <text class="ph-text">暂无原图</text>
+        </view>
+        <view wx:if="{{!isGenerating && activeImageTab === 1 && !resultImageUrl}}" class="image-placeholder">
           <text class="ph-icon">🖼️</text>
           <text class="ph-text">暂无效果图</text>
         </view>
-        <view wx:if="{{!isGenerating && activeImageTab === 1 && !colorNumberImageUrl}}" class="image-placeholder">
+        <view wx:if="{{!isGenerating && activeImageTab === 2 && !colorNumberImageUrl}}" class="image-placeholder">
           <text class="ph-icon">🖼️</text>
           <text class="ph-text">暂无色号图</text>
         </view>
@@ -45,9 +52,12 @@
       <!-- Tab 切换栏 -->
       <view class="tab-bar">
         <view class="tab {{activeImageTab === 0 ? 'tab--active' : ''}}" data-index="{{0}}" bindtap="onImageTabChange">
-          效果图
+          原图
         </view>
         <view class="tab {{activeImageTab === 1 ? 'tab--active' : ''}}" data-index="{{1}}" bindtap="onImageTabChange">
+          效果图
+        </view>
+        <view class="tab {{activeImageTab === 2 ? 'tab--active' : ''}}" data-index="{{2}}" bindtap="onImageTabChange">
           色号图
         </view>
       </view>
@@ -103,7 +113,7 @@
 
   <!-- 底部操作按钮 -->
   <view class="footer">
-    <view class="footer-btn-slot footer-btn-slot--album {{isSaved ? 'footer-btn-slot--album-expanded' : ''}} {{isSavingToBox ? 'footer-btn-slot--album-expanded' : ''}}">
+    <view class="footer-btn-slot footer-btn-slot--album {{isSaved ? 'footer-btn-slot--album-expanded' : ''}}">
       <view class="footer-btn footer-btn-secondary {{savingToAlbum ? 'footer-btn--loading' : ''}}" bindtap="onSaveToAlbum">
         <text wx:if="{{!savingToAlbum}}" class="footer-btn-icon">↓</text>
         <text wx:if="{{!savingToAlbum}}" class="footer-btn-text">保存画册</text>
@@ -113,7 +123,7 @@
         </view>
       </view>
     </view>
-    <view class="footer-btn-slot footer-btn-slot--box {{isSaved ? 'footer-btn-slot--box-hidden' : ''}} {{isSavingToBox ? 'footer-btn-slot--box-hidden' : ''}}">
+    <view class="footer-btn-slot footer-btn-slot--box {{isSaved ? 'footer-btn-slot--box-hidden' : ''}}">
       <view class="footer-btn footer-btn-primary" bindtap="onSaveToBox">
         <text class="footer-btn-text">保存到图纸箱</text>
       </view>
@@ -149,7 +159,6 @@
 
   <!-- 隐藏的 Canvas 2D 组件用于图片处理和渲染 -->
   <view wx:if="{{showCanvas}}" style="position: fixed; left: -10000px; top: -10000px; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;">
-    <bead-canvas2d id="sampleCanvas2dComp" canvasId="sampleCanvas2d" width="512" height="512" />
     <bead-canvas2d id="resultCanvas2dComp" canvasId="resultCanvas2d" width="1024" height="1024" />
     <bead-canvas2d id="patternCanvas2dComp" canvasId="patternCanvas2d" width="2048" height="2048" />
   </view>

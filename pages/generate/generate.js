@@ -7,7 +7,7 @@ const { exportCanvasToTempFilePath } = require('../../utils/canvas2d/export');
 
 const MIN_GRID_SIZE = 24;
 const MAX_GRID_SIZE = 200;
-const SIZE_LIMIT_TIP = '超出限值，数值范围24~200';
+const SIZE_LIMIT_TIP = '超出阈值，数值范围 24~200';
 
 Page({
   data: {
@@ -18,32 +18,33 @@ Page({
     resultUrl: '',
     patternUrl: '',
     colorStats: [],
-    activeTab: 'result',
     mirrorOn: false,
     customMode: false,
     customConfirmed: false,
     customSizeVal: '',
-    showColorSheet: false,
     brandList: [],
     brandIndex: 0,
+    brandDisplayTitle: 'MARD',
     colorCountLabel: '全部色号',
     colorCountValue: 0,
     colorCountOptions: [{ value: 0, label: '全部色号' }],
     gridSizeIndex: 3,
     gridSizeOptions: [
       { value: 24, label: '24×24' },
+      { value: 36, label: '36×36' },
       { value: 50, label: '50×50' },
       { value: 52, label: '52×52' },
       { value: 64, label: '64×64' },
       { value: 78, label: '78×78' },
       { value: 104, label: '104×104' }
     ],
+    // AppSelect 下拉选项格式化（text + value）
+    sizeOptionsSelect: [],
+    brandOptionsSelect: [],
+    colorCountOptionsSelect: [{ text: '全部色号', value: 0 }],
     pixelationMode: 'average',
-    // 相似度阈值，对齐 perler-beads-ai-main 默认值
+    // 相似度阈值，对齐 perler-beads-ai-main 默认值值
     similarityThreshold: 30,
-    showModeSheet: false,
-    showSizeSheet: false,
-    showBrandSheet: false,
     previewX: 0,
     previewY: 0,
     previewScale: 1,
@@ -55,11 +56,17 @@ Page({
     scrollTop: 0,
   },
 
+  noop() {},
+
   onBack() {
     wx.navigateBack({ delta: 1 });
   },
 
   onLoad(options) {
+    // 初始化?AppSelect 格式化的选项
+    this._updateSizeOptionsSelect();
+    this._updateBrandOptionsSelect();
+    this._updateColorCountOptionsSelect();
     if (options && options.imageUrl) {
       const url = decodeURIComponent(options.imageUrl);
       this.setData({ imageUrl: url });
@@ -69,12 +76,94 @@ Page({
     this.addScrollHintAnimation();
   },
 
+  // ========== AppSelect Dropdown 选项格式化?==========
+  _updateSizeOptionsSelect() {
+    const opts = this.data.gridSizeOptions.map((item, index) => ({
+      text: item.label,
+      value: index
+    }));
+    this.setData({ sizeOptionsSelect: opts });
+  },
+
+  _updateBrandOptionsSelect() {
+    const list = this.data.brandList;
+    const opts = list.map((item, index) => ({
+      text: item.name || item.label || item.id || item,
+      value: index
+    }));
+    const title = list.length > 0
+      ? (list[this.data.brandIndex] && (list[this.data.brandIndex].name || list[this.data.brandIndex].label || list[this.data.brandIndex].id || list[this.data.brandIndex])) || 'MARD'
+      : 'MARD';
+    this.setData({ brandOptionsSelect: opts, brandDisplayTitle: title });
+  },
+
+  _updateColorCountOptionsSelect() {
+    const opts = this.data.colorCountOptions.map(item => ({
+      text: item.label,
+      value: item.value
+    }));
+    this.setData({ colorCountOptionsSelect: opts });
+  },
+
+  _buildColorCountOptions(kits) {
+    return [
+      { value: 0, label: '全部色号' },
+      ...(kits || []).map(k => {
+        const value = Number(k) || 0;
+        return { value, label: `${value}色` };
+      }).filter(item => item.value > 0)
+    ];
+  },
+
+  // ========== AppSelect Dropdown 事件 ==========
+  onSizeDropdownChange(e) {
+    const index = e.detail;
+    this.setData({ gridSizeIndex: index, customMode: false, customConfirmed: false, customSizeVal: '' });
+  },
+
+  onSizeDropdownOpen() {
+    this.selectComponent('#genBrandSelect')?.close();
+    this.selectComponent('#genColorSelect')?.close();
+  },
+
+  onBrandDropdownChange(e) {
+    const index = e.detail;
+    this.applyBrandIndex(index);
+  },
+
+  onBrandDropdownOpen() {
+    this.selectComponent('#genSizeSelect')?.close();
+    this.selectComponent('#genColorSelect')?.close();
+  },
+
+  onColorCountDropdownChange(e) {
+    const value = Number(e.detail) || 0;
+    const item = this.data.colorCountOptions.find(o => o.value === value);
+    if (item) {
+      this.setData({ colorCountLabel: item.label, colorCountValue: value });
+    }
+  },
+
+  onColorCountDropdownOpen() {
+    this.selectComponent('#genSizeSelect')?.close();
+    this.selectComponent('#genBrandSelect')?.close();
+  },
+
   addScrollHintAnimation() {
     setTimeout(() => {
-      this.setData({ scrollTop: 50 });
-      setTimeout(() => {
-        this.setData({ scrollTop: 0 });
-      }, 400);
+      const query = wx.createSelectorQuery();
+      query.select('.generate-scroll').boundingClientRect();
+      query.select('.generate-scroll-content').boundingClientRect();
+      query.exec((res) => {
+        const scrollRect = res && res[0];
+        const contentRect = res && res[1];
+        const canScroll = scrollRect && contentRect && contentRect.height > scrollRect.height + 24;
+        if (!canScroll) return;
+        this.setData({ scrollTop: 96 });
+        setTimeout(() => {
+          this.setData({ scrollTop: 0 });
+        }, 420);
+      });
     }, 500);
   },
 
@@ -87,23 +176,24 @@ Page({
       const brandRows = brandNames.map((name) => ({ id: name, name }));
       const firstBrand = brandRows[0];
       const kits = data[firstBrand.name] || [];
-      const colorCountOptions = [
-        { value: 0, label: '全部色号' },
-        ...(kits || []).map(k => ({ value: k, label: k + '色' }))
-      ];
+      const colorCountOptions = this._buildColorCountOptions(kits);
 
       this.setData({
         brandList: brandRows,
         brandIndex: 0,
+        brandDisplayTitle: firstBrand.name,
         colorCountOptions,
         colorCountLabel: '全部色号',
         colorCountValue: 0,
         _brandKitsMap: data
       });
+      this._updateBrandOptionsSelect();
+      this._updateColorCountOptionsSelect();
     }).catch(() => {
       this.setData({
         brandList: [{ id: 'mard', name: 'MARD' }],
         brandIndex: 0,
+        brandDisplayTitle: 'MARD',
         colorCountOptions: [
           { value: 0, label: '全部色号' },
           { value: 24, label: '24色' }, { value: 48, label: '48色' },
@@ -113,6 +203,8 @@ Page({
         colorCountValue: 0,
         _brandKitsMap: { mard: [24, 48, 72, 96] }
       });
+      this._updateBrandOptionsSelect();
+      this._updateColorCountOptionsSelect();
     });
   },
 
@@ -120,60 +212,22 @@ Page({
     this.applyBrandIndex(parseInt(e.detail.value));
   },
 
-  onShowBrandSheet() {
-    this.setData({ showBrandSheet: true });
-  },
-
-  onHideBrandSheet() {
-    this.setData({ showBrandSheet: false });
-  },
-
-  onSelectBrand(e) {
-    const index = parseInt(e.currentTarget.dataset.index);
-    this.applyBrandIndex(index, true);
-  },
-
-  applyBrandIndex(idx, closeSheet = false) {
+  applyBrandIndex(idx) {
     const brandRow = this.data.brandList[idx];
     const brandKey = brandRow && (brandRow.name || brandRow.id) ? String(brandRow.name || brandRow.id) : '';
     const kitsMap = this.data._brandKitsMap || {};
     const kits = kitsMap[brandKey] || [];
 
-    const colorCountOptions = [
-      { value: 0, label: '全部色号' },
-      ...(kits || []).map(k => ({ value: k, label: k + '色' }))
-    ];
+    const colorCountOptions = this._buildColorCountOptions(kits);
+    const title = brandRow ? (brandRow.name || brandRow.label || brandRow.id || 'MARD') : 'MARD';
     this.setData({
       brandIndex: idx,
+      brandDisplayTitle: title,
       colorCountOptions,
       colorCountLabel: '全部色号',
-      colorCountValue: 0,
-      showBrandSheet: closeSheet ? false : this.data.showBrandSheet
+      colorCountValue: 0
     });
-  },
-
-  onGridSizeChange(e) {
-    const index = e.detail !== undefined ? parseInt(e.detail.value) : parseInt(e.currentTarget.dataset.index);
-    this.setData({ gridSizeIndex: index, customMode: false, customConfirmed: false, customSizeVal: '' });
-  },
-
-  onShowSizeSheet() {
-    this.setData({ showSizeSheet: true });
-  },
-
-  onHideSizeSheet() {
-    this.setData({ showSizeSheet: false });
-  },
-
-  onSelectGridSize(e) {
-    const index = parseInt(e.currentTarget.dataset.index);
-    this.setData({
-      gridSizeIndex: index,
-      customMode: false,
-      customConfirmed: false,
-      customSizeVal: '',
-      showSizeSheet: false
-    });
+    this._updateColorCountOptionsSelect();
   },
 
   onMirrorToggle() {
@@ -328,34 +382,9 @@ Page({
     this.setData({ previewX: x, previewY: y, previewScale: scale });
   },
 
-  onShowColorSheet() {
-    this.setData({ showColorSheet: true });
-  },
-
-  onHideColorSheet() {
-    this.setData({ showColorSheet: false });
-  },
-
-  onSelectColorCount(e) {
-    const { label, value } = e.currentTarget.dataset;
-    this.setData({ colorCountLabel: label, colorCountValue: parseInt(value), showColorSheet: false });
-  },
-
-  onAlgoChange(e) {
-    this.setData({ algoIndex: parseInt(e.detail.value) });
-  },
 
   onSimilarityThresholdChange(e) {
     this.setData({ similarityThreshold: parseInt(e.detail.value) || 0 });
-  },
-
-  onPreviewMove(e) {
-    if (!e || !e.detail) return;
-    const x = typeof e.detail.x === 'number' ? e.detail.x : this.data.previewX;
-    const y = typeof e.detail.y === 'number' ? e.detail.y : this.data.previewY;
-    if (x !== this.data.previewX || y !== this.data.previewY) {
-      this.setData({ previewX: x, previewY: y });
-    }
   },
 
   onPreviewTouchStart(e) {
@@ -461,20 +490,16 @@ Page({
           const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 ? scaleRaw : 1;
           const maxExportDim = 640;
 
-          // ========== 可视区 -> 源图坐标映射 ==========
-          // 计算缩放后的图片层左上角位置（考虑 transform-origin: center center）
+          // Map preview viewport coordinates to source image coordinates.
           const scaledLeft = left + baseW * (1 - scale) / 2;
           const scaledTop = top + baseH * (1 - scale) / 2;
 
-          // 加上平移后的最终位置
           const finalLeft = scaledLeft + previewX;
           const finalTop = scaledTop + previewY;
 
-          // 可视区域左上角在图片层上的坐标（图片层坐标系，缩放后）
           const visibleLayerX = -finalLeft;
           const visibleLayerY = -finalTop;
 
-          // 映射到源图坐标（考虑两层缩放）
           const unscaledX = visibleLayerX / scale;
           const unscaledY = visibleLayerY / scale;
 
@@ -487,7 +512,6 @@ Page({
           let sw = Math.floor((boxPx / scale) * srcToLayerScaleW);
           let sh = Math.floor((boxPx / scale) * srcToLayerScaleH);
 
-          // 边界检查
           if (sw > info.width) sw = info.width;
           if (sh > info.height) sh = info.height;
           if (sx < 0) sx = 0;
@@ -495,7 +519,6 @@ Page({
           if (sx + sw > info.width) sx = Math.max(0, info.width - sw);
           if (sy + sh > info.height) sy = Math.max(0, info.height - sh);
 
-          // 按源矩形宽高比计算导出尺寸
           let exportW, exportH;
           if (sw >= sh) {
             exportW = maxExportDim;
@@ -522,7 +545,6 @@ Page({
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, exportW, exportH);
 
-            // 加载图片并绘制
             const img = canvas.createImage();
             img.onload = () => {
               ctx.save();
@@ -531,7 +553,6 @@ Page({
               ctx.drawImage(img, 0, 0, info.width, info.height);
               ctx.restore();
 
-              // 导出为临时文件
               exportCanvasToTempFilePath(canvas, {
                 width: exportW,
                 height: exportH,
@@ -562,10 +583,6 @@ Page({
     });
   },
 
-  onTabChange(e) {
-    this.setData({ activeTab: e.currentTarget.dataset.tab });
-  },
-
   onGenerate() {
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
@@ -589,9 +606,8 @@ Page({
       let gridSize = gridSizeOptions[gridSizeIndex].value;
       if (customConfirmed) {
         const customGridSize = parseInt(customSizeVal, 10);
-        if (!isNaN(customGridSize) && customGridSize >= MIN_GRID_SIZE && customGridSize <= MAX_GRID_SIZE) {
-          gridSize = customGridSize;
-        }
+        if (!this._applyCustomSize(customGridSize)) return;
+        gridSize = customGridSize;
       }
       let brand = 'MARD';
       const brandRow = brandList[brandIndex];
@@ -600,7 +616,7 @@ Page({
       } else if (typeof brandRow === 'string' && brandRow) {
         brand = brandRow;
       }
-      const algo = 'standard'; // 兼容旧接口
+      const algo = 'standard';
       const colorCount = colorCountValue || 0;
       const pixelationMode = 'average';
       const mirrorOn = !!this.data.mirrorOn;
@@ -622,7 +638,6 @@ Page({
             return;
           }
 
-          // 跳转到 result 页面，使用内置生成流程（替代 generating 页面）
           wx.redirectTo({
             url: '/pages/result/result?generateNow=1&mode=image' +
                  '&imageUrl=' + encodeURIComponent(finalImageUrl) +
@@ -641,35 +656,4 @@ Page({
         });
     });
   },
-
-  onPreviewOriginal() {
-    if (this.data.imageUrl) wx.previewImage({ urls: [this.data.imageUrl], current: this.data.imageUrl });
-  },
-
-  onPreviewResult() {
-    const { activeTab, imageUrl, resultUrl, patternUrl } = this.data;
-    const cur = activeTab === 'original' ? imageUrl : activeTab === 'result' ? resultUrl : patternUrl;
-    if (cur) wx.previewImage({ urls: [imageUrl, resultUrl, patternUrl].filter(Boolean), current: cur });
-  },
-
-  onSaveImage() {
-    const { activeTab, imageUrl, resultUrl, patternUrl } = this.data;
-    const url = activeTab === 'original' ? imageUrl : activeTab === 'result' ? resultUrl : patternUrl;
-    if (!url) { wx.showToast({ title: '暂无图片', icon: 'none' }); return; }
-    const save = (fp) => wx.saveImageToPhotosAlbum({
-      filePath: fp,
-      success: () => wx.showToast({ title: '已保存到相册', icon: 'success' }),
-      fail: () => wx.showToast({ title: '保存失败', icon: 'none' })
-    });
-    if (url.startsWith('http')) {
-      wx.downloadFile({ url, success: (r) => { if (r.statusCode === 200) save(r.tempFilePath); }, fail: () => {} });
-    } else {
-      save(url);
-    }
-  },
-
-  onStatTap(e) {
-    const item = e.currentTarget.dataset.item;
-    wx.showToast({ title: item.id + ' ' + item.name + ' ' + item.count + ' pcs', icon: 'none', duration: 2000 });
-  }
 });

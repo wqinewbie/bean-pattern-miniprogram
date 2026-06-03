@@ -226,15 +226,16 @@ function drawCodeLayer(ctx, options) {
   for (let y = 0; y < gridSize; y++) {
     for (let x = 0; x < gridSize; x++) {
       const color = getCellColor ? getCellColor(y, x) : (gridData && gridData[y] ? gridData[y][x] : null);
-      if (!color || color === '#FFFFFF') continue;
+      if (!color) continue;
 
-      const code = colorCodeMap[String(color).toUpperCase()];
+      const normalizedColor = String(color).toUpperCase();
+      const code = colorCodeMap[normalizedColor];
       if (!code) continue;
 
       const px = x * cellSize;
       const py = y * cellSize;
       const visualCell = cellSize * Math.max(Number(viewScale) || 1, 1);
-      drawCellCode(ctx, color, code, px + cellSize / 2, py + cellSize / 2, codeCfg.fontSize, {
+      drawCellCode(ctx, normalizedColor, code, px + cellSize / 2, py + cellSize / 2, codeCfg.fontSize, {
         skipStroke: visualCell < 45
       });
     }
@@ -339,13 +340,14 @@ function drawPixel(ctx, options) {
     ctx.fillStyle = cellColor;
     ctx.fillRect(x, y, cellSize, cellSize);
 
-    if (colorCodeMap && cellColor !== '#FFFFFF') {
-      const code = colorCodeMap[String(cellColor).toUpperCase()];
+    if (colorCodeMap) {
+      const normalizedColor = String(cellColor).toUpperCase();
+      const code = colorCodeMap[normalizedColor];
       const maxCodeLength = code ? String(code).length : 1;
       const codeCfg = getCellCodeConfig(cellSize, viewScale, maxCodeLength);
       const visualCell = cellSize * Math.max(Number(viewScale) || 1, 1);
-      if (codeCfg.show) {
-        drawCellCode(ctx, cellColor, code, x + cellSize / 2, y + cellSize / 2, codeCfg.fontSize, {
+      if (code && codeCfg.show) {
+        drawCellCode(ctx, normalizedColor, code, x + cellSize / 2, y + cellSize / 2, codeCfg.fontSize, {
           skipStroke: visualCell < 45
         });
       }

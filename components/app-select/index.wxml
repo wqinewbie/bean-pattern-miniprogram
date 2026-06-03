@@ -1,0 +1,24 @@
+<view class="app-select custom-class {{open ? 'app-select--open' : ''}} {{closing ? 'app-select--closing' : ''}}" style="--app-select-active: {{activeColor}}; --app-select-panel-bg: {{panelBackground}}; --app-select-panel-border: {{panelBorderColor}}; --app-select-active-bg: {{activeBackground}}; --app-select-option-text: {{optionTextColor}}; --app-select-max-height: {{maxHeight}}rpx;">
+  <view class="app-select__trigger" bindtap="toggle">
+    <text class="app-select__value">{{displayTitle}}</text>
+    <view class="app-select__arrow"></view>
+  </view>
+
+  <root-portal wx:if="{{open || closing}}">
+    <view class="app-select__mask" catchtap="close"></view>
+    <view class="app-select__panel app-select__panel--portal {{closing ? 'app-select__panel--closing' : ''}}" style="{{panelStyle}}" catchtap="noop">
+      <scroll-view scroll-y class="app-select__list">
+        <view
+          wx:for="{{normalizedOptions}}"
+          wx:key="value"
+          class="app-select__option {{item.value === value || item.text === title ? 'app-select__option--active' : ''}}"
+          data-index="{{index}}"
+          bindtap="onOptionTap"
+        >
+          <text class="app-select__option-text">{{item.text}}</text>
+          <text wx:if="{{item.value === value || item.text === title}}" class="app-select__check">✓</text>
+        </view>
+      </scroll-view>
+    </view>
+  </root-portal>
+</view>

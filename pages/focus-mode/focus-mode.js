@@ -1,6 +1,7 @@
-﻿// 沉浸式拼豆页面 - Canvas 2D 版本
+// 沉浸式拼豆页面 - Canvas 2D 版本
 const request = require('../../utils/request');
 const { drawImmersiveGrid, getTextColor } = require('../../utils/canvas2d/renderers/immersiveRenderer');
+const { getScheduler } = require('../../utils/canvas2d/renderScheduler');
 const storage = require('../../utils/storage');
 
 Page({
@@ -32,7 +33,7 @@ Page({
   _vRun: [],
   _longPressTimer: null,
   
-  // 瑙︽懜鐩稿叧
+  // 触摸相关
   _isPinching: false,
   _isDragging: false,
   _touchStartDistance: 0,
@@ -55,14 +56,25 @@ Page({
   _windowWidth: 375,
   _windowHeight: 667,
   _renderResizeTimer: null,
+  _destroyed: false,
+  _scheduler: null,
+  _systemDpr: 1,
+  _viewportUpdateTimer: null,
+  _pendingViewport: null,
+  _canvasCenterX: 0,
+  _canvasCenterY: 0,
+  _pinchStartContentX: 0,
+  _pinchStartContentY: 0,
 
   onLoad(options) {
     const info = wx.getSystemInfoSync();
     this._rpxToPx = info.windowWidth / 750;
     this._windowWidth = info.windowWidth;
     this._windowHeight = info.windowHeight;
+    this._scheduler = getScheduler();
+    this._systemDpr = info.pixelRatio || 1;
 
-    // 璁＄畻鐢诲竷灏哄
+    // 计算画布尺寸
     const navReserve = 96;
     const maxByHeight = Math.max(220, info.windowHeight - navReserve - 48);
     const maxSize = Math.min(info.windowWidth - 48, maxByHeight, 600);
@@ -72,13 +84,16 @@ Page({
       canvasSize,
       displaySize: canvasSize,
       panelHeight: this._getCompactPanelHeight()
+    }, () => {
+      this._measureCanvasRect();
     });
     
-    // 鍔犺浇鏁版嵁
+    // 加载数据
     this._loadData(options);
   },
 
   onUnload() {
+    this._destroyed = true;
     this._saveProgress();
     if (this._longPressTimer) {
       clearTimeout(this._longPressTimer);
@@ -88,9 +103,14 @@ Page({
       clearTimeout(this._renderResizeTimer);
       this._renderResizeTimer = null;
     }
+    if (this._viewportUpdateTimer) {
+      clearTimeout(this._viewportUpdateTimer);
+      this._viewportUpdateTimer = null;
+    }
+    this._pendingViewport = null;
   },
 
-  // ========== 鏁版嵁鍔犺浇 ==========
+  // ========== 数据加载 ==========
   _loadData(options) {
     const storageKey = options.storageKey;
     const boxId = options.boxId ? parseInt(options.boxId, 10) : null;
@@ -227,19 +247,19 @@ Page({
       gridData,
       palette,
       completedMap,
-      highlightId: palette[0] ? palette[0].id : '',
+      highlightId: '',
       loading: false
     }, () => {
       this._calcRuns();
       this._updateLists();
-      // 鏁版嵁鍔犺浇瀹屾垚鍚庯紝濡傛灉 Canvas 宸插氨缁紝绔嬪嵆娓叉煋
+      // 数据加载完成后，如果 Canvas 已就绪，立即渲染
       if (this.data.canvasReady) {
         this._renderCanvas();
       }
     });
   },
 
-  // ========== Canvas 2D 鐩稿叧 ==========
+  // ========== Canvas 2D 相关 ==========
   onCanvasReady(e) {
     console.log('Canvas 2D Ready', e.detail);
     const canvas2dComponent = this.selectComponent('#immersiveCanvas');
@@ -253,8 +273,9 @@ Page({
     this._dpr = context.dpr;
     
     this.setData({ canvasReady: true }, () => {
+      this._measureCanvasRect();
       this._resizeCanvasToDisplaySize(this.data.canvasSize, true);
-      // Canvas 灏辩华鍚庯紝濡傛灉鏁版嵁宸插姞杞斤紝绔嬪嵆娓叉煋
+      // Canvas 就绪后，如果数据已加载，立即渲染
       if (this.data.gridData && this.data.gridData.length > 0) {
         this._renderCanvas();
       }
@@ -294,7 +315,6 @@ Page({
       mode,
       hRun: this._hRun,
       vRun: this._vRun,
-      recommendedCell: null,
       dpr: this._dpr
     });
   },
@@ -359,6 +379,22 @@ Page({
   },
 
   _setViewport(scale, offsetX, offsetY, immediateRender) {
+    if (!immediateRender) {
+      this._pendingViewport = { scale, offsetX, offsetY };
+      if (this._viewportUpdateTimer) return;
+
+      this._viewportUpdateTimer = setTimeout(() => {
+        this._viewportUpdateTimer = null;
+        this._flushViewportUpdate();
+      }, 16);
+      return;
+    }
+
+    if (this._viewportUpdateTimer) {
+      clearTimeout(this._viewportUpdateTimer);
+      this._viewportUpdateTimer = null;
+    }
+    this._pendingViewport = null;
     this.setData({
       scale,
       offsetX,
@@ -368,7 +404,46 @@ Page({
     });
   },
 
-  // ========== 璁＄畻妯珫璁℃暟 ==========
+  _flushViewportUpdate(callback) {
+    const pending = this._pendingViewport;
+    this._pendingViewport = null;
+    if (this._viewportUpdateTimer) {
+      clearTimeout(this._viewportUpdateTimer);
+      this._viewportUpdateTimer = null;
+    }
+
+    if (!pending) {
+      if (callback) callback();
+      return;
+    }
+
+    this.setData(pending, () => {
+      if (callback) callback();
+    });
+  },
+
+  _measureCanvasRect() {
+    if (this._destroyed || typeof wx.createSelectorQuery !== 'function') return;
+
+    wx.createSelectorQuery()
+      .in(this)
+      .select('.canvas-container')
+      .boundingClientRect((rect) => {
+        if (!rect) return;
+        this._canvasCenterX = rect.left + rect.width / 2;
+        this._canvasCenterY = rect.top + rect.height / 2;
+      })
+      .exec();
+  },
+
+  _getTransformOrigin() {
+    return {
+      x: this._canvasCenterX || (this._windowWidth / 2),
+      y: this._canvasCenterY || (this._windowHeight / 2)
+    };
+  },
+
+  // ========== 计算横竖计数 ==========
   _calcRuns() {
     const { gridSize, highlightId, gridData } = this.data;
     const h = Array.from({ length: gridSize }, () => Array(gridSize).fill(0));
@@ -380,7 +455,7 @@ Page({
       return;
     }
     
-    // 妯悜璁℃暟
+    // 横向计数
     for (let y = 0; y < gridSize; y++) {
       let run = 0;
       for (let x = 0; x < gridSize; x++) {
@@ -394,7 +469,7 @@ Page({
       }
     }
     
-    // 绔栧悜璁℃暟
+    // 竖向计数
     for (let x = 0; x < gridSize; x++) {
       let run = 0;
       for (let y = 0; y < gridSize; y++) {
@@ -412,7 +487,7 @@ Page({
     this._vRun = v;
   },
 
-  // ========== 鏇存柊鍒楄〃鏁版嵁 ==========
+  // ========== 更新列表数据 ==========
   _updateLists() {
     this._updateRemainingByColor();
     this._updateRowList();
@@ -496,7 +571,7 @@ Page({
     this.setData({ colList });
   },
 
-  // ========== 浜や簰浜嬩欢 ==========
+  // ========== 交互事件 ==========
   onTabChange(e) {
     const tab = e.currentTarget.dataset.tab;
     this.setData({ tab }, () => {
@@ -586,7 +661,7 @@ Page({
         if (res.confirm) {
           this.setData({
             completedMap: {},
-            highlightId: this.data.palette[0] ? this.data.palette[0].id : '',
+            highlightId: '',
             tab: 'color',
             contrast: 50
           }, () => {
@@ -603,7 +678,7 @@ Page({
     wx.navigateBack({ delta: 1 });
   },
 
-  // ========== 淇濆瓨杩涘害 ==========
+  // ========== 保存进度 ==========
   _getCompactPanelHeight() {
     return 360;
   },
@@ -694,15 +769,16 @@ Page({
     }).catch(() => {});
   },
 
-  // ========== 瑙︽懜浜嬩欢锛堝弻鎸囩缉鏀惧拰鎷栨嫿锛?==========
+  // ========== 触摸事件（双指缩放和拖拽） ==========
   handleTouchStart(e) {
     const touches = e.touches;
     
-    // 鍙屾寚缂╂斁
+    // 双指缩放
     if (touches.length === 2) {
       this._isPinching = true;
       this._isDragging = false;
-      
+      this._scheduler.startGesture();
+
       const touch1 = touches[0];
       const touch2 = touches[1];
       this._touchStartDistance = this._getDistance(touch1, touch2);
@@ -712,6 +788,9 @@ Page({
       this._touchStartCenterY = center.clientY;
       this._startOffsetX = this.data.offsetX;
       this._startOffsetY = this.data.offsetY;
+      const origin = this._getTransformOrigin();
+      this._pinchStartContentX = (center.clientX - origin.x - this._startOffsetX) / Math.max(this._touchStartScale, 0.001);
+      this._pinchStartContentY = (center.clientY - origin.y - this._startOffsetY) / Math.max(this._touchStartScale, 0.001);
       return;
     }
     
@@ -744,31 +823,30 @@ Page({
   handleTouchMove(e) {
     const touches = e.touches;
     
-    // 鍙屾寚缂╂斁
+    // 双指缩放
     if (touches.length === 2 && this._isPinching) {
       const touch1 = touches[0];
       const touch2 = touches[1];
       const currentDistance = this._getDistance(touch1, touch2);
       if (!this._touchStartDistance) return;
       
-      // 璁＄畻缂╂斁姣斾緥
+      // 计算缩放比例
       const scaleChange = currentDistance / this._touchStartDistance;
       let newScale = this._touchStartScale * scaleChange;
       
-      // 闄愬埗缂╂斁鑼冨洿
+      // 限制缩放范围
       newScale = Math.max(this._minScale, Math.min(this._maxScale, newScale));
 
       const currentCenter = this._getTouchCenter(touch1, touch2);
-      const startScale = this._touchStartScale || 1;
-      const scaleRatio = newScale / startScale;
-      const nextOffsetX = currentCenter.clientX - this._touchStartCenterX + this._startOffsetX * scaleRatio;
-      const nextOffsetY = currentCenter.clientY - this._touchStartCenterY + this._startOffsetY * scaleRatio;
+      const origin = this._getTransformOrigin();
+      const nextOffsetX = currentCenter.clientX - origin.x - this._pinchStartContentX * newScale;
+      const nextOffsetY = currentCenter.clientY - origin.y - this._pinchStartContentY * newScale;
       const clamped = this._clampOffset(nextOffsetX, nextOffsetY, newScale);
       this._setViewport(newScale, clamped.offsetX, clamped.offsetY, false);
       return;
     }
     
-    // 鍗曟寚鎷栨嫿
+    // 单指拖拽
     if (touches.length === 1 && this._isDragging) {
       const deltaX = touches[0].clientX - this._dragStartX;
       const deltaY = touches[0].clientY - this._dragStartY;
@@ -776,17 +854,21 @@ Page({
       const nextOffsetY = this._startOffsetY + deltaY;
       const clamped = this._clampOffset(nextOffsetX, nextOffsetY, this.data.scale);
       
-      this.setData({
-        offsetX: clamped.offsetX,
-        offsetY: clamped.offsetY
-      });
+      this._setViewport(this.data.scale, clamped.offsetX, clamped.offsetY, false);
     }
   },
 
   handleTouchEnd(e) {
     if (this._isPinching) {
-      this._renderCanvas();
+      this._isPinching = false;
+      this._scheduler.endGesture(() => {
+        if (this._destroyed) return;
+        this._flushViewportUpdate(() => {
+          this._applyHighQualityRender();
+        });
+      });
     }
+    this._flushViewportUpdate();
     this._isPinching = false;
     this._isDragging = false;
   },
@@ -818,6 +900,41 @@ Page({
   },
 
   _resetViewport() {
-    this._setViewport(1, 0, 0, true);
+    this._flushViewportUpdate();
+    this.setData({ scale: 1, offsetX: 0, offsetY: 0 }, () => {
+      this._restoreSystemDpr();
+    });
+  },
+
+  _restoreSystemDpr() {
+    const canvas2dComponent = this.selectComponent('#immersiveCanvas');
+    if (!canvas2dComponent) return;
+    canvas2dComponent.resizeWithDpr(this.data.canvasSize, this.data.canvasSize, this._systemDpr);
+    const context = canvas2dComponent.getContext();
+    if (context && context.ready) {
+      this._canvas = context.canvas;
+      this._ctx = context.ctx;
+      this._dpr = context.dpr;
+    }
+    this._renderCanvas();
+  },
+
+  _applyHighQualityRender() {
+    const { canvasSize, scale } = this.data;
+    const canvas2dComponent = this.selectComponent('#immersiveCanvas');
+    if (!canvas2dComponent) return;
+
+    const newDpr = this._scheduler.getAdaptiveDpr(
+      canvasSize, canvasSize, scale, this._systemDpr, 'high'
+    );
+
+    canvas2dComponent.resizeWithDpr(canvasSize, canvasSize, newDpr);
+    const context = canvas2dComponent.getContext();
+    if (context && context.ready) {
+      this._canvas = context.canvas;
+      this._ctx = context.ctx;
+      this._dpr = context.dpr;
+    }
+    this._renderCanvas();
   }
 });

@@ -29,7 +29,6 @@ Page({
     bannerTop: 120,
     bannerList: [],
     activeBanner: 0,
-    bannerSwiperVisible: true,
     bannerAutoplay: true,
     currentBanner: {
       title: '初夏限定拼豆',
@@ -61,7 +60,6 @@ Page({
 
   onShow() {
     this.syncTabBar();
-    this._resumeBannerSwiper();
     const loggedIn = hasSession();
     const nickName = storage.get(storage.KEYS.NICK_NAME, '');
     const avatarUrl = storage.get(storage.KEYS.AVATAR_URL, '');
@@ -161,34 +159,36 @@ Page({
     request.get('/banner/list')
       .then((data) => {
         const raw = Array.isArray(data) ? data : [];
-        if (raw.length > 0) {
-          console.log('[index][banner/list] first item =', raw[0]);
-        }
         const list = raw.map((item) => {
-          const rawBg = (item && (item.bgColor || item.bg_color || item.backgroundColor || ''));
-          const bgColor = (typeof rawBg === 'string') ? rawBg.trim() : '';
-          return {
-            ...item,
-            bgColor,
-            bannerBgColor: bgColor || '#FF9800'
-          };
+          return { ...item };
         });
         if (!list.length) {
           this._clearBannerResumeTimer();
           this.setData({
             bannerList: [],
             activeBanner: 0,
-            bannerSwiperVisible: true,
             bannerAutoplay: false,
             currentBanner: null
           });
           return;
         }
-        const first = list[0] || {};
+        const currentList = this.data.bannerList || [];
+        const sameList = currentList.length === list.length
+          && currentList.every((item, index) => {
+            const next = list[index] || {};
+            return String(item.id || '') === String(next.id || '')
+              && String(item.imageUrl || '') === String(next.imageUrl || '')
+              && String(item.linkType || item.actionType || '') === String(next.linkType || next.actionType || '')
+              && String(item.linkValue || '') === String(next.linkValue || '')
+              && String(item.actionConfig || '') === String(next.actionConfig || '');
+          });
+        if (sameList) return;
+
+        const activeBanner = Math.min(this.data.activeBanner || 0, list.length - 1);
+        const first = list[activeBanner] || list[0] || {};
         this.setData({
           bannerList: list,
-          activeBanner: 0,
-          bannerSwiperVisible: true,
+          activeBanner,
           bannerAutoplay: list.length > 1,
           currentBanner: {
             title: pickText(first.title, '初夏限定拼豆'),
@@ -198,7 +198,7 @@ Page({
             linkType: first.linkType || 'NONE',
             linkValue: first.linkValue || ''
           }
-        }, () => this._resumeBannerSwiper());
+        });
       })
       .catch(() => {});
   },
@@ -207,35 +207,6 @@ Page({
     if (this._bannerResumeTimer) {
       clearTimeout(this._bannerResumeTimer);
       this._bannerResumeTimer = null;
-    }
-  },
-
-  _resumeBannerSwiper() {
-    const list = this.data.bannerList || [];
-    if (!list.length) return;
-
-    this._clearBannerResumeTimer();
-
-    const activeBanner = Math.min(Math.max(Number(this.data.activeBanner) || 0, 0), list.length - 1);
-    this.setData({
-      bannerAutoplay: false,
-      bannerSwiperVisible: false,
-      activeBanner
-    });
-
-    const showSwiper = () => {
-      this.setData({
-        bannerSwiperVisible: true,
-        bannerAutoplay: list.length > 1
-      });
-    };
-
-    if (typeof wx.nextTick === 'function') {
-      wx.nextTick(() => {
-        this._bannerResumeTimer = setTimeout(showSwiper, 80);
-      });
-    } else {
-      this._bannerResumeTimer = setTimeout(showSwiper, 80);
     }
   },
 
@@ -258,6 +229,7 @@ Page({
 
   onBannerChange(e) {
     const current = (e.detail && typeof e.detail.current === 'number') ? e.detail.current : 0;
+    if (current === this.data.activeBanner) return;
     this.setData({ activeBanner: current });
   },
 
@@ -486,9 +458,6 @@ Page({
 
   onHide() {
     this._clearBannerResumeTimer();
-    if ((this.data.bannerList || []).length) {
-      this.setData({ bannerAutoplay: false });
-    }
   },
 
   onUnload() {

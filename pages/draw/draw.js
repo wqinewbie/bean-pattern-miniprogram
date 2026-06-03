@@ -1,8 +1,11 @@
-﻿// 拼豆画板 - Canvas 2D 版本
+// 拼豆画板 - Canvas 2D 版本
 const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const storage = require('../../utils/storage');
 const { drawBoard, drawPixel } = require('../../utils/canvas2d/renderers/boardRenderer');
+const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
+
+
 const { getScheduler } = require('../../utils/canvas2d/renderScheduler');
 const { resize2dCanvas } = require('../../utils/canvas2d/core');
 const { exportCanvasToTempFilePath } = require('../../utils/canvas2d/export');
@@ -1313,8 +1316,9 @@ Page({
   },
 
   onSelectKit(e) {
-    const kitId = e.currentTarget.dataset.kitId;
-    const kitName = e.currentTarget.dataset.kitName;
+    const kitId = e.detail != null ? e.detail : e.currentTarget.dataset.kitId;
+    const selectedKit = (this.data.kitList || []).find(item => item.id === kitId);
+    const kitName = selectedKit ? selectedKit.name : e.currentTarget.dataset.kitName;
     
     this.setData({ 
       selectedKitId: kitId,
@@ -1553,7 +1557,7 @@ Page({
     try {
       const drawData = storage.getJSON(storageKey, null);
       if (!drawData) { wx.showToast({ title: '数据加载失败', icon: 'none' }); this._initData(); return; }
-      const { gridSize, gridData, colorPalette, brand, backgroundState, colorCount, editSourceType, draftId, boxId, name } = drawData;
+      const { gridSize, gridData, colorPalette, brand, backgroundState, colorCount, editSourceType, draftId, boxId, historyId, taskId, sourceUrl, name } = drawData;
 
       // 验证 gridData 是否存在且为数组
       if (!gridData || !Array.isArray(gridData)) {
@@ -1625,6 +1629,9 @@ Page({
         sourceRecordType: editSourceType || '',
         editingDraftId: draftId || '',
         editingBoxId: boxId || '',
+        editingHistoryId: historyId || '',
+        editingTaskId: taskId || '',
+        editingSourceUrl: sourceUrl || '',
         editingName: name || '',
         colorPalette, 
         colors, 
@@ -3891,6 +3898,10 @@ Page({
   onSaveToBox() {
     ensureProfileComplete().then((ok) => {
       if (!ok) return;
+      if (this.data.editingBoxId) {
+        wx.showToast({ title: '已保存到图纸箱', icon: 'none' });
+        return;
+      }
       this._promptNameAndSave('box');
     });
   },
@@ -3898,11 +3909,6 @@ Page({
   _startSaveDraft() {
     const editingDraftId = this.data.editingDraftId;
     const editingBoxId = this.data.editingBoxId;
-    const isEditingBoxSource = this.data.sourceRecordType === 'BOX' && editingBoxId;
-    if (isEditingBoxSource) {
-      this._promptNameAndSave('draft', 'new');
-      return;
-    }
     if (editingDraftId) {
       wx.showActionSheet({
         itemList: ['覆盖原草稿', '另存新草稿'],
@@ -3946,7 +3952,7 @@ Page({
 
   _saveToBox(name) {
     this.setData({ loading: true, loadingText: '保存到图纸箱...' });
-    const { gridSize, brand } = this.data;
+    const { gridSize, brand, sourceRecordType, editingDraftId, editingHistoryId, editingSourceUrl } = this.data;
     if (!this._hasDrawableContent()) {
       this.setData({ loading: false });
       wx.showToast({ title: '画板还没有内容', icon: 'none' });
@@ -3960,23 +3966,22 @@ Page({
 
     request.post('/box/save', {
       name,
-      sourceType: 'DRAW',
+      sourceType: sourceRecordType === 'AI' ? 'AI' : 'DRAW',
       brand: brand || 'MARD',
       colorCount: colorStats.length,
       gridSize: gridSize,
       mappedPixelData: JSON.stringify(mappedPixelData),
-      sourceUrl: ''
+      draftId: editingDraftId || null,
+      historyId: editingHistoryId || null,
+      sourceUrl: editingSourceUrl || ''
     }).then((result) => {
-      this.setData({ loading: false });
+      const newBoxId = result && result.id ? result.id : (result && result.boxId ? result.boxId : (result && result.box && result.box.id ? result.box.id : null));
+      this.setData({ loading: false, editingBoxId: newBoxId || this.data.editingBoxId || '' });
       wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
-      if (result && result.capacityFull) {
-        setTimeout(() => {
-          wx.showToast({ title: result.capacityMessage || '图纸箱容量已满', icon: 'none', duration: 2200 });
-        }, 900);
-      }
-    }).catch(() => {
+      showCapacityFullIfNeeded(result, { type: 'box' });
+    }).catch((err) => {
       this.setData({ loading: false });
-      wx.showToast({ title: '保存失败', icon: 'none' });
+      showRequestErrorToast(err, '保存失败');
     });
   },
 
@@ -4028,14 +4033,10 @@ Page({
       });
       this._hasUnsavedChanges = false;
       wx.showToast({ title: saveMode === 'overwrite' ? '已覆盖原草稿' : (saveMode === 'link-box' ? '已关联保存' : '已保存'), icon: 'success' });
-      if (savedDraft && savedDraft.capacityFull) {
-        setTimeout(() => {
-          wx.showToast({ title: savedDraft.capacityMessage || '草稿箱容量已满', icon: 'none', duration: 2200 });
-        }, 900);
-      }
+      showCapacityFullIfNeeded(savedDraft, { type: 'draft' });
     }).catch((err) => {
       this.setData({ loading: false });
-      wx.showToast({ title: (err && err.message) || '保存失败', icon: 'none' });
+      showRequestErrorToast(err, '保存失败');
     });
   },
 
@@ -4123,9 +4124,9 @@ Page({
       this.setData({ loading: false });
       wx.previewImage({ urls: [tempFilePath], current: tempFilePath });
     } catch (err) {
-      console.error('导出失败:', err);
+      console.error('预览生成失败:', err);
       this.setData({ loading: false });
-      wx.showToast({ title: '导出失败', icon: 'none' });
+      wx.showToast({ title: '预览失败', icon: 'none' });
     }
   },
 
@@ -4145,7 +4146,7 @@ Page({
         .exec((res) => {
           try {
             if (!res || !res[0] || !res[0].node) {
-              reject(new Error('导出画布未就绪'));
+              reject(new Error('预览画布未就绪'));
               return;
             }
 
@@ -4153,7 +4154,7 @@ Page({
             const canvas = res[0].node;
             const ctx = canvas.getContext('2d');
             if (!ctx) {
-              reject(new Error('导出画布上下文不可用'));
+              reject(new Error('预览画布上下文不可用'));
               return;
             }
 
@@ -4180,8 +4181,8 @@ Page({
             exportCanvasToTempFilePath(canvas, {
               width: canvas.width,
               height: canvas.height,
-              sourceWidth: canvas.width,
-              sourceHeight: canvas.height,
+              sourceWidth: width,
+              sourceHeight: height,
               fileType: 'png',
               quality: 1,
               timeout: 15000
@@ -4704,7 +4705,7 @@ Page({
   },
 
   onSelectPresetSize(e) {
-    const rawSize = e.currentTarget.dataset.size;
+    const rawSize = e.detail != null ? e.detail : e.currentTarget.dataset.size;
     const size = this._clampGridSize(rawSize);
     if (!size) return;
 
@@ -4724,6 +4725,12 @@ Page({
   onCustomSizeInput(e) {
     const value = e.detail.value;
     this.setData({ customSize: value });
+  },
+
+  onDrawSizeSelectOpen() {
+    this.selectComponent('#drawBrandSelect')?.close();
+    this.selectComponent('#drawPaletteSelect')?.close();
+    this.setData({ brandDropdownOpen: false, paletteDropdownOpen: false });
   },
 
   onCustomSizeConfirm(e) {
@@ -4754,7 +4761,7 @@ Page({
   },
 
   onSelectBrand(e) {
-    const brand = e.currentTarget.dataset.brand;
+    const brand = e.detail != null ? e.detail : e.currentTarget.dataset.brand;
     this.setData({ 
       brand: brand,
       brandDropdownOpen: false 
@@ -4762,6 +4769,18 @@ Page({
     
     // 重新加载该品牌的色卡
     this.loadPaletteColors(brand);
+  },
+
+  onDrawBrandSelectOpen() {
+    this.selectComponent('#drawSizeSelect')?.close();
+    this.selectComponent('#drawPaletteSelect')?.close();
+    this.setData({ sizeDropdownOpen: false, paletteDropdownOpen: false });
+  },
+
+  onDrawPaletteSelectOpen() {
+    this.selectComponent('#drawSizeSelect')?.close();
+    this.selectComponent('#drawBrandSelect')?.close();
+    this.setData({ sizeDropdownOpen: false, brandDropdownOpen: false });
   },
 
   // ========== 工具栏相关方法 ==========

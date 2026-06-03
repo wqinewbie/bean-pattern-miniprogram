@@ -44,6 +44,7 @@
               </view>
             </view>
           </view>
+          <text wx:if="{{item.metaText}}" class="pattern-meta-text">{{item.metaText}}</text>
           <text wx:if="{{item.expireText}}" class="pattern-meta-text">{{item.expireText}}</text>
         </view>
       </view>
@@ -70,7 +71,7 @@
             <view wx:else class="list-thumb list-thumb--ph">{{item.gridSize || 64}}</view>
             <view class="list-info">
               <text class="list-name">{{item.name || ('记录#'+item.id)}}</text>
-              <text class="list-meta-text">{{item.gridSize || 64}}x{{item.gridSize || 64}} · {{item.brand || 'MARD'}} · {{item.colorCount || 0}}色 · {{item.createdAt}}</text>
+              <text class="list-meta-text">{{item.metaText}}</text>
               <text wx:if="{{item.expireText}}" class="list-meta-text list-expire-text">{{item.expireText}}</text>
             </view>
           </view>

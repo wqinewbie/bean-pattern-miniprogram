@@ -137,7 +137,6 @@
   border-radius: 40rpx;
   overflow: hidden;
   box-shadow: 0 0 0 8rpx #fff, 0 16rpx 40rpx rgba(140, 107, 75, 0.12);
-  background: #FF9800;
   box-sizing: border-box;
 }
 

@@ -209,7 +209,7 @@
 }
 
 .btn-row {
-  display: flex;
+  display: none;
   gap: 24rpx;
   width: 100%;
   max-width: 560rpx;

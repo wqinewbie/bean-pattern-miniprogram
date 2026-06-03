@@ -12,6 +12,7 @@ const { previewSize, patternBoardSize, resultExportSize, patternExportSize, prev
 const { isTempPath, isValidRemoteUrl, needsUpload, getPathType } = require('../../utils/path-helper');
 const { generatePatternName } = require('../../utils/name-helper');
 const { getWatermarkConfig } = require('../../utils/watermark-helper');
+const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
 
 const PATTERN_EXPORT_MODE = '2d'; // 可选: 'legacy' | '2d'
 
@@ -123,6 +124,7 @@ Page({
     isSaved: false,
     currentPreviewUrl: '',
     savingToAlbum: false, // 保存至相册按钮加载状态
+    savingToBox: false,
     currentSize: 64,
     brandName: 'MARD',
     colorCount: 0,
@@ -142,21 +144,6 @@ Page({
     hasRgbData: false,
     resultRendered: false, // 效果图是否已渲染
     patternRendered: false, // 色号图是否已渲染
-    // 来源标签
-    sourceTypeTag: '',
-    // 编辑模式
-    isEditMode: false,
-    removeBgEnabled: false,
-    originalMappedPixelData: [],
-    originalGridData: [],
-    originalColorPalette: [],
-    originalRgbData: [],
-    removedMappedPixelData: [],
-    editCellRow: -1,
-    editCellCol: -1,
-    editCellColor: { id: 'EMPTY', name: '空白', r: 255, g: 255, b: 255 },
-    selectedEditColor: null,
-    selectedEditColorIndex: -1,
 
     // 2D Canvas
     canvas2dReadyMap: {},
@@ -181,7 +168,6 @@ Page({
       hasRenderedPatternParam: !!(options && options.renderedPatternUrl),
       hasRenderedResultParam: !!(options && options.renderedResultUrl)
     });
-    this._patternRenderInFlight = false;
     this._resultRenderInFlight = false;
     this.loadWatermarkConfig();
     
@@ -371,8 +357,6 @@ Page({
       meta = {},
       core = {},
       ui = {},
-      overlays = {},
-      originals = {},
       render = {}
     } = payload || {};
 
@@ -402,7 +386,6 @@ Page({
       historyId: meta.historyId || null,
       draftId: meta.draftId || null,
       sourceType: meta.sourceType || 'LOCAL',
-      sourceTypeTag: meta.sourceTypeTag || '📷 图片转图纸',
       isSaved: !!meta.boxId,
       mirrorOn: !!meta.mirrorOn,
 
@@ -432,12 +415,6 @@ Page({
       resultInitialLoading: false,
       showGeneratingOverlay: keepGeneratingOverlay,
       generatingTimeout: keepGeneratingOverlay ? this.data.generatingTimeout : false,
-      removeBgEnabled: !!overlays.removeBgEnabled,
-
-      originalMappedPixelData: originals.originalMappedPixelData || [],
-      originalGridData: originals.originalGridData || [],
-      originalColorPalette: originals.originalColorPalette || [],
-      originalRgbData: originals.originalRgbData || []
     });
 
     // 验证 setData 后 this.data.originalUrl 是否被正确设置
@@ -468,16 +445,12 @@ Page({
       });
       setTimeout(() => {
         if (hasRgbData) this._ensureResultCanvasReady(!!render.forceRender);
-        if (hasAnyPattern) this._ensurePatternCanvasReady(!!render.forceRender);
       }, render.delay || 80);
     } else {
       this._pendingRenderCount = 0;
       console.log('[result][overlay] no autoRender, pending reset to 0');
     }
 
-    if (render.precomputeRemovedBackground) {
-      this.precomputeRemovedBackground();
-    }
     this._warmOriginalImage(ui.originalUrl || '');
     if (meta.mirrorOn && ui.originalUrl) {
       this.ensureMirroredOriginalUrl(ui.originalUrl, (mirrored) => {
@@ -566,14 +539,6 @@ Page({
     else if (hasPatternData || hasMappedData) activeTab = 'pattern';
 
     const memSourceType = data.sourceType || 'LOCAL';
-    const memSourceTypeMap = {
-      'LOCAL': '📷 图片转图纸',
-      'AI': '🤖 AI生成',
-      'DRAW': '🎨 画板',
-      'BOX': '📦 图纸箱',
-      'HISTORY': '⏰ 时光机',
-      'DRAFT': '📝 草稿箱'
-    };
 
     this._applyResultData({
       meta: {
@@ -581,7 +546,6 @@ Page({
         historyId: data.historyId || null,
         draftId: data.draftId || null,
         sourceType: memSourceType,
-        sourceTypeTag: memSourceTypeMap[memSourceType] || memSourceTypeMap['LOCAL'],
         mirrorOn: !!data.mirrorOn
       },
       core: {
@@ -608,15 +572,8 @@ Page({
         resultRendered: !!(data.renderedResultUrl || !hasRgbData),
         patternRendered: !!(data.renderedPatternUrl || !(hasPatternData || hasMappedData))
       },
-      originals: {
-        originalMappedPixelData: parsedMappedPixelData.map((row) => (row || []).map((cell) => ({ ...(cell || {}) }))),
-        originalGridData: parsedGridData.map((row) => (row || []).slice()),
-        originalColorPalette: parsedColorPalette.map((c) => ({ ...(c || {}) })),
-        originalRgbData: parsedRgbData.map((row) => (row || []).slice())
-      },
       render: {
         autoRender: hasRgbData || hasPatternData || hasMappedData,
-        precomputeRemovedBackground: true,
         generatePatternPreview: hasPatternData || hasMappedData
       }
     });
@@ -713,17 +670,6 @@ Page({
           activeTab = 'pattern';
         }
         
-        // 来源类型标签
-        const sourceTypeMap = {
-          'LOCAL': '📷 图片转图纸',
-          'AI': '🤖 AI生成',
-          'DRAW': '🎨 画板',
-          'BOX': '📦 图纸箱',
-          'HISTORY': '⏰ 时光机',
-          'DRAFT': '📝 草稿箱'
-        };
-        const sourceTypeTag = sourceTypeMap[sourceType] || sourceTypeMap['LOCAL'];
-
         // 是否有预渲染图片
         const hasPreRendered = preRenderedPattern || preRenderedResult;
         console.log('[result] server data parsed', {
@@ -746,7 +692,6 @@ Page({
             historyId: historyId || null,
             draftId: draftId || null,
             sourceType,
-            sourceTypeTag,
             mirrorOn: this.data.mirrorOn
           },
           core: {
@@ -773,16 +718,9 @@ Page({
             resultRendered: !hasRgbData || !!preRenderedResult,
             patternRendered: !(hasPatternData || hasMappedData) || !!preRenderedPattern
           },
-          originals: {
-            originalMappedPixelData: parsedMappedPixelData.map((row) => (row || []).map((cell) => ({ ...(cell || {}) }))),
-            originalGridData: parsedGridData.map((row) => (row || []).slice()),
-            originalColorPalette: parsedColorPalette.map((c) => ({ ...(c || {}) })),
-            originalRgbData: parsedRgbData.map((row) => (row || []).slice())
-          },
           render: {
             autoRender: !hasPreRendered && (hasRgbData || hasPatternData || hasMappedData),
             delay: 100,
-            precomputeRemovedBackground: true,
             generatePatternPreview: hasPatternData || hasMappedData
           }
         });
@@ -910,16 +848,6 @@ Page({
     const effectiveRenderedResultUrl = storedRenderedResultUrl || decodeURIComponent(renderedResultUrl || '');
     const effectiveSourceUrl = decodeURIComponent(options.sourceUrl || storedOriginalUrl || '');
 
-    // 计算来源类型标签
-    const sourceTypeMap = {
-      'LOCAL': '📷 图片转图纸',
-      'AI': '🤖 AI生成',
-      'DRAW': '🎨 画板',
-      'BOX': '📦 图纸箱',
-      'HISTORY': '⏰ 时光机'
-    };
-    const sourceTypeTag = effectiveHistoryId ? sourceTypeMap['HISTORY'] : 
-                          (effectiveSourceUrl ? sourceTypeMap[sourceType] || sourceTypeMap['LOCAL'] : '');
     const effectiveSourceType = effectiveHistoryId ? 'HISTORY' : (sourceType || 'LOCAL');
 
     // 确定默认显示的tab
@@ -944,7 +872,6 @@ Page({
         boxId: boxId ? parseInt(boxId) : null,
         historyId: effectiveHistoryId,
         sourceType: effectiveSourceType,
-        sourceTypeTag,
         mirrorOn: this.data.mirrorOn
       },
       core: {
@@ -971,16 +898,9 @@ Page({
         resultRendered: !!(effectiveRenderedResultUrl || !hasRgbData),
         patternRendered: !!(effectiveRenderedPatternUrl || !(hasPatternData || hasMappedData))
       },
-      originals: {
-        originalMappedPixelData: parsedMappedPixelData.map((row) => (row || []).map((cell) => ({ ...(cell || {}) }))),
-        originalGridData: parsedGridData.map((row) => (row || []).slice()),
-        originalColorPalette: parsedColorPalette.map((c) => ({ ...(c || {}) })),
-        originalRgbData: parsedRgbData.map((row) => (row || []).slice())
-      },
       render: {
         autoRender: !(effectiveRenderedPatternUrl || effectiveRenderedResultUrl) && (hasPatternData || hasRgbData || hasMappedData),
         delay: 100,
-        precomputeRemovedBackground: true,
         generatePatternPreview: hasPatternData || hasMappedData
       }
     });
@@ -1144,7 +1064,7 @@ Page({
 
     let nextUrl = '';
     if (tab === 'original') {
-      nextUrl = this.data.originalUrl || this.data.warmedOriginalUrl || '';
+      nextUrl = (this.data.mirrorOn && this.data.mirroredOriginalUrl) || this.data.originalUrl || this.data.warmedOriginalUrl || '';
     }
 
     console.log('[result][tab] change request', {
@@ -1154,7 +1074,6 @@ Page({
       renderedPatternUrl: !!renderedPatternUrl,
       rgbRows: Array.isArray(this.data.rgbData) ? this.data.rgbData.length : -1,
       hasPatternData: !!this.data.hasPatternData,
-      isEditMode: !!this.data.isEditMode
     });
 
     this.setData({
@@ -1167,18 +1086,11 @@ Page({
           this._ensureResultCanvasReady(true);
         }
       } else if (tab === 'pattern') {
-        // 优化：如果已有渲染图且非编辑模式，不触发重新渲染，避免闪动
-        if (this.data.renderedPatternUrl && !this.data.isEditMode) {
+        if (this.data.renderedPatternUrl) {
           console.log('[result][tab] pattern already rendered, skip re-render');
           return;
         }
-        
-        if (!this.data.renderedPatternUrl || this.data.isEditMode) {
-          this.generatePatternPreviewImage(true);
-        }
-        if (this.data.isEditMode) {
-          this._ensurePatternCanvasReady(true);
-        }
+        this.generatePatternPreviewImage(true);
       }
 
       console.log('[result][tab] change applied', {
@@ -1194,17 +1106,6 @@ Page({
     if (!force && this.data.resultRendered) return;
     if (!this.data.rgbData || !this.data.rgbData.length) return;
     setTimeout(() => this._renderResultCanvas2d(force), 40);
-  },
-
-  _ensurePatternCanvasReady(force = false) {
-    if (!force && this.data.patternRendered && !this.data.isEditMode) return;
-    if (!this.data.hasPatternData && !(this.data.mappedPixelData && this.data.mappedPixelData.length)) return;
-    setTimeout(() => this._renderPatternCanvas2d(force), 40);
-  },
-
-  // 渲染色号图（2D）
-  renderPatternCanvas(forceRender = false) {
-    this._renderPatternCanvas2d(forceRender);
   },
 
   // 渲染效果图（2D）
@@ -1223,8 +1124,6 @@ Page({
 
     if (type === 'result') {
       this._resultRenderInFlight = false;
-    } else if (type === 'pattern') {
-      this._patternRenderInFlight = false;
     }
     
     // 设置对应的渲染标记
@@ -1255,7 +1154,7 @@ Page({
       update
     });
 
-    if (type === 'pattern' && !this.data.renderedPatternUrl && !this.data.isEditMode) {
+    if (type === 'pattern' && !this.data.renderedPatternUrl) {
       this.generatePatternPreviewImage();
     }
     if (type === 'result' && !this.data.renderedResultUrl) {
@@ -1277,67 +1176,8 @@ Page({
     }
   },
 
-  _drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize) {
-    return drawPatternWithAxes(ctx, gridData, colorPalette, gridSize, boardSize, { maxCanvasSize: 4096 });
-  },
-
   onCanvas2dError(e) {
     console.warn('[result][canvas2d] component error', e && e.detail ? e.detail : e);
-  },
-
-  _renderPatternCanvas2d(forceRender = false) {
-    const { gridData, colorPalette } = this._getRenderableLegacyData();
-
-    if (this._patternRenderInFlight) return;
-    if (!forceRender && this.data.patternRendered && !this.data.isEditMode) return;
-    if (!gridData || !gridData.length || !colorPalette || !colorPalette.length) return;
-
-    this._patternRenderInFlight = true;
-
-    waitCanvas2dReady(this, 'patternCanvas2dComp', { label: 'pattern-render' })
-      .then(({ comp, ctx }) => {
-        const query = wx.createSelectorQuery();
-        query.select('.preview-wrap').boundingClientRect((rect) => {
-          if (!rect || !rect.width) {
-            this._patternRenderInFlight = false;
-            return;
-          }
-
-          const boardSize = patternBoardSize(gridData.length, (gridData[0] && gridData[0].length) || gridData.length);
-
-          try {
-            // 准备绘制选项（包含小程序名称和水印配置）
-            const drawOptions = {
-              maxCanvasSize: 4096,
-              appName: this.data.appName || '',
-              watermark: this.data.watermarkConfig || null
-            };
-
-            // 第一步：先绘制一次获取实际尺寸
-            const layoutPreview = drawPatternWithAxes(ctx, gridData, colorPalette, gridData.length, boardSize, drawOptions);
-
-            // 第二步：根据实际尺寸 resize Canvas（长方形）
-            if (typeof comp.resizeSync === 'function') {
-              comp.resizeSync(layoutPreview.totalWidth, layoutPreview.totalHeight);
-            }
-
-            // 第三步：清空并重新绘制（resize 会清空内容）
-            const context2 = comp.getContext();
-            const drawCtx = context2 && context2.ctx ? context2.ctx : ctx;
-            drawCtx.clearRect(0, 0, layoutPreview.totalWidth, layoutPreview.totalHeight);
-            const layout = drawPatternWithAxes(drawCtx, gridData, colorPalette, gridData.length, boardSize, drawOptions);
-
-            this._patternLayout2d = layout || null;
-            this.onCanvasRendered('pattern');
-          } catch (error) {
-            console.warn('[result][canvas2d] pattern render failed', error);
-            this._patternRenderInFlight = false;
-          }
-        }).exec();
-      })
-      .catch(() => {
-        this._patternRenderInFlight = false;
-      });
   },
 
   _renderResultCanvas2d(forceRender = false) {
@@ -1395,25 +1235,6 @@ Page({
   },
 
   // 应用水印（兼容传统 Canvas API）
-  applyWatermark(ctx, width, height, config) {
-    if (!config || config.enabled !== 1) {
-      return;
-    }
-
-    const text = config.text || '';
-    const fontSize = config.fontSize || 16;
-    const color = config.color || 'rgba(128,128,128,0.5)';
-    const position = config.position || '右下';
-    const margin = config.margin || 10;
-
-    ctx.setFontSize(fontSize);
-    ctx.setFillStyle(color);
-    ctx.setTextAlign(position === '右下' ? 'right' : 'left');
-    ctx.setTextBaseline('bottom');
-    
-    ctx.fillText(text, position === '右下' ? width - margin : margin, height - margin);
-  },
-
   getCurrentUrl() {
     return this.data.currentPreviewUrl || '';
   },
@@ -1689,19 +1510,6 @@ Page({
     });
   },
 
-  previewMirroredOriginal() {
-    const url = this.data.currentPreviewUrl || this.data.originalUrl;
-    if (!url) {
-      wx.showToast({ title: '暂无图片', icon: 'none' });
-      return;
-    }
-
-    this.ensureMirroredOriginalUrl(this.data.originalUrl || url, (mirrored) => {
-      const finalUrl = mirrored || url;
-      wx.previewImage({ urls: [finalUrl], current: finalUrl });
-    });
-  },
-
   onSaveImage() {
     const { activeTab, rgbData } = this.data;
     const { gridData, colorPalette } = this._getRenderableLegacyData();
@@ -1756,9 +1564,7 @@ Page({
           renderResult(ctx, {
             rgbData: this.data.rgbData || [],
             rgbWidth: this.data.rgbWidth,
-            rgbHeight: this.data.rgbHeight,
-            removeBgEnabled: this.data.removeBgEnabled,
-            removeBgMatrix: this.data.removeBgMatrix || []
+            rgbHeight: this.data.rgbHeight
           }, { width: exportSize, height: exportSize });
 
           comp.exportTempFilePath({ width: exportSize, height: exportSize })
@@ -1821,14 +1627,21 @@ Page({
       label: 'pattern-export',
       maxCompRetry: 15,
       maxCtxRetry: 20
-    }).then(({ comp, ctx }) => {
+    }).then(async ({ comp, ctx }) => {
       const boardSize = patternBoardSize(gridRows, gridCols);
+      const latestWatermark = await getWatermarkConfig();
+      const latestAppName = latestWatermark.appName || this.data.appName || '';
+      const latestWatermarkConfig = latestWatermark.watermarkConfig || this.data.watermarkConfig || null;
+      this.setData({
+        appName: latestAppName,
+        watermarkConfig: latestWatermarkConfig
+      });
       
       // 准备绘制选项（包含小程序名称和水印配置）
       const drawOptions = {
         maxCanvasSize: 4096,
-        appName: this.data.appName || '',
-        watermark: withWatermark ? (this.data.watermarkConfig || {
+        appName: latestAppName,
+        watermark: withWatermark ? (latestWatermarkConfig || {
           enabled: 1,
           text: '',
           fontSize: 24,
@@ -1884,54 +1697,9 @@ Page({
       });
     });
   },
-
-  _exportPatternWithLegacy(options = {}) {
-    const { withWatermark = false } = options;
-    const { gridData, colorPalette } = this._getRenderableLegacyData();
-
-    if (!gridData || !gridData.length || !colorPalette || !colorPalette.length) {
-      return Promise.reject(new Error('no pattern data'));
-    }
-
-    const gridRows = gridData.length;
-    const gridCols = (gridData[0] && gridData[0].length) || gridRows;
-    const boardSize = patternBoardSize(gridRows, gridCols);
-    const canvasInitDim = Math.max(boardSize, Math.ceil(boardSize * Math.max(gridCols, gridRows) / Math.max(1, Math.min(gridCols, gridRows))));
-
-    return new Promise((resolve, reject) => {
-      getCanvas2d(this, 'tempSaveCanvas', canvasInitDim, canvasInitDim).then(({ canvas, ctx }) => {
-        const layout = drawPatternWithAxes(ctx, gridData, colorPalette, gridRows, boardSize, { maxCanvasSize: 4096 });
-
-        if (withWatermark) {
-          this.applyWatermark(ctx, layout.totalWidth, layout.totalHeight, this.data.watermarkConfig);
-        }
-
-        // 导出
-        exportCanvasToTempFilePath(canvas, {
-          width: layout.totalWidth,
-          height: layout.totalHeight,
-          sourceWidth: Math.max(1, Math.floor(layout.totalWidth * ((canvas.width || layout.totalWidth) / Math.max(1, canvasInitDim)))),
-          sourceHeight: Math.max(1, Math.floor(layout.totalHeight * ((canvas.height || layout.totalHeight) / Math.max(1, canvasInitDim)))),
-          fileType: 'png',
-          quality: 1
-        }, this).then((tempFilePath) => {
-          if (tempFilePath) {
-            resolve(tempFilePath);
-          } else {
-            reject(new Error('empty path'));
-          }
-        }).catch(reject);
-      }).catch(reject);
-    });
-  },
-
-  _exportPatternByMode(options = {}) {
-    return this._exportPatternWith2d(options);
-  },
-
   // 保存渲染的色号图（使用高分辨率渲染）
   generatePatternPreviewImage(force = false) {
-    if (this._patternPreviewGenerating || (this.data.renderedPatternUrl && !force) || this.data.isEditMode) {
+    if (this._patternPreviewGenerating || (this.data.renderedPatternUrl && !force)) {
       return;
     }
 
@@ -1942,7 +1710,7 @@ Page({
       hasPatternData: !!this.data.hasPatternData
     });
 
-    this._exportPatternByMode({ withWatermark: true })
+    this._exportPatternWith2d({ withWatermark: true })
       .then((path) => {
         if (path) {
           const update = { renderedPatternUrl: path };
@@ -1976,7 +1744,7 @@ Page({
   savePatternCanvas() {
     this.setData({ saving: true, savingToAlbum: true });
 
-    this._exportPatternByMode({ withWatermark: true })
+    this._exportPatternWith2d({ withWatermark: true })
       .then((path) => {
         if (!path) throw new Error('empty path');
         this.setData({ renderedPatternUrl: path });
@@ -2027,7 +1795,7 @@ Page({
   },
 
   handleToggleEditMode() {
-    const { mappedPixelData, gridData, colorPalette, gridSize, brandName, colorCount } = this.data;
+    const { mappedPixelData, gridData, colorPalette, gridSize, brandName, colorCount, sourceType, draftId, boxId, historyId, taskId, originalUrl, currentPreviewUrl, patternNameInput } = this.data;
     if (!mappedPixelData || !mappedPixelData.length) {
       wx.showToast({ title: '暂无可编辑图纸', icon: 'none' });
       return;
@@ -2045,313 +1813,19 @@ Page({
       gridData,
       colorPalette,
       brand: brandName || 'MARD',
-      colorCount: colorCount || 0
+      colorCount: colorCount || 0,
+      editSourceType: sourceType || (boxId ? 'BOX' : (historyId ? 'HISTORY' : (draftId ? 'DRAFT' : 'LOCAL'))),
+      draftId: draftId || null,
+      boxId: boxId || null,
+      historyId: historyId || null,
+      taskId: taskId || null,
+      sourceUrl: originalUrl || currentPreviewUrl || '',
+      name: patternNameInput || ''
     });
 
     wx.navigateTo({
       url: '/pages/draw/draw?source=result&storageKey=' + storageKey
     });
-  },
-
-  precomputeRemovedBackground() {
-    const baseMapped = this.data.originalMappedPixelData && this.data.originalMappedPixelData.length
-      ? this.data.originalMappedPixelData
-      : this._getMappedForPersistence();
-
-    if (!baseMapped || !baseMapped.length) {
-      this.setData({ removedMappedPixelData: [] });
-      return;
-    }
-
-    const rows = baseMapped.length;
-    const cols = baseMapped[0] ? baseMapped[0].length : 0;
-    if (!rows || !cols) {
-      this.setData({ removedMappedPixelData: [] });
-      return;
-    }
-
-    const colorKey = (cell) => String(cell.id || '') + '|' + String(cell.hex || '');
-    const borderCounts = new Map();
-    const countCell = (r, c) => {
-      const cell = baseMapped[r] && baseMapped[r][c];
-      if (!cell || cell.isExternal) return;
-      const key = colorKey(cell);
-      borderCounts.set(key, (borderCounts.get(key) || 0) + 1);
-    };
-
-    for (let c = 0; c < cols; c++) {
-      countCell(0, c);
-      if (rows > 1) countCell(rows - 1, c);
-    }
-    for (let r = 1; r < rows - 1; r++) {
-      countCell(r, 0);
-      if (cols > 1) countCell(r, cols - 1);
-    }
-
-    let targetKey = '';
-    let maxCount = -1;
-    borderCounts.forEach((cnt, key) => {
-      if (cnt > maxCount) {
-        maxCount = cnt;
-        targetKey = key;
-      }
-    });
-
-    if (!targetKey) {
-      this.setData({ removedMappedPixelData: [] });
-      return;
-    }
-
-    const nextMapped = baseMapped.map((row) => (row || []).map((cell) => ({ ...(cell || {}) })));
-    const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
-    const stack = [];
-
-    const pushIfTarget = (r, c) => {
-      if (r < 0 || r >= rows || c < 0 || c >= cols) return;
-      if (visited[r][c]) return;
-      const cell = nextMapped[r] && nextMapped[r][c];
-      if (!cell || cell.isExternal) return;
-      if (colorKey(cell) !== targetKey) return;
-      visited[r][c] = true;
-      stack.push([r, c]);
-    };
-
-    for (let c = 0; c < cols; c++) {
-      pushIfTarget(0, c);
-      if (rows > 1) pushIfTarget(rows - 1, c);
-    }
-    for (let r = 1; r < rows - 1; r++) {
-      pushIfTarget(r, 0);
-      if (cols > 1) pushIfTarget(r, cols - 1);
-    }
-
-    let removed = 0;
-    while (stack.length) {
-      const [r, c] = stack.pop();
-      nextMapped[r][c] = {
-        id: 'ERASE',
-        name: 'Transparent',
-        r: 255,
-        g: 255,
-        b: 255,
-        hex: '#FFFFFF',
-        isExternal: true
-      };
-      removed++;
-      pushIfTarget(r - 1, c);
-      pushIfTarget(r + 1, c);
-      pushIfTarget(r, c - 1);
-      pushIfTarget(r, c + 1);
-    }
-
-    const remained = rows * cols - removed;
-    const minRemain = Math.max(10, Math.floor(rows * cols * 0.05));
-    if (removed === 0 || remained <= 0 || remained < minRemain) {
-      this.setData({ removedMappedPixelData: [] });
-      return;
-    }
-
-    this.setData({ removedMappedPixelData: nextMapped });
-  },
-
-  _setBaseStateFromMapped(mappedData) {
-    const derived = this._deriveLegacyFromMapped(mappedData || []);
-    const total = (derived.colorPalette || []).reduce((sum, c) => sum + (c.count || 0), 0);
-    this.setData({
-      mappedPixelData: mappedData || [],
-      gridData: derived.gridData,
-      colorPalette: derived.colorPalette,
-      rgbData: derived.rgbData,
-      totalBeads: total,
-      colorCount: (derived.colorPalette || []).length,
-      hasPatternData: (derived.gridData || []).length > 0,
-      renderedPatternUrl: '',
-      renderedResultUrl: '',
-      patternRendered: false,
-      resultRendered: false
-    });
-    this._pendingRenderCount = 2;
-    setTimeout(() => {
-      this.generatePatternPreviewImage(true);
-      this.generateResultPreviewImage(true);
-      this._ensureResultCanvasReady(true);
-      if (this.data.isEditMode) {
-        this._ensurePatternCanvasReady(true);
-      }
-    }, 40);
-  },
-
-  handleAutoRemoveBackground() {
-    const mappedPixelData = this._getMappedForPersistence();
-    console.log('[remove-bg] start', {
-      hasMapped: !!mappedPixelData,
-      rows: mappedPixelData ? mappedPixelData.length : 0,
-      cols: mappedPixelData && mappedPixelData[0] ? mappedPixelData[0].length : 0
-    });
-    if (!mappedPixelData || !mappedPixelData.length) {
-      console.warn('[remove-bg] abort: no mapped data');
-      wx.showToast({ title: '请先生成图纸', icon: 'none' });
-      return;
-    }
-
-    if (this.data.removeBgEnabled) {
-      this.setData({ removeBgEnabled: false });
-      this._setBaseStateFromMapped(this.data.originalMappedPixelData || []);
-      wx.showToast({ title: '已恢复原图案', icon: 'none' });
-      return;
-    }
-
-    if (this.data.removedMappedPixelData && this.data.removedMappedPixelData.length) {
-      this.setData({ removeBgEnabled: true });
-      this._setBaseStateFromMapped(this.data.removedMappedPixelData);
-      wx.showToast({ title: '已去除背景', icon: 'success' });
-      return;
-    }
-
-    const rows = mappedPixelData.length;
-    const cols = mappedPixelData[0] ? mappedPixelData[0].length : 0;
-    if (!rows || !cols) {
-      console.warn('[remove-bg] abort: invalid shape', { rows, cols });
-      return;
-    }
-
-    const colorKey = (cell) => String(cell.id || '') + '|' + String(cell.hex || '');
-
-    const borderCounts = new Map();
-    const countCell = (r, c) => {
-      const cell = mappedPixelData[r] && mappedPixelData[r][c];
-      if (!cell || cell.isExternal) return;
-      const key = colorKey(cell);
-      borderCounts.set(key, (borderCounts.get(key) || 0) + 1);
-    };
-
-    for (let c = 0; c < cols; c++) {
-      countCell(0, c);
-      if (rows > 1) countCell(rows - 1, c);
-    }
-    for (let r = 1; r < rows - 1; r++) {
-      countCell(r, 0);
-      if (cols > 1) countCell(r, cols - 1);
-    }
-
-    let targetKey = '';
-    let maxCount = -1;
-    borderCounts.forEach((cnt, key) => {
-      if (cnt > maxCount) {
-        maxCount = cnt;
-        targetKey = key;
-      }
-    });
-    console.log('[remove-bg] border colors', {
-      borderColorKinds: borderCounts.size,
-      targetKey,
-      maxCount
-    });
-
-    if (!targetKey) {
-      console.warn('[remove-bg] abort: no target background color');
-      wx.showToast({ title: '未识别到背景色', icon: 'none' });
-      return;
-    }
-
-    const nextMapped = mappedPixelData.map(row => row.map(cell => ({ ...cell })));
-    if (!this.data.originalMappedPixelData || !this.data.originalMappedPixelData.length) {
-      this.setData({
-        originalMappedPixelData: mappedPixelData.map((row) => (row || []).map((cell) => ({ ...(cell || {}) }))),
-        originalGridData: (this.data.gridData || []).map((row) => (row || []).slice()),
-        originalColorPalette: (this.data.colorPalette || []).map((c) => ({ ...(c || {}) })),
-        originalRgbData: (this.data.rgbData || []).map((row) => (row || []).slice())
-      });
-    }
-    const visited = Array.from({ length: rows }, () => Array(cols).fill(false));
-    const stack = [];
-
-    const pushIfTarget = (r, c) => {
-      if (r < 0 || r >= rows || c < 0 || c >= cols) return;
-      if (visited[r][c]) return;
-      const cell = nextMapped[r] && nextMapped[r][c];
-      if (!cell || cell.isExternal) return;
-      if (colorKey(cell) !== targetKey) return;
-      visited[r][c] = true;
-      stack.push([r, c]);
-    };
-
-    for (let c = 0; c < cols; c++) {
-      pushIfTarget(0, c);
-      if (rows > 1) pushIfTarget(rows - 1, c);
-    }
-    for (let r = 1; r < rows - 1; r++) {
-      pushIfTarget(r, 0);
-      if (cols > 1) pushIfTarget(r, cols - 1);
-    }
-
-    let removed = 0;
-    while (stack.length) {
-      const [r, c] = stack.pop();
-      nextMapped[r][c] = {
-        id: 'ERASE',
-        name: 'Transparent',
-        r: 255,
-        g: 255,
-        b: 255,
-        hex: '#FFFFFF',
-        isExternal: true
-      };
-      removed++;
-      pushIfTarget(r - 1, c);
-      pushIfTarget(r + 1, c);
-      pushIfTarget(r, c - 1);
-      pushIfTarget(r, c + 1);
-    }
-
-    if (removed === 0) {
-      console.warn('[remove-bg] abort: flood fill removed 0');
-      wx.showToast({ title: '未找到可去除背景', icon: 'none' });
-      return;
-    }
-
-    const remained = rows * cols - removed;
-    const minRemain = Math.max(10, Math.floor(rows * cols * 0.05));
-    console.log('[remove-bg] result stats', {
-      total: rows * cols,
-      removed,
-      remained,
-      minRemain
-    });
-    if (remained <= 0 || remained < minRemain) {
-      console.warn('[remove-bg] abort: remove area too large');
-      wx.showToast({ title: '去背景范围过大，已取消', icon: 'none' });
-      return;
-    }
-
-    const derived = this._deriveLegacyFromMapped(nextMapped);
-    const total = (derived.colorPalette || []).reduce((sum, c) => sum + (c.count || 0), 0);
-
-    this.setData({
-      removeBgEnabled: true,
-      removedMappedPixelData: nextMapped.map((row) => (row || []).map((cell) => ({ ...(cell || {}) })))
-    });
-    this._setBaseStateFromMapped(nextMapped);
-    console.log('[remove-bg] done', {
-      newPaletteLen: derived.colorPalette.length,
-      totalBeads: total
-    });
-    wx.showToast({ title: '已去除背景', icon: 'success' });
-  },
-
-  onCanvasEditTap() {},
-
-  onCloseColorPicker() {
-    this.setData({ showColorPicker: false });
-  },
-
-  onSelectEditColor(e) {
-    const { color, index } = e.currentTarget.dataset || {};
-    this.setData({ selectedEditColor: color || null, selectedEditColorIndex: Number(index ?? -1) });
-  },
-
-  onConfirmEditColor() {
-    this.setData({ showColorPicker: false });
   },
 
   onEnterFocusMode() {
@@ -2400,8 +1874,8 @@ Page({
   },
 
   onConfirmSavePattern() {
+    if (this.data.savingToBox) return;
     const { patternNameInput, historyId, sourceType } = this.data;
-    const mappedPixelData = this._getMappedForPersistence();
     const name = (patternNameInput || '').trim() || generatePatternName();
 
     // 计算总格子数
@@ -2410,22 +1884,8 @@ Page({
     // 计算已完成的格子数（沉浸模式进度）
     const completedCells = this._getCompletedCells ? this._getCompletedCells() : 0;
 
-    // 上传原图到 COS，再保存到图纸箱
-    const rawSourceUrl = this.data.originalUrl || '';
-    console.log('[result] onConfirmSavePattern 准备上传', {
-      'rawSourceUrl': rawSourceUrl,
-      'rawSourceUrl.length': rawSourceUrl.length,
-      'this.data.originalUrl': this.data.originalUrl,
-      'this.data.originalUrl.length': this.data.originalUrl ? this.data.originalUrl.length : 0
-    });
-    uploadImageIfNeeded(rawSourceUrl).then((cosSourceUrl) => {
-      console.log('[result] onConfirmSavePattern 上传完成', {
-        'cosSourceUrl': cosSourceUrl,
-        'cosSourceUrl.length': cosSourceUrl ? cosSourceUrl.length : 0
-      });
-      if (cosSourceUrl) {
-        this.setData({ originalUrl: cosSourceUrl });
-      }
+    const postBoxSave = (sourceUrl) => {
+      const mappedPixelData = this._getMappedForPersistence();
       request.post('/box/save', {
         name: name,
         sourceType: sourceType || 'LOCAL',
@@ -2434,38 +1894,54 @@ Page({
         gridSize: gridSize,
         mappedPixelData: JSON.stringify(mappedPixelData),
         historyId: historyId || null,
-        sourceUrl: cosSourceUrl || '',
+        sourceUrl: sourceUrl || '',
         // 沉浸模式进度
         focusTotalCells: focusTotalCells,
         focusCompletedCells: completedCells,
         focusProgress: focusTotalCells > 0 ? Math.round(completedCells / focusTotalCells * 100) : 0,
       })
         .then((box) => {
-          const newBoxId = box && box.id ? box.id : (box && box.box && box.box.id ? box.box.id : null);
+          const newBoxId = box && box.id ? box.id : (box && box.boxId ? box.boxId : (box && box.box && box.box.id ? box.box.id : null));
           this.setData({
             isSaved: true,
             showNameModal: false,
             patternNameInput: name,
-            boxId: newBoxId
+            boxId: newBoxId,
+            savingToBox: false
           });
           wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
           this._showCapacityFullIfNeeded(box);
         })
-        .catch(() => {
-          wx.showToast({ title: '保存失败，请重试', icon: 'none' });
+        .catch((err) => {
+          this.setData({ savingToBox: false });
+          showRequestErrorToast(err, '保存失败，请重试');
         });
+    };
+
+    this.setData({ savingToBox: true });
+    const currentSourceUrl = this.data.sourceUrl || '';
+    const originalUrl = this.data.originalUrl || '';
+    if (isValidRemoteUrl(currentSourceUrl)) {
+      postBoxSave(currentSourceUrl);
+      return;
+    }
+    if (isValidRemoteUrl(originalUrl)) {
+      postBoxSave(originalUrl);
+      return;
+    }
+
+    uploadImageIfNeeded(originalUrl).then((cosSourceUrl) => {
+      if (cosSourceUrl) {
+        this.setData({ originalUrl: cosSourceUrl, sourceUrl: cosSourceUrl });
+      }
+      postBoxSave(cosSourceUrl || '');
+    }).catch(() => {
+      postBoxSave('');
     });
   },
 
   _showCapacityFullIfNeeded(result) {
-    if (!result || !result.capacityFull) return;
-    setTimeout(() => {
-      wx.showToast({
-        title: result.capacityMessage || '图纸箱容量已满',
-        icon: 'none',
-        duration: 2200
-      });
-    }, 900);
+    showCapacityFullIfNeeded(result, { type: 'box' });
   },
 
   onSaveToHistory() {
@@ -2742,7 +2218,16 @@ Page({
       this.setData({ generatingTimeout: true });
     }, 60000);
 
-    const prepareImageForSampling = (imgUrl) => Promise.resolve(imgUrl);
+    let sourceMirroredForSampling = false;
+    const prepareImageForSampling = (imgUrl) => {
+      if (!mirrorOn || !imgUrl) return Promise.resolve(imgUrl);
+      return new Promise((resolve) => {
+        this.ensureMirroredOriginalUrl(imgUrl, (mirroredUrl) => {
+          sourceMirroredForSampling = !!mirroredUrl;
+          resolve(mirroredUrl || imgUrl);
+        });
+      });
+    };
 
     let samplingImageUrl = imageUrl;
     prepareImageForSampling(imageUrl)
@@ -2776,7 +2261,7 @@ Page({
       })
       .then((mappedResult) => {
         let mappedPixelData = mappedResult.mappedPixelData || [];
-        if (mirrorOn && Array.isArray(mappedPixelData) && mappedPixelData.length) {
+        if (mirrorOn && !sourceMirroredForSampling && Array.isArray(mappedPixelData) && mappedPixelData.length) {
           mappedPixelData = mappedPixelData.map((row) => Array.isArray(row) ? row.slice().reverse() : row);
         }
         const colorStats = mappedResult.colorStats || [];
@@ -3008,9 +2493,6 @@ Page({
       return;
     }
 
-    if (canvasId === 'patternCanvas2d' && !this.data.renderedPatternUrl) {
-      setTimeout(() => this._ensurePatternCanvasReady(true), 20);
-    }
     if (canvasId === 'resultCanvas2d' && !this.data.renderedResultUrl) {
       setTimeout(() => this._ensureResultCanvasReady(true), 20);
     }

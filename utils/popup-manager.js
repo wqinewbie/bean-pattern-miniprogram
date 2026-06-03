@@ -8,6 +8,19 @@ const sessionShown = {};
 function getPopupVersionKey(popup) {
   if (!popup) return '';
   const key = popup.key || popup.id || '';
+  const version = [
+    popup.title || '',
+    popup.content || '',
+    popup.imageUrl || popup.image_url || '',
+    popup.buttonText || popup.button_text || '',
+    popup.buttonUrl || popup.button_url || ''
+  ].join('|');
+  return key + ':' + version;
+}
+
+function getLegacyPopupVersionKey(popup) {
+  if (!popup) return '';
+  const key = popup.key || popup.id || '';
   const version = popup.updatedAt || popup.updated_at || popup.content || popup.title || '';
   return key + ':' + version;
 }
@@ -30,11 +43,12 @@ async function checkAndShowPopup() {
 
     for (const popup of popups) {
       const key = getPopupVersionKey(popup);
-      if (hidden[key]) continue;
+      const legacyKey = getLegacyPopupVersionKey(popup);
+      if (hidden[key] || hidden[legacyKey]) continue;
       if (sessionShown[key]) continue;
 
       if (popup.showInterval && popup.showInterval > 0) {
-        const last = lastShown[key];
+        const last = lastShown[key] || lastShown[legacyKey];
         if (last) {
           const intervalMs = popup.showInterval * 24 * 60 * 60 * 1000;
           if (now - last < intervalMs) continue;

@@ -51,11 +51,11 @@
         <!-- status=2: 已完成 -->
         <view wx:if="{{item.status === 2}}" class="task-done-btn">已完成</view>
         <!-- status=1 + processing: 领取中 -->
-        <view wx:elif="{{item.status === 1 && processing}}" class="task-claim-btn task-btn--disabled">领取中...</view>
+        <view wx:elif="{{item.status === 1 && taskActionProcessingCode === item.taskCode}}" class="task-claim-btn task-btn--disabled">领取中...</view>
         <!-- status=1: 可领取 -->
         <view wx:elif="{{item.status === 1}}" class="task-claim-btn" bindtap="onDoTask" data-task="{{item}}">{{item.actionText || '领取'}}</view>
         <!-- processing: 处理中（status=0 时） -->
-        <view wx:elif="{{processing}}" class="task-do-btn task-btn--disabled">处理中...</view>
+        <view wx:elif="{{taskActionProcessingCode === item.taskCode}}" class="task-do-btn task-btn--disabled">处理中...</view>
         <!-- status=0: 去完成 -->
         <view wx:else class="task-do-btn" bindtap="onDoTask" data-task="{{item}}">{{item.actionText || '去完成'}}</view>
       </view>

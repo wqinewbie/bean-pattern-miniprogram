@@ -9,8 +9,7 @@ Page({
     statusBarHeight: 44,
     vipTab: 'vip',
 
-    // VIP状态
-    isVip: false,
+    // VIP状?    isVip: false,
     vipExpireAt: null,
     aiQuota: 0,
 
@@ -19,16 +18,17 @@ Page({
     vipPackages: [],
     vipPackagesLoading: false,
 
-    // 次卡套餐（从后端获取）
-    selectedCardId: null,
+    // 次卡套餐（从后端获取?    selectedCardId: null,
     cardPackages: [],
     cardPackagesLoading: false,
 
-    // 优惠券
+    // 优惠?    selectedCouponId: null,
     selectedCouponId: null,
     availableCoupons: [],
     couponsLoading: false,
+    selectedCouponIndex: 0,
     couponRange: ['不使用优惠券'],
+    couponOptionsSelect: [{ text: '不使用优惠券', value: 0 }],
     selectedCouponDescription: '不使用优惠券',
 
     // 订单列表
@@ -37,12 +37,10 @@ Page({
     ordersPage: 1,
     ordersHasMore: true,
 
-    // 权益对比（从后端获取）
-    privileges: [],
+    // 权益对比（从后端获取?    privileges: [],
     privilegesLoading: false,
 
-    // 支付状态
-    isPaying: false,
+    // 支付状?    isPaying: false,
 
     // 当前选中套餐价格
     currentPrice: 0,
@@ -51,16 +49,18 @@ Page({
     selectedCardHasVipPrice: false,
   },
 
+  noop() {},
+
   onLoad(options) {
     this.calcSafeAreas();
     this.loadVipInfo();
 
-    // 如果有传入 tab 参数
+    // 如果有传?tab 参数
     if (options && options.tab) {
       this.setData({ vipTab: options.tab });
     }
 
-    // 如果有传入 couponId 参数（从礼品包跳转）
+    // 如果有传?couponId 参数（从礼品包跳转）
     if (options && options.couponId) {
       this.setData({ selectedCouponId: parseInt(options.couponId) });
     }
@@ -68,10 +68,8 @@ Page({
   },
 
   onShow() {
-    // 每次显示页面时刷新会员信息
     this.loadVipInfo();
 
-    // 如果当前在订单tab，刷新订单列表
     if (this.data.vipTab === 'orders') {
       this.loadOrders(true);
     }
@@ -109,8 +107,10 @@ Page({
         if (this.data.vipTab === 'vip') {
           this.loadVipPackages();
           this.loadPrivileges();
+          this.loadAvailableCoupons('VIP');
         } else if (this.data.vipTab === 'cards') {
           this.loadCardPackages();
+          this.loadAvailableCoupons('CARD');
         }
       })
       .catch((err) => {
@@ -219,48 +219,56 @@ Page({
   },
 
   /**
-   * 加载可用优惠券
-   */
+   * 加载可用优惠?   */
   loadAvailableCoupons(category) {
     if (this.data.couponsLoading) return;
 
     this.setData({ couponsLoading: true });
 
-    const url = category ? `/gift/coupons/available?category=${category}` : '/gift/coupons/available';
+    const url = category ? `/gift/coupons/${category.toLowerCase()}` : '/gift/coupons/all';
 
     request.get(url)
       .then((data) => {
-        const coupons = data || [];
+        const coupons = Array.isArray(data) ? data : [];
 
         // 格式化优惠券数据
-        const formattedCoupons = coupons.map(coupon => ({
-          id: coupon.id,
-          name: coupon.giftName,
-          value: coupon.value,
-          expireAt: coupon.expireAt,
-          description: `${coupon.value}折优惠券`,
-        }));
+        // 后端 value = 折扣 * 10（如 9??90），recalculatePrice ?value/100 计算
+        const formattedCoupons = coupons.map(coupon => {
+          const rawValue = coupon.value || 0;
+          const discountName = rawValue > 10 ? (rawValue / 10) + '' : rawValue + '';
+          return {
+            id: coupon.id,
+            name: coupon.giftName,
+            value: rawValue,
+            expireAt: coupon.expireAt,
+            description: discountName + '优惠券',
+          };
+        });
 
-        // 预计算 picker range（WXML 不支持 .map/.concat）
         const couponRange = ['不使用优惠券'].concat(
           formattedCoupons.map(c => c.description)
         );
 
         // 预计算当前选中优惠券的描述
         let selectedCouponDescription = '不使用优惠券';
+        let selectedCouponIndex = 0;
         if (this.data.selectedCouponId) {
-          const found = formattedCoupons.find(c => c.id === this.data.selectedCouponId);
+          const foundIndex = formattedCoupons.findIndex(c => c.id === this.data.selectedCouponId);
+          const found = formattedCoupons[foundIndex];
           if (found) {
             selectedCouponDescription = found.description;
+            selectedCouponIndex = foundIndex + 1;
           }
         }
 
         this.setData({
           availableCoupons: formattedCoupons,
           couponRange,
+          selectedCouponIndex,
           selectedCouponDescription,
           couponsLoading: false
         });
+        this._updateCouponOptionsSelect();
 
         // 重新计算价格（如果已选中优惠券）
         this.recalculatePrice();
@@ -272,8 +280,7 @@ Page({
   },
 
   /**
-   * 加载权益对比表
-   */
+   * 加载权益对比?   */
   loadPrivileges() {
     if (this.data.privilegesLoading) return;
 
@@ -302,12 +309,12 @@ Page({
   },
 
   /**
-   * 格式化权益值，避免小程序页面直接展示 true / false
+   * 格式化权益值，避免小程序页面直接展?true / false
    */
   formatPrivilegeValue(value, valueType) {
     const normalized = String(value).toLowerCase();
     if (valueType === 'boolean' || normalized === 'true' || normalized === 'false') {
-      return normalized === 'true' ? '是' : '否';
+      return normalized === 'true' ? '' : '';
     }
     return value;
   },
@@ -323,7 +330,6 @@ Page({
       this.setData({ ordersPage: 1, orders: [], ordersHasMore: true });
     }
 
-    // 如果没有更多数据，不再加载
     if (!refresh && !this.data.ordersHasMore) {
       return;
     }
@@ -379,8 +385,7 @@ Page({
   },
 
   /**
-   * 获取订单有效期文本
-   */
+   * 获取订单有效期文?   */
   getOrderValidity(order) {
     if (order.productType === 'card' || order.productType === 'gift') {
       return '永久有效';
@@ -392,8 +397,7 @@ Page({
   },
 
   /**
-   * 获取订单状态文本
-   */
+   * 获取订单状态文?   */
   getOrderStatusText(status, deliverStatus) {
     if (status === 'PAID' && deliverStatus === 'SUCCESS') {
       return '已到账';
@@ -419,6 +423,7 @@ Page({
    */
   onSwitchTab(e) {
     const tab = e.currentTarget.dataset.tab;
+    this.setData({ selectedCouponIndex: 0 });
     this.setData({ vipTab: tab, selectedCouponId: null, selectedCouponDescription: '不使用优惠券' });
 
     if (tab === 'vip') {
@@ -472,38 +477,47 @@ Page({
     this.recalculatePrice();
   },
 
-  /**
-   * 选择优惠券
-   */
-  onSelectCoupon(e) {
-    const index = parseInt(e.detail.value);
+  _updateCouponOptionsSelect() {
+    const opts = this.data.couponRange.map((text, index) => ({ text, value: index }));
+    this.setData({ couponOptionsSelect: opts });
+  },
 
-    // index 为 0 表示"不使用优惠券"
+  onCouponDropdownChange(e) {
+    this._applyCouponIndex(e.detail);
+  },
+
+  /**
+   * 选择优惠?   */
+  _applyCouponIndex(index) {
+    index = Number(index) || 0;
     if (index === 0) {
+      this.setData({ selectedCouponIndex: 0 });
       this.setData({ selectedCouponId: null, selectedCouponDescription: '不使用优惠券' });
       this.recalculatePrice();
       return;
     }
-
-    // index - 1 是实际的优惠券索引（因为第一个是"不使用优惠券"）
     const couponIndex = index - 1;
     if (couponIndex < 0 || couponIndex >= this.data.availableCoupons.length) {
+      this.setData({ selectedCouponIndex: 0 });
       this.setData({ selectedCouponId: null, selectedCouponDescription: '不使用优惠券' });
       this.recalculatePrice();
       return;
     }
-
     const selectedCoupon = this.data.availableCoupons[couponIndex];
     this.setData({
       selectedCouponId: selectedCoupon.id,
+      selectedCouponIndex: index,
       selectedCouponDescription: selectedCoupon.description
     });
     this.recalculatePrice();
   },
 
+  onSelectCoupon(e) {
+    this._applyCouponIndex(parseInt(e.detail.value));
+  },
+
   /**
-   * 重新计算价格（应用优惠券折扣）
-   */
+   * 重新计算价格（应用优惠券折扣?   */
   recalculatePrice() {
     const { selectedCouponId, availableCoupons, originalPrice } = this.data;
 
@@ -593,8 +607,8 @@ Page({
         if (!signData || !paySig || !signature) {
           this.setData({ isPaying: false });
           wx.showModal({
-            title: '订单已创建',
-            content: '支付参数缺失，请稍后在订单列表中重试。',
+            title: 'Ѵ',
+            content: '֧ȱʧԺڶбԡ',
             showCancel: false,
             success: () => this.loadOrders(true)
           });
@@ -641,8 +655,8 @@ Page({
         if (!signData || !paySig || !signature) {
           this.setData({ isPaying: false });
           wx.showModal({
-            title: '订单已创建',
-            content: '支付参数缺失，请稍后在订单列表中重试。',
+            title: 'Ѵ',
+            content: '֧ȱʧԺڶбԡ',
             showCancel: false,
             success: () => this.loadOrders(true)
           });
@@ -657,14 +671,13 @@ Page({
   },
 
   /**
-   * 调用微信虚拟支付（米大师）
-   */
+   * 调用微信虚拟支付（米大师?   */
   callVirtualPay(orderNo, payParams) {
     if (typeof wx.requestVirtualPayment !== 'function') {
       this.setData({ isPaying: false });
       wx.showModal({
         title: '暂不支持虚拟支付',
-        content: '当前微信版本或运行环境不支持虚拟支付，请使用支持的微信客户端真机测试。',
+        content: 'ǰ΢Ű汾л֧֧ʹֵ֧΢ſͻԡ',
         showCancel: false
       });
       return;
@@ -676,7 +689,7 @@ Page({
       signature: normalizedPayParams.signature,
       mode: normalizedPayParams.mode,
       success: () => {
-        wx.showLoading({ title: '权益发放中', mask: true });
+        wx.showLoading({ title: 'Ȩ淢', mask: true });
         this.queryPaymentResultV2(orderNo);
       },
       fail: (err) => {
@@ -693,7 +706,7 @@ Page({
           const detail = err && (err.errMsg || err.errCode || JSON.stringify(err));
           wx.showModal({
             title: '支付失败',
-            content: detail ? String(detail).slice(0, 500) : '请稍后重试',
+            content: detail ? String(detail).slice(0, 500) : 'Ժ',
             showCancel: false
           });
         }
@@ -732,7 +745,7 @@ Page({
           this.setData({ isPaying: false });
 
           wx.showToast({
-            title: '支付成功！',
+            title: '支付成功',
             icon: 'success',
             duration: 2000
           });
@@ -749,7 +762,6 @@ Page({
           }, retryDelay);
 
         } else {
-          // 支付失败或超时
           this.setData({ isPaying: false });
           wx.showToast({ title: '支付处理中，请稍后查看订单', icon: 'none' });
         }
@@ -781,7 +793,7 @@ Page({
         }
 
         if (status === 'PAID' && deliverStatus === 'FAILED') {
-          this.showEntitlementPendingModal('支付成功', '权益正在处理中，系统会自动补发。稍后可刷新权益或查看订单。');
+          this.showEntitlementPendingModal('֧ɹ', 'ȨڴУϵͳԶԺˢȨ鿴');
           return;
         }
 
@@ -792,10 +804,10 @@ Page({
           return;
         }
 
-        const title = status === 'PAID' ? '支付成功' : '支付处理中';
+        const title = status === 'PAID' ? '֧ɹ' : '֧';
         const content = status === 'PAID'
-          ? '权益稍后到账，请稍后刷新权益或查看订单。'
-          : '支付结果确认中，请稍后查看订单。';
+          ? 'ȨԺˣԺˢȨ鿴'
+          : '֧ȷУԺ鿴';
         this.showEntitlementPendingModal(title, content);
       })
       .catch((err) => {
@@ -825,19 +837,17 @@ Page({
   },
 
   /**
-   * 分享小程序
-   */
+   * 分享小程?   */
   onShareAppMessage() {
     return {
-      title: '拼豆魔法屋 - 免费AI生成拼豆图纸',
+      title: '拼豆魔法?- 免费AI生成拼豆图纸',
       path: '/pages/index/index',
       imageUrl: '/images/share.jpg'
     };
   },
 
   /**
-   * 订单列表滚动到底部
-   */
+   * 订单列表滚动到底?   */
   onOrdersScrollToLower() {
     if (this.data.vipTab === 'orders') {
       this.loadOrders(false);
@@ -851,3 +861,4 @@ Page({
     wx.navigateBack();
   },
 });
+

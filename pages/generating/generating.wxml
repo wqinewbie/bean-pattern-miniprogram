@@ -50,17 +50,12 @@
     <text class="title">魔法仍在凝结</text>
     <text class="sub">图片细节较为丰富，魔法师正在全力施法。\n您可先去别处逛逛，稍后在时光机查看生成结果。</text>
 
-    <view class="btn-row">
+    <view wx:if="{{false}}" class="btn-row">
       <view class="btn-outline" bindtap="onKeepWaiting">继续守护</view>
       <view class="btn-primary" bindtap="onGoHistory">
         <text class="btn-icon">✨</text>
         <text>去时光机</text>
       </view>
     </view>
-  </view>
-  <view wx:if="{{showCanvas}}" style="position: fixed; left: -10000px; top: -10000px; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;">
-    <bead-canvas2d id="sampleCanvas2dComp" canvasId="generatingSampleCanvas2d" width="512" height="512" />
-    <bead-canvas2d id="resultCanvas2dComp" canvasId="generatingResultCanvas2d" width="1024" height="1024" />
-    <bead-canvas2d id="patternCanvas2dComp" canvasId="generatingPatternCanvas2d" width="2048" height="2048" />
   </view>
 </view>
