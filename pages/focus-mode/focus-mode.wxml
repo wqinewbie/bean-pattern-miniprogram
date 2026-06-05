@@ -8,23 +8,41 @@
     bindtouchend="handleTouchEnd"
     bindtouchcancel="handleTouchEnd"
   >
-    <view class="grid-preview">
+    <view class="grid-preview" style="padding-bottom: {{gridPaddingBottom}}rpx;">
       <view
         class="canvas-container"
-        style="width:{{canvasSize}}px;height:{{canvasSize}}px;"
+        style="width:{{displayWidth}}px;height:{{displayHeight}}px;"
       >
-        <view
-          class="canvas-wrapper"
-          style="transform: translate({{offsetX}}px, {{offsetY}}px) scale({{scale}});"
-        >
+        <view class="canvas-wrapper">
           <bead-canvas2d
             id="immersiveCanvas"
             canvas-id="immersive-canvas"
-            width="{{canvasSize}}"
-            height="{{canvasSize}}"
+            width="{{displayWidth}}"
+            height="{{displayHeight}}"
             auto-init="{{true}}"
-            bind:ready="onCanvasReady"
+            bind:ready="onBaseCanvasReady"
             bind:error="onCanvasError"
+            style="position: absolute; left: 0; top: 0; z-index: 1; width: {{displayWidth}}px; height: {{displayHeight}}px;"
+          />
+          <bead-canvas2d
+            id="immersiveTextCanvas"
+            canvas-id="immersive-text-canvas"
+            width="{{displayWidth}}"
+            height="{{displayHeight}}"
+            auto-init="{{true}}"
+            bind:ready="onTextCanvasReady"
+            bind:error="onCanvasError"
+            style="position: absolute; left: 0; top: 0; z-index: 2; width: {{displayWidth}}px; height: {{displayHeight}}px;"
+          />
+          <bead-canvas2d
+            id="immersiveGridCanvas"
+            canvas-id="immersive-grid-canvas"
+            width="{{displayWidth}}"
+            height="{{displayHeight}}"
+            auto-init="{{true}}"
+            bind:ready="onGridCanvasReady"
+            bind:error="onCanvasError"
+            style="position: absolute; left: 0; top: 0; z-index: 3; width: {{displayWidth}}px; height: {{displayHeight}}px; pointer-events: none;"
           />
         </view>
       </view>
@@ -75,7 +93,6 @@
             bindtap="onTabChange"
             data-tab="color"
           >
-            <text class="tab-icon">#</text>
             <text class="tab-label">色号名称</text>
           </view>
           <view
@@ -83,7 +100,6 @@
             bindtap="onTabChange"
             data-tab="row"
           >
-            <text class="tab-icon">↔</text>
             <text class="tab-label">横向计数</text>
           </view>
           <view
@@ -91,7 +107,6 @@
             bindtap="onTabChange"
             data-tab="col"
           >
-            <text class="tab-icon">↕</text>
             <text class="tab-label">竖向计数</text>
           </view>
         </view>
@@ -124,10 +139,11 @@
               class="card-bead"
               style="background:rgb({{item.r}},{{item.g}},{{item.b}})"
             >
+              <text class="card-id" style="color:{{item.textColor}}">{{item.id}}</text>
+              <text wx:if="{{panelExpanded}}" class="card-count-badge" style="color:{{item.textColor}}">×{{item.count}}</text>
               <text wx:if="{{completedMap[item.id]}}" class="card-check">✓</text>
-              <text wx:else class="card-id" style="color:{{item.textColor}}">{{item.id}}</text>
             </view>
-            <view class="card-info">
+            <view wx:if="{{!panelExpanded}}" class="card-info">
               <text class="card-name">{{item.id}}</text>
               <text class="card-count">剩余 {{remainingByColor[item.id] || 0}} 颗</text>
             </view>

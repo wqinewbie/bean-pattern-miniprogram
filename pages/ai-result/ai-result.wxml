@@ -162,4 +162,5 @@
     <bead-canvas2d id="resultCanvas2dComp" canvasId="resultCanvas2d" width="1024" height="1024" />
     <bead-canvas2d id="patternCanvas2dComp" canvasId="patternCanvas2d" width="2048" height="2048" />
   </view>
+  <login-modal id="login-modal" />
 </view>

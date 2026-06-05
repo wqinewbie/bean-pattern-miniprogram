@@ -1,4 +1,6 @@
 const { getSafeAreaLayout } = require('../../utils/safe-area');
+const { hasSession } = require('../../utils/profile-guard');
+const loginTrigger = require('../../utils/login-trigger');
 
 Page({
   syncTabBar() {
@@ -22,6 +24,10 @@ Page({
   },
 
   onChooseImage() {
+    if (!hasSession()) {
+      loginTrigger.showLogin();
+      return;
+    }
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],

@@ -43,6 +43,25 @@ App({
     if (sessionId) this.prefetchProfileData();
   },
 
+  pruneResultDataMap(options = {}) {
+    const maxEntries = Number(options.maxEntries) || 3;
+    const maxAgeMs = Number(options.maxAgeMs) || 10 * 60 * 1000;
+    const map = this.globalData && this.globalData.resultDataMap ? this.globalData.resultDataMap : {};
+    const now = Date.now();
+    const entries = Object.keys(map).map((key) => {
+      const item = map[key] || {};
+      return { key, preparedAt: Number(item.preparedAt || 0) };
+    }).sort((a, b) => b.preparedAt - a.preparedAt);
+
+    entries.forEach((entry, index) => {
+      const expired = entry.preparedAt && now - entry.preparedAt > maxAgeMs;
+      if (expired || index >= maxEntries) {
+        delete map[entry.key];
+        try { storage.remove('resultData:' + entry.key); } catch (_) {}
+      }
+    });
+  },
+
   preloadTabPages() {
     if (typeof wx.preloadPage !== 'function') return;
     setTimeout(() => {

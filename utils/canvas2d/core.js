@@ -1,4 +1,5 @@
 const DEFAULT_DPR = 1;
+const DEFAULT_MAX_PHYSICAL_SIZE = 3072;
 const INIT_MAX_RETRY = 5;
 const INIT_RETRY_DELAY = 60;
 const INIT_TIMEOUT = 8000;
@@ -69,11 +70,18 @@ async function init2dCanvas(component, selector, options) {
   throw lastErr || new Error('init2dCanvas failed after retries');
 }
 
-function resize2dCanvas({ canvas, ctx, width, height, dpr }) {
+function resize2dCanvas({ canvas, ctx, width, height, dpr, maxPhysicalSize }) {
   if (!canvas || !ctx) return;
   const w = Math.max(1, Math.floor(Number(width) || 1));
   const h = Math.max(1, Math.floor(Number(height) || 1));
-  const ratio = Math.max(1, Number(dpr) || 1);
+  const requestedRatio = Math.max(1, Number(dpr) || 1);
+  const physicalLimit = maxPhysicalSize === 0
+    ? 0
+    : Math.max(1, Number(maxPhysicalSize) || DEFAULT_MAX_PHYSICAL_SIZE);
+  const maxRatio = physicalLimit
+    ? Math.max(1, Math.min(physicalLimit / w, physicalLimit / h))
+    : requestedRatio;
+  const ratio = Math.max(1, Math.min(requestedRatio, maxRatio));
 
   canvas.width = Math.max(1, Math.floor(w * ratio));
   canvas.height = Math.max(1, Math.floor(h * ratio));
@@ -82,6 +90,14 @@ function resize2dCanvas({ canvas, ctx, width, height, dpr }) {
   ctx.scale(ratio, ratio);
   ctx.imageSmoothingEnabled = false;
   ctx.imageSmoothingQuality = 'low';
+
+  return {
+    width: w,
+    height: h,
+    dpr: ratio,
+    physicalWidth: canvas.width,
+    physicalHeight: canvas.height
+  };
 }
 
 function clear2dCanvas(ctx, width, height) {
@@ -92,6 +108,7 @@ function clear2dCanvas(ctx, width, height) {
 }
 
 module.exports = {
+  DEFAULT_MAX_PHYSICAL_SIZE,
   getDpr,
   init2dCanvas,
   resize2dCanvas,

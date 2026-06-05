@@ -134,7 +134,7 @@
       </view>
     </view>
 
-    <view style="height:120rpx"></view>
+    <view class="tabbar-scroll-spacer"></view>
   </scroll-view>
 
   <!-- ====== 弹窗蒙层 ====== -->
@@ -152,4 +152,5 @@
   <!-- 设置弹框 -->
   <settings-panel show="{{showSettingsPanel}}" isVip="{{isVip}}" watermarkEnabled="{{draftWatermarkEnabled}}" watermarkText="{{draftWatermarkText}}" bind:close="onCloseAllPanels" bind:watermarkchange="onWatermarkChange" bind:watermarktextchange="onWatermarkTextChange" bind:confirm="onConfirmSettings" bind:customtap="onCustomWatermarkTap" />
 
+  <login-modal id="login-modal" />
 </view>

@@ -78,7 +78,7 @@ Page({
             taskId,
             historyId,
             aiImageUrl: taskData.aiImageUrl || '',
-            originalImageUrl: taskData.originalImageUrl || taskData.imageUrl || taskData.sourceUrl || '',
+            originalImageUrl: taskData.originalImageUrl || taskData.imageUrl || taskData.sourceUrl || taskData.inputImageUrl || '',
             sizeMode: taskData.sizeMode || 'default',
             brand: taskData.brand || 'MARD',
             colorCount: taskData.colorCount || 0,
@@ -87,6 +87,9 @@ Page({
             mappedPixelData,
             preparedAt: Date.now()
           };
+          if (typeof app.pruneResultDataMap === 'function') {
+            app.pruneResultDataMap();
+          }
         }
 
         const redirectUrl = `/pages/ai-result/ai-result?taskId=${encodeURIComponent(taskId)}`

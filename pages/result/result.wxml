@@ -130,13 +130,13 @@
   </view>
 
   <!-- 临时高分辨率保存用 Canvas（隐藏） - Canvas 2D -->
-  <canvas type="2d" id="tempSaveCanvas" style="position:fixed;left:-9999px;top:-9999px;width:2048px;height:2048px" />
+  <canvas type="2d" id="tempSaveCanvas" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px" />
   <!-- 色号图 2D 导出专用 Canvas（隐藏） -->
-  <bead-canvas2d id="patternExport2dComp" canvasId="patternExport2d" width="2048" height="2048" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
+  <bead-canvas2d id="patternExport2dComp" canvasId="patternExport2d" width="1" height="1" autoInit="{{false}}" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
   <!-- 效果图 2D 导出专用 Canvas（隐藏） -->
-  <bead-canvas2d id="resultExport2dComp" canvasId="resultExport2d" width="2048" height="2048" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
+  <bead-canvas2d id="resultExport2dComp" canvasId="resultExport2d" width="1" height="1" autoInit="{{false}}" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
   <!-- 原图镜像预览专用 Canvas（隐藏） - Canvas 2D -->
-  <canvas type="2d" id="mirrorPreviewCanvas" style="position:fixed;left:-9999px;top:-9999px;width:2048px;height:2048px" />
+  <canvas type="2d" id="mirrorPreviewCanvas" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;" />
 
   <!-- 命名弹框 -->
   <view wx:if="{{showNameModal}}" class="name-mask" bindtap="onCloseNameModal"></view>
@@ -185,4 +185,5 @@
     </view>
   </view>
 
+  <login-modal id="login-modal" />
 </view>

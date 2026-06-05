@@ -1,0 +1,16 @@
+<!-- 登录弹窗 -->
+<view wx:if="{{visible}}" class="modal-mask" bindtap="onClose"></view>
+<view wx:if="{{visible}}" class="login-modal login-modal--show">
+  <view class="modal-close" bindtap="onClose">✕</view>
+  <view class="modal-magic-icon">{{isFirstLogin ? '🌟' : '🪄'}}</view>
+  <text class="modal-title">{{isFirstLogin ? '微信登录' : '欢迎回来'}}</text>
+  <text class="modal-sub">{{isFirstLogin ? '微信快速登录后即可使用，头像昵称可在"我的"页面补充' : '登录后可在"我的"页面补充头像昵称'}}</text>
+
+  <view class="modal-wechat-btn modal-wechat-btn--ghost" bindtap="onWxLogin">
+    <text wx:if="{{!submitting}}">🟢 立即微信登录</text>
+    <view wx:else class="btn-loading-row"><view class="modal-spinner"></view><text>处理中...</text></view>
+  </view>
+
+  <view class="modal-skip-btn" bindtap="onClose">暂不登录</view>
+  <text class="modal-policy">登录即代表同意 <text class="policy-link">《用户协议》</text> 和 <text class="policy-link">《隐私政策》</text></text>
+</view>

@@ -29,12 +29,14 @@ var state = {
   dragCanvasOffsetX: 0,
   dragCanvasOffsetY: 0,
   dragBackgroundOffsetX: 0,
-  dragBackgroundOffsetY: 0
+  dragBackgroundOffsetY: 0,
+  systemBackGesture: false
 };
 
 var SCALE_DEADZONE = 0.018;
 var PAN_DEADZONE = 2;
 var SMOOTHING = 0.28;
+var EDGE_BACK_GESTURE_WIDTH = 24;
 
 function toNumber(value, fallback) {
   var n = value * 1;
@@ -245,12 +247,15 @@ function forwardEvent(method, event, owner) {
 
 function touchstart(event, owner) {
   var touches = event.touches || [];
+  state.systemBackGesture = touches.length === 1 && touches[0] && touches[0].clientX <= EDGE_BACK_GESTURE_WIDTH;
+  if (state.systemBackGesture) return;
   if (touches.length === 2 && beginPinch(event, owner)) return;
   if (beginDrag(event, owner)) return;
   forwardEvent('handleTouchStart', event, owner);
 }
 
 function touchmove(event, owner) {
+  if (state.systemBackGesture) return;
   var touches = event.touches || [];
   if (state.dragging) {
     if (applyDrag(event, owner)) return;
@@ -298,9 +303,17 @@ function touchmove(event, owner) {
   var panY = centerYInArea - anchorY;
 
   if (locked && hasBackground) {
-    var nextScale = clamp(state.baseCanvasScale * state.smoothedScaleChange, minScale, maxScale);
     var lockRatio = state.baseCanvasScale > 0 ? state.baseBackgroundScale / state.baseCanvasScale : 1;
-    var nextBgScale = clamp(nextScale * lockRatio, minScale, maxScale);
+    var rawCanvasScale = state.baseCanvasScale * state.smoothedScaleChange;
+    var nextScale = clamp(rawCanvasScale, minScale, maxScale);
+    var nextBgScale = nextScale * lockRatio;
+    if (nextBgScale > maxScale) {
+      nextBgScale = maxScale;
+      nextScale = nextBgScale / lockRatio;
+    } else if (nextBgScale < minScale) {
+      nextBgScale = minScale;
+      nextScale = nextBgScale / lockRatio;
+    }
     var scaleChanged = Math.abs(nextScale - state.baseCanvasScale) > 0.0001;
     var canvasRatio = nextScale / state.baseCanvasScale;
     var bgRatio = nextBgScale / state.baseBackgroundScale;
@@ -348,6 +361,11 @@ function touchmove(event, owner) {
 }
 
 function touchend(event, owner) {
+  if (state.systemBackGesture) {
+    state.systemBackGesture = false;
+    return;
+  }
+
   if (state.dragging) {
     state.dragging = false;
     owner.callMethod('onWxsDragEnd', {

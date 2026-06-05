@@ -119,4 +119,5 @@
       <text class="loading-text">{{loadingText}}</text>
     </view>
   </view>
+  <login-modal id="login-modal" />
 </view>

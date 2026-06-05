@@ -189,4 +189,5 @@
       <text>看广告领取免费魔法次数</text>
     </view>
   </view>
+  <login-modal id="login-modal" />
 </view>

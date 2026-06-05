@@ -1423,12 +1423,15 @@ Page({
         return;
       }
 
-      const layout = this._getSnappedCanvasLayout(gridSize);
+      const centeredGrid = this._centerGridDataForEditing(gridData, gridSize);
+      const editGridSize = centeredGrid.gridSize;
+      const editGridData = centeredGrid.gridData;
+      const layout = this._getSnappedCanvasLayout(editGridSize);
       const canvasSize = layout.canvasSize;
       const cellSize = layout.cellSize;
       this._layoutRenderDpr = layout.renderDpr;
       this._renderResolutionKey = '';
-      const hexGridData = gridData.map(row => row.map(idx => {
+      const hexGridData = editGridData.map(row => row.map(idx => {
         if (idx === -1) return null;
         const color = colorPalette[idx];
         if (!color) return '#FFFFFF';
@@ -1442,7 +1445,7 @@ Page({
     this._gridData = hexGridData;
     this._pixelStore = PixelStore.fromGridData(hexGridData);
       this._rebuildColorStatsFromGrid();
-      this._originalGridData = gridData;
+      this._originalGridData = editGridData;
       this._originalColorPalette = colorPalette;
       this._cellSize = cellSize;
       
@@ -1470,7 +1473,7 @@ Page({
       
       const initialColor = colors[1] || colors[0] || '#FF6B35';
       this.setData({ 
-        gridSize, 
+        gridSize: editGridSize,
         canvasWidth: canvasSize, 
         canvasHeight: canvasSize,
         coordinateCellSize: layout.coordinateCellSize,
@@ -1516,6 +1519,36 @@ Page({
       wx.showToast({ title: '数据加载失败', icon: 'none' });
       this._initData();
     }
+  },
+
+  _centerGridDataForEditing(gridData, gridSize) {
+    const rows = Array.isArray(gridData) ? gridData.length : 0;
+    const cols = rows
+      ? gridData.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0)
+      : 0;
+    const targetSize = Math.max(1, Number(gridSize) || 0, rows, cols);
+
+    if (rows === targetSize && cols === targetSize && gridData.every(row => Array.isArray(row) && row.length === targetSize)) {
+      return { gridSize: targetSize, gridData };
+    }
+
+    const offsetY = Math.floor((targetSize - rows) / 2);
+    const offsetX = Math.floor((targetSize - cols) / 2);
+    const centered = Array.from({ length: targetSize }, () => Array(targetSize).fill(-1));
+
+    for (let rowIndex = 0; rowIndex < rows; rowIndex++) {
+      const row = gridData[rowIndex];
+      if (!Array.isArray(row)) continue;
+      for (let colIndex = 0; colIndex < row.length && colIndex < targetSize; colIndex++) {
+        const y = rowIndex + offsetY;
+        const x = colIndex + offsetX;
+        if (y >= 0 && y < targetSize && x >= 0 && x < targetSize) {
+          centered[y][x] = row[colIndex];
+        }
+      }
+    }
+
+    return { gridSize: targetSize, gridData: centered };
   },
 
   _loadDraftForEdit(draftId) {
@@ -2057,7 +2090,8 @@ Page({
 
     if (this.data.backgroundImage) {
       const currentBackgroundScale = Math.max(Number(this.data.backgroundScale) || 1, 0.0001);
-      const nextBackgroundScale = currentBackgroundScale * scaleRatio;
+      let nextBackgroundScale = currentBackgroundScale * scaleRatio;
+      nextBackgroundScale = Math.max(minScale, Math.min(maxScale, nextBackgroundScale));
       updates.backgroundScale = nextBackgroundScale;
       updates.backgroundOffsetX = anchorX - (anchorX - this.data.backgroundOffsetX) * scaleRatio;
       updates.backgroundOffsetY = anchorY - (anchorY - this.data.backgroundOffsetY) * scaleRatio;
@@ -2393,11 +2427,17 @@ Page({
       const baseBackgroundScale = this._touchStartBackgroundScale || this.data.backgroundScale;
       const lockRatio = this._lockScaleRatio || (baseScale > 0 ? (baseBackgroundScale / baseScale) : 1);
 
-      let nextScale = baseScale * scaleChange;
-      nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
+      let rawScale = baseScale * scaleChange;
+      let nextScale = Math.max(minScale, Math.min(maxScale, rawScale));
+      let nextBackgroundScale = nextScale * lockRatio;
+      if (nextBackgroundScale > maxScale) {
+        nextBackgroundScale = maxScale;
+        nextScale = nextBackgroundScale / lockRatio;
+      } else if (nextBackgroundScale < minScale) {
+        nextBackgroundScale = minScale;
+        nextScale = nextBackgroundScale / lockRatio;
+      }
       const scaleChanged = Math.abs(nextScale - baseScale) > 0.0001;
-
-      const nextBackgroundScale = Math.max(minScale, Math.min(maxScale, nextScale * lockRatio));
 
       const canvasScaleRatio = nextScale / baseScale;
       const bgScaleRatio = nextBackgroundScale / baseBackgroundScale;
@@ -4662,11 +4702,19 @@ Page({
       return;
     }
     
-    // 问题3修复：锁定/解锁时不改变任何位置，只改变锁定状态
     const willLock = !this.data.locked;
-    
-    // 只改变锁定状态，不修改任何位置参数
-    this.setData({ locked: willLock });
+
+    if (willLock) {
+      // 锁定时同步背景与画布的 scale 和偏移，避免初始比例偏差导致联合缩放时不同步
+      this.setData({
+        locked: true,
+        backgroundScale: this.data.canvasScale,
+        backgroundOffsetX: this.data.canvasOffsetX,
+        backgroundOffsetY: this.data.canvasOffsetY
+      });
+    } else {
+      this.setData({ locked: false });
+    }
     
     const lockStatus = willLock ? '已锁定' : '已解锁';
     wx.showToast({ 

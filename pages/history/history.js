@@ -3,6 +3,17 @@ const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
 
+const THUMB_RENDER_BATCH_SIZE = 4;
+const THUMB_MAX_SAMPLE_GRID = 80;
+
+function scheduleIdle(callback, delay = 0) {
+  if (typeof wx !== 'undefined' && wx.nextTick && delay === 0) {
+    wx.nextTick(callback);
+    return;
+  }
+  setTimeout(callback, delay);
+}
+
 Page({
   data: {
     history: [],
@@ -25,10 +36,27 @@ Page({
     touchLastX: 0,
     swipeOpenPx: 70,
     isSwiping: false,
+    swipeOffset: 0,
   },
+  _pendingSwipeOffset: null,
+  _swipeRaf: null,
+  _historyById: null,
+  _historyRenderDataById: null,
+  _renderedThumbKeys: null,
+  _thumbRenderTimer: null,
 
   onLoad() {
+    this._historyById = {};
+    this._historyRenderDataById = {};
+    this._renderedThumbKeys = new Set();
     this.calcNavTop();
+  },
+  onUnload() {
+    if (this._thumbRenderTimer) {
+      clearTimeout(this._thumbRenderTimer);
+      this._thumbRenderTimer = null;
+    }
+    if (this._renderedThumbKeys) this._renderedThumbKeys.clear();
   },
   onShow() {
     this.calcNavTop();
@@ -49,6 +77,9 @@ Page({
 
   loadHistory(reset = false) {
     if (reset) {
+      this._historyById = {};
+      this._historyRenderDataById = {};
+      if (this._renderedThumbKeys) this._renderedThumbKeys.clear();
       this.setData({
         page: 1,
         history: [],
@@ -86,7 +117,7 @@ Page({
                 : [];
             } catch (e) { mappedPixelData = []; }
             const hasMappedData = Array.isArray(mappedPixelData) && mappedPixelData.length > 0;
-            return {
+            const listItem = {
               id: item.id,
               name: item.name || ('记录#' + item.id),
               gridSize: item.gridSize,
@@ -96,10 +127,7 @@ Page({
               metaText: isAiSource
                 ? this.buildMetaText([brand, colorCount + '色', aiStyle, createdAt])
                 : this.buildMetaText([(item.gridSize || 64) + 'x' + (item.gridSize || 64), brand, colorCount + '色', createdAt]),
-              gridData: item.gridData,
-              colorPalette: item.colorPalette,
               sourceUrl: isAiSource ? '' : (item.sourceUrl || ''),
-              mappedPixelData,
               isAiSource,
               hasCanvasCover: isAiSource && hasMappedData,
               hasMappedData,
@@ -108,6 +136,15 @@ Page({
               expiresAt: this.formatTime(item.expiresAt),
               expireText: item.expiresAt ? ('到期 ' + this.formatTime(item.expiresAt)) : '',
             };
+            this._historyById[String(listItem.id)] = listItem;
+            if (hasMappedData) {
+              this._historyRenderDataById[String(listItem.id)] = {
+                gridSize: listItem.gridSize || 64,
+                mappedPixelData,
+                updatedAt: item.updatedAt || item.createdAt || ''
+              };
+            }
+            return listItem;
           });
 
           const history = reset ? newItems : [...this.data.history, ...newItems];
@@ -127,9 +164,7 @@ Page({
             total: res.total || 0,
             loading: false,
             loadingMore: false
-          }, () => {
-            setTimeout(() => this.renderThumbnails(), 60);
-          });
+          }, () => this.scheduleRenderThumbnails(60));
         })
         .catch(() => {
           this.setData({ loading: false, loadingMore: false });
@@ -150,7 +185,8 @@ Page({
   },
 
   onItemTap(e) {
-    const item = e.currentTarget.dataset.item;
+    const item = this._getHistoryById(e.currentTarget.dataset.id);
+    if (!item) return;
     const isAi = item.isAiSource ? '&isAi=1' : '';
     wx.navigateTo({
       url: '/pages/preview/preview?historyId=' + item.id + '&sourceType=HISTORY' + isAi
@@ -182,64 +218,105 @@ Page({
   onToggleViewMode() {
     const nextMode = this.data.viewMode === 'thumb' ? 'list' : 'thumb';
     this.closeSwipe();
-    this.setData({ viewMode: nextMode });
+    this.setData({ viewMode: nextMode }, () => this.scheduleRenderThumbnails(60));
+  },
+
+  scheduleRenderThumbnails(delay = 0) {
+    if (this._thumbRenderTimer) {
+      clearTimeout(this._thumbRenderTimer);
+      this._thumbRenderTimer = null;
+    }
+    this._thumbRenderTimer = setTimeout(() => {
+      this._thumbRenderTimer = null;
+      this.renderThumbnails();
+    }, delay);
   },
 
   renderThumbnails() {
     if (this.data.viewMode !== 'thumb') return;
-    const history = this.data.filteredHistory || [];
-    history.forEach(item => {
-      if (!item.hasCanvasCover) return;
-      const query = wx.createSelectorQuery();
-      query.select('#histThumbCanvas' + item.id)
-        .fields({ node: true, size: true })
-        .exec((res) => {
-          if (!res || !res[0] || !res[0].node) return;
-          const canvas = res[0].node;
-          const ctx = canvas.getContext('2d');
-          const deviceInfo = wx.getDeviceInfo ? wx.getDeviceInfo() : {};
-          const dpr = Math.min(deviceInfo.pixelRatio || 2, 2);
-          const size = Math.min(res[0].width, res[0].height) || 200;
-          canvas.width = size * dpr;
-          canvas.height = size * dpr;
-          ctx.scale(dpr, dpr);
-          const gridSize = item.gridSize || 64;
-          const cellSize = size / gridSize;
-          const mappedPixelData = item.mappedPixelData || [];
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, size, size);
-          if (mappedPixelData.length > 0) {
-            for (let y = 0; y < gridSize; y++) {
-              for (let x = 0; x < gridSize; x++) {
-                const cell = mappedPixelData[y] && mappedPixelData[y][x];
-                if (!cell || cell.isExternal) continue;
-                ctx.fillStyle = 'rgb(' + cell.r + ', ' + cell.g + ', ' + cell.b + ')';
-                ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-              }
-            }
-          }
-        });
-    });
+    const history = (this.data.filteredHistory || []).filter(item => item && item.hasCanvasCover);
+    if (!history.length) return;
+    if (!this._renderedThumbKeys) this._renderedThumbKeys = new Set();
+    const pending = history.filter(item => !this._renderedThumbKeys.has(this._getThumbRenderKey(item)));
+    this._renderThumbnailBatch(pending, 0);
+  },
+
+  _renderThumbnailBatch(items, startIndex) {
+    if (!items || startIndex >= items.length || this.data.viewMode !== 'thumb') return;
+    const batch = items.slice(startIndex, startIndex + THUMB_RENDER_BATCH_SIZE);
+    batch.forEach(item => this._renderOneThumbnail(item));
+    if (startIndex + THUMB_RENDER_BATCH_SIZE < items.length) {
+      scheduleIdle(() => this._renderThumbnailBatch(items, startIndex + THUMB_RENDER_BATCH_SIZE), 16);
+    }
+  },
+
+  _getThumbRenderKey(item) {
+    const renderData = this._historyRenderDataById && this._historyRenderDataById[String(item.id)];
+    return `thumb:${item.id}:${item.gridSize}:${(renderData && renderData.updatedAt) || item.createdAt || ''}`;
+  },
+
+  _renderOneThumbnail(item) {
+    const renderData = this._historyRenderDataById && this._historyRenderDataById[String(item.id)];
+    if (!renderData || !renderData.mappedPixelData || !renderData.mappedPixelData.length) return;
+    const renderKey = this._getThumbRenderKey(item);
+    const query = wx.createSelectorQuery();
+    query.select('#histThumbCanvas' + item.id)
+      .fields({ node: true, size: true })
+      .exec((res) => {
+        if (!res || !res[0] || !res[0].node) return;
+        const canvas = res[0].node;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const deviceInfo = wx.getDeviceInfo ? wx.getDeviceInfo() : {};
+        const dpr = Math.min(deviceInfo.pixelRatio || 2, 2);
+        const size = Math.min(res[0].width, res[0].height) || 200;
+        canvas.width = size * dpr;
+        canvas.height = size * dpr;
+        ctx.setTransform ? ctx.setTransform(dpr, 0, 0, dpr, 0, 0) : ctx.scale(dpr, dpr);
+        ctx.imageSmoothingEnabled = false;
+        this._drawThumbnailGrid(ctx, renderData, size);
+        this._renderedThumbKeys.add(renderKey);
+      });
+  },
+
+  _drawThumbnailGrid(ctx, renderData, size) {
+    const gridSize = Number(renderData.gridSize || 64);
+    const mappedPixelData = renderData.mappedPixelData || [];
+    const sampleStep = Math.max(1, Math.ceil(gridSize / THUMB_MAX_SAMPLE_GRID));
+    const blockSize = size / Math.ceil(gridSize / sampleStep);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+
+    for (let y = 0, sy = 0; y < gridSize; y += sampleStep, sy++) {
+      for (let x = 0, sx = 0; x < gridSize; x += sampleStep, sx++) {
+        const cell = mappedPixelData[y] && mappedPixelData[y][x];
+        if (!cell || cell.isExternal) continue;
+        ctx.fillStyle = cell.hex || ('rgb(' + cell.r + ', ' + cell.g + ', ' + cell.b + ')');
+        ctx.fillRect(sx * blockSize, sy * blockSize, blockSize + 0.5, blockSize + 0.5);
+      }
+    }
   },
 
   applyFilter() {
     const history = this.data.history || [];
     const kw = (this.data.keyword || '').trim().toLowerCase();
     if (!kw) {
-      this.setData({ filteredHistory: [...history] });
+      this.setData({ filteredHistory: [...history] }, () => this.scheduleRenderThumbnails(60));
       return;
     }
     const filtered = history.filter(h => {
       const name = (h.name || '').toLowerCase();
       return name.includes(kw);
     });
-    this.setData({ filteredHistory: filtered });
+    this.setData({ filteredHistory: filtered }, () => this.scheduleRenderThumbnails(60));
   },
 
   closeSwipe() {
     const offsets = { ...this.data.swipedOffsets };
     Object.keys(offsets).forEach(k => { offsets[k] = 0; });
-    this.setData({ swipedOffsets: offsets, touchItemId: null, touchLastX: 0, isSwiping: false });
+    this._pendingSwipeOffset = null;
+    this.setData({ swipedOffsets: offsets, touchItemId: null, touchLastX: 0, isSwiping: false, swipeOffset: 0 });
   },
 
   onTouchStart(e) {
@@ -256,7 +333,9 @@ Page({
       touchLastX: x,
       swipedOffsets: offsets,
       isSwiping: true,
+      swipeOffset: offsets[String(id)] || 0,
     });
+    this._pendingSwipeOffset = null;
   },
 
   onTouchMove(e) {
@@ -264,30 +343,47 @@ Page({
     if (!this.data.touchItemId) return;
     const x = e.touches[0].pageX;
     const lastX = this.data.touchLastX;
-    const currentOffset = this.data.swipedOffsets[String(this.data.touchItemId)] || 0;
+    const currentOffset = this._pendingSwipeOffset !== null ? this._pendingSwipeOffset : (this.data.swipeOffset || 0);
     const deltaX = lastX - x;
     let newOffset = currentOffset - deltaX;
     newOffset = Math.max(-this.data.swipeOpenPx, Math.min(0, newOffset));
-    this.setData({
-      touchLastX: x,
-      [`swipedOffsets.${this.data.touchItemId}`]: newOffset,
-    });
+    this.data.touchLastX = x;
+    this._scheduleSwipeOffset(newOffset);
+  },
+
+  _scheduleSwipeOffset(offset) {
+    this._pendingSwipeOffset = offset;
+    if (this._swipeRaf) return;
+    const runner = () => {
+      this._swipeRaf = null;
+      const id = this.data.touchItemId;
+      if (!id || this._pendingSwipeOffset === null) return;
+      this.setData({ swipeOffset: this._pendingSwipeOffset });
+    };
+    if (wx.nextTick) {
+      this._swipeRaf = true;
+      wx.nextTick(runner);
+    } else {
+      this._swipeRaf = setTimeout(runner, 16);
+    }
   },
 
   onTouchEnd(e) {
     if (this.data.viewMode !== 'list') return;
     if (!this.data.touchItemId) return;
     const id = this.data.touchItemId;
-    const currentOffset = this.data.swipedOffsets[String(id)] || 0;
+    const currentOffset = this._pendingSwipeOffset !== null ? this._pendingSwipeOffset : (this.data.swipeOffset || this.data.swipedOffsets[String(id)] || 0);
     const threshold = this.data.swipeOpenPx * 0.4;
     const snapOpen = Math.abs(currentOffset) > threshold;
     this.setData({
       [`swipedOffsets.${id}`]: snapOpen ? -this.data.swipeOpenPx : 0,
+      swipeOffset: snapOpen ? -this.data.swipeOpenPx : 0,
       touchItemId: null,
       touchStartX: 0,
       touchLastX: 0,
       isSwiping: false,
     });
+    this._pendingSwipeOffset = null;
   },
 
   onSaveToBox(e) {
@@ -321,6 +417,8 @@ Page({
           request.delete('/history/delete/' + id)
             .then(() => {
               const history = this.data.history.filter(h => String(h.id) !== String(id));
+              if (this._historyById) delete this._historyById[String(id)];
+              if (this._historyRenderDataById) delete this._historyRenderDataById[String(id)];
               this.setData({ history }, () => {
                 this.applyFilter();
               });
@@ -343,5 +441,9 @@ Page({
 
   buildMetaText(parts) {
     return (parts || []).filter(part => part !== undefined && part !== null && String(part).trim() !== '').join(' · ');
+  },
+  _getHistoryById(id) {
+    const key = String(id || '');
+    return (this._historyById && this._historyById[key]) || (this.data.history || []).find(h => String(h.id) === key) || null;
   },
 });

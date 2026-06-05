@@ -74,8 +74,7 @@ Page({
     const menuButton = layout.menuButton || {};
     const sbh = layout.statusBarHeight;
     const windowHeight = windowInfo.windowHeight || 667;
-    const tabBarH = 56;
-    const scrollHeight = Math.max(windowHeight - sbh - tabBarH, 300);
+    const scrollHeight = Math.max(windowHeight - sbh, 300);
 
     // 计算 640rpx 对应的实际像素值
     const screenWidth = windowInfo.windowWidth || 375;

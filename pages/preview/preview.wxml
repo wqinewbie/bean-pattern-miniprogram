@@ -1,6 +1,14 @@
 <view class="container {{isAiStyle ? 'container--ai' : ''}}">
 
-  <page-nav-bar title="图纸预览" subtitle="{{brandName}} · {{currentSize}}×{{currentSize}}" nav-top="{{navTop}}" bind:back="onBack"/>
+  <page-nav-bar
+    title="图纸预览"
+    subtitle="{{brandName}} · {{currentSize}}×{{currentSize}}"
+    nav-top="{{navTop}}"
+    bgColor="{{isAiStyle ? '#050505' : '#FFF9ED'}}"
+    titleColor="{{isAiStyle ? '#FFD54F' : '#5D4037'}}"
+    subtitleColor="{{isAiStyle ? 'rgba(224,224,224,0.62)' : '#A1887F'}}"
+    backIcon="{{isAiStyle ? '/assets/icons/lucide-arrow-left-gold.svg' : '/assets/icons/lucide-arrow-left-brown.svg'}}"
+    bind:back="onBack"/>
 
   <scroll-view scroll-y class="scroll-body">
 
@@ -132,7 +140,8 @@
   </view>
 
   <!-- 隐藏的导出组件 -->
-  <bead-canvas2d id="resultExport2dComp" canvasId="resultExport2d" width="2048" height="2048" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
-  <bead-canvas2d id="patternExport2dComp" canvasId="patternExport2d" width="2048" height="2048" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
+  <bead-canvas2d id="resultExport2dComp" canvasId="resultExport2d" width="1" height="1" autoInit="{{false}}" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
+  <bead-canvas2d id="patternExport2dComp" canvasId="patternExport2d" width="1" height="1" autoInit="{{false}}" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;" />
 
+  <login-modal id="login-modal" />
 </view>

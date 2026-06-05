@@ -31,4 +31,5 @@
       <text class="info-text">建议上传背景干净、轮廓清晰的图片，转换效果更佳哦！</text>
     </view>
   </view>
+  <login-modal id="login-modal" />
 </view>

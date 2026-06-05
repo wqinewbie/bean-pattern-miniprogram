@@ -1,12 +1,12 @@
 <view class="nav-bar" style="padding-top: {{navTop}}px; background: {{bgColor}};">
   <view wx:if="{{showBack}}" class="nav-back" bindtap="onBack">
-    <image class="nav-back-icon" src="/assets/icons/lucide-arrow-left-brown.svg" mode="aspectFit"/>
+    <image class="nav-back-icon" src="{{backIcon}}" mode="aspectFit"/>
   </view>
   <view wx:else class="nav-placeholder"></view>
 
   <view class="nav-center">
-    <text class="nav-title">{{title}}</text>
-    <text wx:if="{{subtitle}}" class="nav-sub">{{subtitle}}</text>
+    <text class="nav-title" style="color: {{titleColor}};">{{title}}</text>
+    <text wx:if="{{subtitle}}" class="nav-sub" style="color: {{subtitleColor}};">{{subtitle}}</text>
   </view>
 
   <view class="nav-right" style="padding-right: {{safeRightInset}}px;">

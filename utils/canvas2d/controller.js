@@ -43,6 +43,9 @@ function waitCanvas2dReady(pageInstance, compId, options) {
 
     var context = comp.getContext();
     if (!context || !context.ready || !context.ctx) {
+      if (ctxRetry === 0 && typeof comp.init === 'function') {
+        try { comp.init(); } catch (_) {}
+      }
       ctxRetry++;
       if (ctxRetry <= maxCtxRetry) {
         setTimeout(function () { tryResolve(resolve, reject); }, delay);

@@ -1,14 +1,21 @@
 // 沉浸式拼豆页面 - Canvas 2D 版本
 const request = require('../../utils/request');
-const { drawImmersiveGrid, getTextColor } = require('../../utils/canvas2d/renderers/immersiveRenderer');
+const { drawImmersiveBase, drawImmersiveText, drawImmersiveGridLines, getTextColor } = require('../../utils/canvas2d/renderers/immersiveRenderer');
 const { getScheduler } = require('../../utils/canvas2d/renderScheduler');
 const storage = require('../../utils/storage');
+
+const PINCH_PREVIEW_RENDER_INTERVAL_MS = 96;
+const PINCH_PREVIEW_SCALE_DELTA = 0.08;
+const EDGE_BACK_GESTURE_WIDTH = 24;
 
 Page({
   data: {
     gridSize: 32,
     canvasSize: 320,
-    displaySize: 320,
+    displayWidth: 320,
+    displayHeight: 320,
+    boardInset: 0,
+    boardCanvasSize: 320,
     gridData: [],
     palette: [],
     tab: 'color',
@@ -19,33 +26,47 @@ Page({
     colList: [],
     remainingByColor: {},
     canvasReady: false,
+    textCanvasReady: false,
+    gridCanvasReady: false,
     loading: true,
-    scale: 1,
-    offsetX: 0,
-    offsetY: 0,
     panelExpanded: false,
     panelHeight: 360,
+    gridPaddingBottom: 400,
   },
   _canvas: null,
   _ctx: null,
   _dpr: 1,
+  _textCanvas: null,
+  _textCtx: null,
+  _textDpr: 1,
+  _gridCanvas: null,
+  _gridCtx: null,
+  _gridDpr: 1,
   _hRun: [],
   _vRun: [],
   _longPressTimer: null,
   
+  // 视口
+  _viewScale: 1,
+  _viewOffsetX: 0,
+  _viewOffsetY: 0,
+  _maxScale: 3,
+  _minScale: 1,
+  _containerRect: null,
+
   // 触摸相关
   _isPinching: false,
   _isDragging: false,
   _touchStartDistance: 0,
   _touchStartScale: 1,
+  _touchStartOffsetX: 0,
+  _touchStartOffsetY: 0,
   _touchStartCenterX: 0,
   _touchStartCenterY: 0,
+  _pinchContentX: 0,
+  _pinchContentY: 0,
   _dragStartX: 0,
   _dragStartY: 0,
-  _startOffsetX: 0,
-  _startOffsetY: 0,
-  _maxScale: 3,
-  _minScale: 1,
   _lastTapTime: 0,
   _lastTapX: 0,
   _lastTapY: 0,
@@ -59,12 +80,11 @@ Page({
   _destroyed: false,
   _scheduler: null,
   _systemDpr: 1,
-  _viewportUpdateTimer: null,
-  _pendingViewport: null,
-  _canvasCenterX: 0,
-  _canvasCenterY: 0,
-  _pinchStartContentX: 0,
-  _pinchStartContentY: 0,
+  _pinchPreviewRenderTimer: null,
+  _pendingPinchPreviewScale: null,
+  _lastPinchPreviewScale: 1,
+  _lastPinchPreviewRenderAt: 0,
+  _edgeBackGesture: false,
 
   onLoad(options) {
     const info = wx.getSystemInfoSync();
@@ -74,20 +94,52 @@ Page({
     this._scheduler = getScheduler();
     this._systemDpr = info.pixelRatio || 1;
 
-    // 计算画布尺寸
-    const navReserve = 96;
-    const maxByHeight = Math.max(220, info.windowHeight - navReserve - 48);
+    // 动态计算导航栏高度（与 page-nav-bar 组件逻辑完全一致）
+    const statusBarHeight = info.statusBarHeight || 20;
+    const menuButton = wx.getMenuButtonBoundingClientRect();
+    let navBarHeight;
+    if (menuButton) {
+      const menuCenter = menuButton.top + menuButton.height / 2;
+      const navTop = menuCenter - 16;
+      navBarHeight = navTop + 42;
+    } else {
+      navBarHeight = statusBarHeight + 50;
+    }
+
+    // 底部安全区（iPhone X+ 的 Home Indicator）
+    let safeAreaBottom = 0;
+    if (info.safeArea && typeof info.safeArea.bottom === 'number' && typeof info.screenHeight === 'number') {
+      safeAreaBottom = Math.max(0, info.screenHeight - info.safeArea.bottom);
+    }
+
+    // 底部面板高度：紧凑态 rpx → px，并限制不超过屏幕 55%
+    const maxPanelRpx = Math.floor(info.windowHeight * 0.55 / this._rpxToPx);
+    const compactPanelRpx = Math.min(this._getCompactPanelHeight(), maxPanelRpx);
+    const compactPanelPx = compactPanelRpx * this._rpxToPx;
+
+    // 可视区域 = 窗口高度 - 导航栏 - 底部面板（含安全区）
+    const topReserve = navBarHeight;
+    const bottomReserve = compactPanelPx + safeAreaBottom;
+    const displayWidth = Math.floor(info.windowWidth - 32);
+    const displayHeight = Math.floor(Math.max(220, info.windowHeight - topReserve - bottomReserve));
+
+    // 画布内容（网格）最大尺寸
+    const maxByHeight = Math.max(220, info.windowHeight - topReserve - bottomReserve - 16);
     const maxSize = Math.min(info.windowWidth - 48, maxByHeight, 600);
     const canvasSize = Math.floor(maxSize);
 
+    // grid-preview 底部留白，确保 canvas 在面板上方可见区域内居中
+    const gridPaddingBottom = Math.ceil((compactPanelPx + safeAreaBottom) / this._rpxToPx);
+
     this.setData({
       canvasSize,
-      displaySize: canvasSize,
-      panelHeight: this._getCompactPanelHeight()
-    }, () => {
-      this._measureCanvasRect();
+      displayWidth,
+      displayHeight,
+      boardCanvasSize: canvasSize,
+      panelHeight: compactPanelRpx,
+      gridPaddingBottom
     });
-    
+
     // 加载数据
     this._loadData(options);
   },
@@ -103,11 +155,7 @@ Page({
       clearTimeout(this._renderResizeTimer);
       this._renderResizeTimer = null;
     }
-    if (this._viewportUpdateTimer) {
-      clearTimeout(this._viewportUpdateTimer);
-      this._viewportUpdateTimer = null;
-    }
-    this._pendingViewport = null;
+    this._clearPinchPreviewRenderTimer();
   },
 
   // ========== 数据加载 ==========
@@ -241,82 +289,146 @@ Page({
     
     this._gridData = gridData;
     this._boxId = data.boxId || null;
-    
+
+    // 对齐画布尺寸到格子的整数倍，确保每个格子在物理像素上边缘清晰
+    const rawCanvasSize = this.data.canvasSize;
+    const snappedCanvasSize = Math.max(gridSize, Math.floor(rawCanvasSize / gridSize) * gridSize);
+    const cellSize = snappedCanvasSize / gridSize;
+    const boardInset = cellSize;
+    const boardCanvasSize = snappedCanvasSize + boardInset * 2;
+
+    // 初始居中：将网格内容放在全屏展示区域中央
+    this._viewScale = 1;
+    this._viewOffsetX = (this.data.displayWidth - boardCanvasSize) / 2;
+    this._viewOffsetY = (this.data.displayHeight - boardCanvasSize) / 2;
+
     this.setData({
       gridSize,
+      canvasSize: snappedCanvasSize,
       gridData,
       palette,
       completedMap,
       highlightId: '',
+      boardInset,
+      boardCanvasSize,
       loading: false
     }, () => {
       this._calcRuns();
       this._updateLists();
-      // 数据加载完成后，如果 Canvas 已就绪，立即渲染
+      // 数据加载完成后，如果 Canvas 已就绪，先 resize 再渲染
       if (this.data.canvasReady) {
-        this._renderCanvas();
+        this._resizeCanvasToBoardSize(true);
       }
     });
   },
 
   // ========== Canvas 2D 相关 ==========
-  onCanvasReady(e) {
-    console.log('Canvas 2D Ready', e.detail);
+  onBaseCanvasReady(e) {
     const canvas2dComponent = this.selectComponent('#immersiveCanvas');
     if (!canvas2dComponent) return;
-    
     const context = canvas2dComponent.getContext();
     if (!context.ready) return;
-    
     this._canvas = context.canvas;
     this._ctx = context.ctx;
     this._dpr = context.dpr;
-    
+    this._tryCompleteCanvasInit();
+  },
+
+  onTextCanvasReady(e) {
+    const canvas2dComponent = this.selectComponent('#immersiveTextCanvas');
+    if (!canvas2dComponent) return;
+    const context = canvas2dComponent.getContext();
+    if (!context.ready) return;
+    this._textCanvas = context.canvas;
+    this._textCtx = context.ctx;
+    this._textDpr = context.dpr;
+    this.setData({ textCanvasReady: true });
+    this._tryCompleteCanvasInit();
+  },
+
+  onGridCanvasReady(e) {
+    const canvas2dComponent = this.selectComponent('#immersiveGridCanvas');
+    if (!canvas2dComponent) return;
+    const context = canvas2dComponent.getContext();
+    if (!context.ready) return;
+    this._gridCanvas = context.canvas;
+    this._gridCtx = context.ctx;
+    this._gridDpr = context.dpr;
+    this.setData({ gridCanvasReady: true });
+    this._tryCompleteCanvasInit();
+  },
+
+  _tryCompleteCanvasInit() {
+    if (!this._ctx || !this._textCtx || !this._gridCtx || this.data.canvasReady) return;
     this.setData({ canvasReady: true }, () => {
-      this._measureCanvasRect();
-      this._resizeCanvasToDisplaySize(this.data.canvasSize, true);
-      // Canvas 就绪后，如果数据已加载，立即渲染
-      if (this.data.gridData && this.data.gridData.length > 0) {
-        this._renderCanvas();
-      }
+      this._measureContainerRect(() => {
+        if (this.data.boardInset > 0) {
+          this._resizeCanvasToBoardSize(true);
+        } else {
+          this._resizeCanvasToDisplaySize(true);
+        }
+      });
     });
   },
 
   onCanvasError(e) {
     console.error('Canvas 2D Error:', e.detail);
-    wx.showToast({ title: 'Canvas初始化失败', icon: 'none' });
   },
 
   _renderCanvas() {
-    if (!this._ctx || !this.data.canvasReady) {
-      console.log('Canvas not ready, skip render');
-      return;
-    }
-    
-    if (!this.data.gridData || this.data.gridData.length === 0) {
-      console.log('Grid data not ready, skip render');
-      return;
-    }
-    
-    const { canvasSize, gridSize, gridData, highlightId, completedMap, contrast, tab } = this.data;
-    
+    if (!this._ctx || !this._textCtx || !this._gridCtx || !this.data.canvasReady) return;
+    if (!this.data.gridData || this.data.gridData.length === 0) return;
+
+    const { canvasSize, gridSize, gridData, highlightId, completedMap, contrast, tab, boardInset,
+            displayWidth, displayHeight } = this.data;
+
     let mode = 'colorId';
     if (tab === 'row') mode = 'horizontal';
     else if (tab === 'col') mode = 'vertical';
-    
-    drawImmersiveGrid(this._ctx, {
-      width: canvasSize,
-      height: canvasSize,
-      gridSize,
-      gridData,
-      highlightId,
-      completedMap,
-      contrast,
-      mode,
-      hRun: this._hRun,
-      vRun: this._vRun,
-      dpr: this._dpr
+
+    const vs = this._viewScale;
+    const ox = this._viewOffsetX;
+    const oy = this._viewOffsetY;
+
+    // 清空三个画布（全屏展示区域）
+    [this._ctx, this._textCtx, this._gridCtx].forEach((ctx, i) => {
+      const dpr = i === 0 ? this._dpr : i === 1 ? this._textDpr : this._gridDpr;
+      ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, displayWidth, displayHeight);
+      ctx.restore();
     });
+
+    // 基础层
+    this._ctx.save();
+    this._ctx.setTransform(this._dpr * vs, 0, 0, this._dpr * vs, ox * this._dpr, oy * this._dpr);
+    drawImmersiveBase(this._ctx, {
+      width: canvasSize, height: canvasSize, gridSize, gridData,
+      highlightId, completedMap, contrast,
+      boardInset: boardInset || 0
+    });
+    this._ctx.restore();
+
+    // 网格线层
+    this._gridCtx.save();
+    this._gridCtx.setTransform(this._gridDpr * vs, 0, 0, this._gridDpr * vs, ox * this._gridDpr, oy * this._gridDpr);
+    drawImmersiveGridLines(this._gridCtx, {
+      width: canvasSize, height: canvasSize, gridSize,
+      boardInset: boardInset || 0, gridData
+    });
+    this._gridCtx.restore();
+
+    // 文字层
+    this._textCtx.save();
+    this._textCtx.setTransform(this._textDpr * vs, 0, 0, this._textDpr * vs, ox * this._textDpr, oy * this._textDpr);
+    drawImmersiveText(this._textCtx, {
+      width: canvasSize, height: canvasSize, gridSize, gridData,
+      highlightId, completedMap, mode,
+      hRun: this._hRun, vRun: this._vRun,
+      boardInset: boardInset || 0,
+      viewScale: vs
+    });
+    this._textCtx.restore();
   },
 
   _confirmRestoreProgress(data) {
@@ -342,23 +454,62 @@ Page({
     });
   },
 
-  _resizeCanvasToDisplaySize(size, immediate) {
+  _forEachCanvasComponent(fn) {
+    ['#immersiveCanvas', '#immersiveTextCanvas', '#immersiveGridCanvas'].forEach((selector) => {
+      const comp = this.selectComponent(selector);
+      if (comp) fn(comp, selector);
+    });
+  },
+
+  _refreshCanvasContexts() {
+    const base = this.selectComponent('#immersiveCanvas');
+    if (base) {
+      const ctx = base.getContext();
+      if (ctx && ctx.ready) {
+        this._canvas = ctx.canvas;
+        this._ctx = ctx.ctx;
+        this._dpr = ctx.dpr;
+      }
+    }
+    const text = this.selectComponent('#immersiveTextCanvas');
+    if (text) {
+      const ctx = text.getContext();
+      if (ctx && ctx.ready) {
+        this._textCanvas = ctx.canvas;
+        this._textCtx = ctx.ctx;
+        this._textDpr = ctx.dpr;
+      }
+    }
+    const grid = this.selectComponent('#immersiveGridCanvas');
+    if (grid) {
+      const ctx = grid.getContext();
+      if (ctx && ctx.ready) {
+        this._gridCanvas = ctx.canvas;
+        this._gridCtx = ctx.ctx;
+        this._gridDpr = ctx.dpr;
+      }
+    }
+  },
+
+  _resizeBothCanvases(width, height, dpr) {
+    this._forEachCanvasComponent((comp) => {
+      if (comp.resizeWithDpr) {
+        comp.resizeWithDpr(width, height, dpr);
+      }
+    });
+    this._refreshCanvasContexts();
+  },
+
+  _resizeCanvasToDisplaySize(immediate) {
     if (!this.data.canvasReady) return;
-    const canvas2dComponent = this.selectComponent('#immersiveCanvas');
-    if (!canvas2dComponent) return;
+    const { displayWidth, displayHeight } = this.data;
 
     const applyResize = () => {
-      if (canvas2dComponent.resizeSync) {
-        canvas2dComponent.resizeSync(size, size);
-      } else if (canvas2dComponent.resize) {
-        canvas2dComponent.resize(size, size);
-      }
-      const context = canvas2dComponent.getContext && canvas2dComponent.getContext();
-      if (context && context.ready) {
-        this._canvas = context.canvas;
-        this._ctx = context.ctx;
-        this._dpr = context.dpr;
-      }
+      this._forEachCanvasComponent((comp) => {
+        if (comp.resizeSync) comp.resizeSync(displayWidth, displayHeight);
+        else if (comp.resize) comp.resize(displayWidth, displayHeight);
+      });
+      this._refreshCanvasContexts();
       this._renderCanvas();
     };
 
@@ -368,79 +519,56 @@ Page({
         this._renderResizeTimer = null;
       }
       applyResize();
-      return;
-    }
-
-    if (this._renderResizeTimer) clearTimeout(this._renderResizeTimer);
-    this._renderResizeTimer = setTimeout(() => {
-      this._renderResizeTimer = null;
-      applyResize();
-    }, 16);
-  },
-
-  _setViewport(scale, offsetX, offsetY, immediateRender) {
-    if (!immediateRender) {
-      this._pendingViewport = { scale, offsetX, offsetY };
-      if (this._viewportUpdateTimer) return;
-
-      this._viewportUpdateTimer = setTimeout(() => {
-        this._viewportUpdateTimer = null;
-        this._flushViewportUpdate();
+    } else {
+      if (this._renderResizeTimer) clearTimeout(this._renderResizeTimer);
+      this._renderResizeTimer = setTimeout(() => {
+        this._renderResizeTimer = null;
+        applyResize();
       }, 16);
-      return;
     }
-
-    if (this._viewportUpdateTimer) {
-      clearTimeout(this._viewportUpdateTimer);
-      this._viewportUpdateTimer = null;
-    }
-    this._pendingViewport = null;
-    this.setData({
-      scale,
-      offsetX,
-      offsetY
-    }, () => {
-      if (immediateRender) this._renderCanvas();
-    });
   },
 
-  _flushViewportUpdate(callback) {
-    const pending = this._pendingViewport;
-    this._pendingViewport = null;
-    if (this._viewportUpdateTimer) {
-      clearTimeout(this._viewportUpdateTimer);
-      this._viewportUpdateTimer = null;
-    }
+  _resizeCanvasToBoardSize(immediate) {
+    if (!this.data.canvasReady) return;
+    const { displayWidth, displayHeight } = this.data;
+    const qualityDpr = this._getQualityDpr(1, 'high');
 
-    if (!pending) {
+    const applyResize = () => {
+      this._resizeBothCanvases(displayWidth, displayHeight, qualityDpr);
+      this._renderCanvas();
+    };
+
+    if (immediate) {
+      if (this._renderResizeTimer) {
+        clearTimeout(this._renderResizeTimer);
+        this._renderResizeTimer = null;
+      }
+      applyResize();
+    } else {
+      if (this._renderResizeTimer) clearTimeout(this._renderResizeTimer);
+      this._renderResizeTimer = setTimeout(() => {
+        this._renderResizeTimer = null;
+        applyResize();
+      }, 16);
+    }
+  },
+
+  _measureContainerRect(callback) {
+    if (this._destroyed || typeof wx.createSelectorQuery !== 'function') {
       if (callback) callback();
       return;
     }
-
-    this.setData(pending, () => {
-      if (callback) callback();
-    });
-  },
-
-  _measureCanvasRect() {
-    if (this._destroyed || typeof wx.createSelectorQuery !== 'function') return;
 
     wx.createSelectorQuery()
       .in(this)
       .select('.canvas-container')
       .boundingClientRect((rect) => {
-        if (!rect) return;
-        this._canvasCenterX = rect.left + rect.width / 2;
-        this._canvasCenterY = rect.top + rect.height / 2;
+        if (rect) {
+          this._containerRect = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+        }
+        if (callback) callback();
       })
       .exec();
-  },
-
-  _getTransformOrigin() {
-    return {
-      x: this._canvasCenterX || (this._windowWidth / 2),
-      y: this._canvasCenterY || (this._windowHeight / 2)
-    };
   },
 
   // ========== 计算横竖计数 ==========
@@ -680,11 +808,12 @@ Page({
 
   // ========== 保存进度 ==========
   _getCompactPanelHeight() {
-    return 360;
+    return 400;
   },
 
   _getExpandedPanelHeight() {
-    return 760;
+    const maxRpx = Math.floor(this._windowHeight * 0.72 / this._rpxToPx);
+    return Math.min(760, maxRpx);
   },
 
   onTogglePanel() {
@@ -702,12 +831,14 @@ Page({
 
   onPanelTouchStart(e) {
     if (!e.touches || !e.touches.length) return;
+    if (this._shouldIgnoreEdgeBackGesture(e, true)) return;
     this._panelTouchStartY = e.touches[0].clientY;
     this._panelStartHeight = this.data.panelHeight;
     this._panelMoved = false;
   },
 
   onPanelTouchMove(e) {
+    if (this._shouldIgnoreEdgeBackGesture(e)) return;
     if (this._panelTouchStartY === null || !e.touches || !e.touches.length) return;
 
     const currentY = e.touches[0].clientY;
@@ -726,6 +857,11 @@ Page({
   },
 
   onPanelTouchEnd() {
+    if (this._edgeBackGesture) {
+      this._edgeBackGesture = false;
+      return;
+    }
+
     if (this._panelTouchStartY === null) return;
 
     const minHeight = this._getCompactPanelHeight();
@@ -769,11 +905,25 @@ Page({
     }).catch(() => {});
   },
 
-  // ========== 触摸事件（双指缩放和拖拽） ==========
+  // ========== 触摸事件（Canvas 变换缩放，不动 CSS） ==========
+  _getCanvasOffsetForTouch(centerX, centerY) {
+    const rect = this._containerRect;
+    if (!rect) return { x: centerX - this._windowWidth / 2, y: centerY - this._windowHeight / 2 };
+    return { x: centerX - rect.left, y: centerY - rect.top };
+  },
+
+  _shouldIgnoreEdgeBackGesture(e, isStart = false) {
+    const touches = e && e.touches ? e.touches : [];
+    if (isStart) {
+      this._edgeBackGesture = touches.length === 1 && touches[0] && touches[0].clientX <= EDGE_BACK_GESTURE_WIDTH;
+    }
+    return this._edgeBackGesture;
+  },
+
   handleTouchStart(e) {
     const touches = e.touches;
-    
-    // 双指缩放
+    if (this._shouldIgnoreEdgeBackGesture(e, true)) return;
+
     if (touches.length === 2) {
       this._isPinching = true;
       this._isDragging = false;
@@ -782,27 +932,27 @@ Page({
       const touch1 = touches[0];
       const touch2 = touches[1];
       this._touchStartDistance = this._getDistance(touch1, touch2);
-      this._touchStartScale = this.data.scale;
+      this._touchStartScale = this._viewScale;
+      this._touchStartOffsetX = this._viewOffsetX;
+      this._touchStartOffsetY = this._viewOffsetY;
       const center = this._getTouchCenter(touch1, touch2);
       this._touchStartCenterX = center.clientX;
       this._touchStartCenterY = center.clientY;
-      this._startOffsetX = this.data.offsetX;
-      this._startOffsetY = this.data.offsetY;
-      const origin = this._getTransformOrigin();
-      this._pinchStartContentX = (center.clientX - origin.x - this._startOffsetX) / Math.max(this._touchStartScale, 0.001);
-      this._pinchStartContentY = (center.clientY - origin.y - this._startOffsetY) / Math.max(this._touchStartScale, 0.001);
+
+      const pos = this._getCanvasOffsetForTouch(center.clientX, center.clientY);
+      this._pinchContentX = (pos.x - this._touchStartOffsetX) / Math.max(this._touchStartScale, 0.001);
+      this._pinchContentY = (pos.y - this._touchStartOffsetY) / Math.max(this._touchStartScale, 0.001);
       return;
     }
-    
+
     if (touches.length === 1) {
       const touch = touches[0];
       const now = Date.now();
       const dt = now - (this._lastTapTime || 0);
       const dx = (touch.clientX || 0) - (this._lastTapX || 0);
       const dy = (touch.clientY || 0) - (this._lastTapY || 0);
-      const move2 = dx * dx + dy * dy;
 
-      if (dt > 0 && dt <= 300 && move2 <= 30 * 30) {
+      if (dt > 0 && dt <= 300 && dx * dx + dy * dy <= 30 * 30) {
         this._resetViewport();
         this._lastTapTime = 0;
         return;
@@ -815,62 +965,104 @@ Page({
       this._isDragging = true;
       this._dragStartX = touch.clientX;
       this._dragStartY = touch.clientY;
-      this._startOffsetX = this.data.offsetX;
-      this._startOffsetY = this.data.offsetY;
+      this._touchStartOffsetX = this._viewOffsetX;
+      this._touchStartOffsetY = this._viewOffsetY;
     }
   },
 
   handleTouchMove(e) {
     const touches = e.touches;
-    
+    if (this._shouldIgnoreEdgeBackGesture(e)) return;
+
     // 双指缩放
     if (touches.length === 2 && this._isPinching) {
       const touch1 = touches[0];
       const touch2 = touches[1];
       const currentDistance = this._getDistance(touch1, touch2);
       if (!this._touchStartDistance) return;
-      
-      // 计算缩放比例
+
       const scaleChange = currentDistance / this._touchStartDistance;
       let newScale = this._touchStartScale * scaleChange;
-      
-      // 限制缩放范围
       newScale = Math.max(this._minScale, Math.min(this._maxScale, newScale));
 
       const currentCenter = this._getTouchCenter(touch1, touch2);
-      const origin = this._getTransformOrigin();
-      const nextOffsetX = currentCenter.clientX - origin.x - this._pinchStartContentX * newScale;
-      const nextOffsetY = currentCenter.clientY - origin.y - this._pinchStartContentY * newScale;
-      const clamped = this._clampOffset(nextOffsetX, nextOffsetY, newScale);
-      this._setViewport(newScale, clamped.offsetX, clamped.offsetY, false);
+      const pos = this._getCanvasOffsetForTouch(currentCenter.clientX, currentCenter.clientY);
+      const nextOffsetX = pos.x - this._pinchContentX * newScale;
+      const nextOffsetY = pos.y - this._pinchContentY * newScale;
+
+      this._viewScale = newScale;
+      this._viewOffsetX = nextOffsetX;
+      this._viewOffsetY = nextOffsetY;
+
+      this._requestPinchPreviewRender(newScale);
       return;
     }
-    
+
     // 单指拖拽
     if (touches.length === 1 && this._isDragging) {
       const deltaX = touches[0].clientX - this._dragStartX;
       const deltaY = touches[0].clientY - this._dragStartY;
-      const nextOffsetX = this._startOffsetX + deltaX;
-      const nextOffsetY = this._startOffsetY + deltaY;
-      const clamped = this._clampOffset(nextOffsetX, nextOffsetY, this.data.scale);
-      
-      this._setViewport(this.data.scale, clamped.offsetX, clamped.offsetY, false);
+      this._viewOffsetX = this._touchStartOffsetX + deltaX;
+      this._viewOffsetY = this._touchStartOffsetY + deltaY;
+      this._scheduleDragRender();
     }
   },
 
   handleTouchEnd(e) {
+    if (this._edgeBackGesture) {
+      this._edgeBackGesture = false;
+      this._isPinching = false;
+      this._isDragging = false;
+      return;
+    }
+
     if (this._isPinching) {
       this._isPinching = false;
+      this._clearPinchPreviewRenderTimer();
       this._scheduler.endGesture(() => {
         if (this._destroyed) return;
-        this._flushViewportUpdate(() => {
-          this._applyHighQualityRender();
-        });
+        this._applyHighQualityRender();
       });
     }
-    this._flushViewportUpdate();
     this._isPinching = false;
     this._isDragging = false;
+  },
+
+  _scheduleDragRender() {
+    if (this._dragRenderScheduled) return;
+    this._dragRenderScheduled = true;
+    // 使用 Canvas 2D 的 requestAnimationFrame（微信环境支持）
+    const raf = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+    raf(() => {
+      this._dragRenderScheduled = false;
+      if (this._destroyed) return;
+      this._renderCanvas();
+    });
+  },
+
+  _clearPinchPreviewRenderTimer() {
+    if (this._pinchPreviewRenderTimer) {
+      clearTimeout(this._pinchPreviewRenderTimer);
+      this._pinchPreviewRenderTimer = null;
+    }
+    this._pendingPinchPreviewScale = null;
+  },
+
+  _requestPinchPreviewRender(scale) {
+    this._pendingPinchPreviewScale = scale;
+    const scaleDelta = Math.abs((scale || 1) - (this._lastPinchPreviewScale || 1));
+    if (this._pinchPreviewRenderTimer || scaleDelta < PINCH_PREVIEW_SCALE_DELTA) return;
+
+    const elapsed = Date.now() - (this._lastPinchPreviewRenderAt || 0);
+    const delay = Math.max(0, PINCH_PREVIEW_RENDER_INTERVAL_MS - elapsed);
+    this._pinchPreviewRenderTimer = setTimeout(() => {
+      this._pinchPreviewRenderTimer = null;
+      const nextScale = this._pendingPinchPreviewScale || this._viewScale || 1;
+      this._pendingPinchPreviewScale = null;
+      this._lastPinchPreviewScale = nextScale;
+      this._lastPinchPreviewRenderAt = Date.now();
+      this._applyGestureQualityRender(nextScale);
+    }, delay);
   },
 
   _getDistance(touch1, touch2) {
@@ -886,55 +1078,58 @@ Page({
     };
   },
 
-  _clampOffset(offsetX, offsetY, scale) {
-    const displaySize = Math.max(1, (this.data.canvasSize || 0) * scale);
-    const viewportWidth = this._windowWidth || wx.getSystemInfoSync().windowWidth;
-    const viewportHeight = Math.max(1, (this._windowHeight || wx.getSystemInfoSync().windowHeight) - 96);
-    const maxOffsetX = Math.max(24, (viewportWidth + displaySize) / 2 - 48);
-    const maxOffsetY = Math.max(24, (viewportHeight + displaySize) / 2 - 48);
-
-    return {
-      offsetX: Math.max(-maxOffsetX, Math.min(maxOffsetX, offsetX)),
-      offsetY: Math.max(-maxOffsetY, Math.min(maxOffsetY, offsetY))
-    };
+  _resetViewport() {
+    const { displayWidth, displayHeight, boardCanvasSize } = this.data;
+    const boardSize = boardCanvasSize || this.data.canvasSize;
+    this._viewScale = 1;
+    this._viewOffsetX = (displayWidth - boardSize) / 2;
+    this._viewOffsetY = (displayHeight - boardSize) / 2;
+    this._lastPinchPreviewScale = 1;
+    const qualityDpr = this._getQualityDpr(1, 'high');
+    this._resizeBothCanvases(displayWidth, displayHeight, qualityDpr);
+    this._renderCanvas();
   },
 
-  _resetViewport() {
-    this._flushViewportUpdate();
-    this.setData({ scale: 1, offsetX: 0, offsetY: 0 }, () => {
-      this._restoreSystemDpr();
-    });
+  _getQualityScale() {
+    const gridSize = Math.max(1, this.data.gridSize || 32);
+    if (gridSize <= 52) return 3;
+    if (gridSize <= 78) return 2.75;
+    if (gridSize <= 104) return 2.5;
+    return 1.5;
+  },
+
+  _getQualityDpr(scale, mode) {
+    const maxSide = Math.max(this.data.displayWidth, this.data.displayHeight, this.data.boardCanvasSize || 320);
+    const safeScale = Math.max(1, scale || 1);
+    const qualityScale = this._getQualityScale();
+    const qualityFactor = mode === 'high' ? qualityScale : Math.max(1, qualityScale * 0.4);
+    const targetDpr = this._systemDpr * safeScale * qualityFactor;
+    const maxDprBySize = 3072 / Math.max(1, maxSide);
+    return Math.max(1, Math.min(targetDpr, maxDprBySize));
   },
 
   _restoreSystemDpr() {
-    const canvas2dComponent = this.selectComponent('#immersiveCanvas');
-    if (!canvas2dComponent) return;
-    canvas2dComponent.resizeWithDpr(this.data.canvasSize, this.data.canvasSize, this._systemDpr);
-    const context = canvas2dComponent.getContext();
-    if (context && context.ready) {
-      this._canvas = context.canvas;
-      this._ctx = context.ctx;
-      this._dpr = context.dpr;
-    }
+    const { displayWidth, displayHeight } = this.data;
+    const qualityDpr = this._getQualityDpr(this._viewScale, 'high');
+    this._resizeBothCanvases(displayWidth, displayHeight, qualityDpr);
     this._renderCanvas();
   },
 
   _applyHighQualityRender() {
-    const { canvasSize, scale } = this.data;
-    const canvas2dComponent = this.selectComponent('#immersiveCanvas');
-    if (!canvas2dComponent) return;
+    const scale = this._viewScale;
+    this._lastPinchPreviewScale = scale || 1;
+    this._lastPinchPreviewRenderAt = Date.now();
+    this._applyCanvasQualityRender(scale, 'high');
+  },
 
-    const newDpr = this._scheduler.getAdaptiveDpr(
-      canvasSize, canvasSize, scale, this._systemDpr, 'high'
-    );
+  _applyGestureQualityRender(scale) {
+    this._applyCanvasQualityRender(scale, 'low');
+  },
 
-    canvas2dComponent.resizeWithDpr(canvasSize, canvasSize, newDpr);
-    const context = canvas2dComponent.getContext();
-    if (context && context.ready) {
-      this._canvas = context.canvas;
-      this._ctx = context.ctx;
-      this._dpr = context.dpr;
-    }
+  _applyCanvasQualityRender(scale, mode) {
+    const { displayWidth, displayHeight } = this.data;
+    const newDpr = this._getQualityDpr(scale || 1, mode || 'high');
+    this._resizeBothCanvases(displayWidth, displayHeight, newDpr);
     this._renderCanvas();
   }
 });

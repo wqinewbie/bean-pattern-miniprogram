@@ -1,6 +1,7 @@
 // 沉浸式拼豆选择页面 - 从图纸箱选择图纸
 const request = require('../../utils/request');
 const { hasSession } = require('../../utils/profile-guard');
+const loginTrigger = require('../../utils/login-trigger');
 const { API_BASE_URL } = require('../../utils/config');
 
 function resolveImageUrl(url) {
@@ -55,9 +56,7 @@ Page({
 
     if (!hasSession()) {
       wx.showToast({ title: '请先登录', icon: 'none' });
-      setTimeout(() => {
-        wx.switchTab({ url: '/pages/index/index' });
-      }, 1500);
+      loginTrigger.showLogin();
       this.setData({ loading: false, loadingMore: false });
       return Promise.resolve();
     }

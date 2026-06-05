@@ -195,17 +195,26 @@ Page({
   },
 
   resolveDisplayOriginalUrl(originalImageUrl, aiImageUrl) {
-    return originalImageUrl || aiImageUrl || '';
+    return originalImageUrl || '';
+  },
+
+  getDisplayOriginalUrl() {
+    return this.resolveDisplayOriginalUrl(this.data.originalImageUrl, this.data.aiImageUrl);
+  },
+
+  getSourceUrlForExport() {
+    const displayOriginalUrl = this.getDisplayOriginalUrl();
+    return (this.data.mirror && this.data.mirroredAiImageUrl) ? this.data.mirroredAiImageUrl : displayOriginalUrl;
   },
 
   ensureMirroredAiImageUrl() {
-    const displayOriginalUrl = this.resolveDisplayOriginalUrl(this.data.originalImageUrl, this.data.aiImageUrl);
+    const displayOriginalUrl = this.getDisplayOriginalUrl();
     const { mirror } = this.data;
     if (!mirror || !displayOriginalUrl) return;
     if (this.data.mirroredAiImageUrl) return;
 
     if (/^https?:\/\//i.test(displayOriginalUrl)) {
-      const mirrored = displayOriginalUrl + (displayOriginalUrl.includes('?') ? '&' : '?') + 'imageMogr2/flop';
+      const mirrored = displayOriginalUrl + (displayOriginalUrl.includes('?') ? '&' : '?') + 'imageMogr2/flip/horizontal';
       this.setData({ mirroredAiImageUrl: mirrored });
     }
   },
@@ -296,7 +305,7 @@ Page({
     const { mirroredAiImageUrl, mirror, resultImageUrl, colorNumberImageUrl, activeImageTab } = this.data;
     let imageUrl = '';
     if (activeImageTab === 0) {
-      imageUrl = (mirror && mirroredAiImageUrl) ? mirroredAiImageUrl : this.resolveDisplayOriginalUrl(this.data.originalImageUrl, this.data.aiImageUrl);
+      imageUrl = (mirror && mirroredAiImageUrl) ? mirroredAiImageUrl : this.getDisplayOriginalUrl();
     } else if (activeImageTab === 1) {
       imageUrl = resultImageUrl;
     } else {
@@ -312,7 +321,7 @@ Page({
   },
 
   onEnterEditMode() {
-    const { mappedPixelData, gridData, colorPalette, gridSize, brand, colorCount, taskId, historyId, boxId, aiImageUrl, originalImageUrl, patternName } = this.data;
+    const { mappedPixelData, gridData, colorPalette, gridSize, brand, colorCount, taskId, historyId, boxId, patternName } = this.data;
 
     if (!mappedPixelData || !mappedPixelData.length) {
       wx.showToast({ title: '暂无可编辑图纸', icon: 'none' });
@@ -335,7 +344,7 @@ Page({
       boxId: boxId || null,
       historyId: historyId || null,
       taskId: taskId || null,
-      sourceUrl: aiImageUrl || originalImageUrl || '',
+      sourceUrl: this.getSourceUrlForExport(),
       name: patternName || ''
     });
 
@@ -347,7 +356,7 @@ Page({
   onEnterImmersive() {
     const { isSaved, boxId } = this.data;
 
-    if (!isSaved) {
+    if (!isSaved || !boxId) {
       wx.showToast({ title: '请先保存到图纸箱', icon: 'none' });
       return;
     }
@@ -362,7 +371,7 @@ Page({
     if (savingToAlbum) return;
     let imageUrl = '';
     if (activeImageTab === 0) {
-      imageUrl = (mirror && mirroredAiImageUrl) ? mirroredAiImageUrl : this.resolveDisplayOriginalUrl(this.data.originalImageUrl, this.data.aiImageUrl);
+      imageUrl = (mirror && mirroredAiImageUrl) ? mirroredAiImageUrl : this.getDisplayOriginalUrl();
     } else if (activeImageTab === 1) {
       imageUrl = resultImageUrl;
     } else {
@@ -429,6 +438,7 @@ Page({
 
     const finalName = this.data.patternName.trim() || 'AI作品-' + Date.now();
     const { taskId, aiImageUrl, resultImageUrl, colorNumberImageUrl, gridSize, brand, colorList, totalBeads, mappedPixelData, historyId } = this.data;
+    const sourceUrl = this.getSourceUrlForExport();
 
     wx.showLoading({ title: '保存中...', mask: true });
 
@@ -437,7 +447,7 @@ Page({
         name: finalName,
         taskId: taskId,
         sourceType: 'AI',
-        sourceUrl: aiImageUrl,
+        sourceUrl,
         coverUrl: resultImageUrl || colorNumberImageUrl || aiImageUrl,
         gridSize: gridSize,
         brand: brand,

@@ -13,9 +13,10 @@
 
 .scroll-body {
   flex: 1;
-  padding: 0 0 380rpx;
+  padding: 0 0 calc(350rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   width: 100%;
+  background: #FFFFFF;
 }
 
 /* ─── 标题栏 ─── */
@@ -520,7 +521,7 @@
   backdrop-filter: blur(20rpx);
   border-radius: 40rpx 40rpx 0 0;
   box-shadow: 0 -8rpx 40rpx rgba(140,107,75,0.06);
-  padding: 32rpx 40rpx calc(24rpx + 110rpx + env(safe-area-inset-bottom));
+  padding: 20rpx 40rpx calc(24rpx + 110rpx + env(safe-area-inset-bottom));
   border-top: 4rpx solid #FFF4DC;
   z-index: 100;
   box-sizing: border-box;

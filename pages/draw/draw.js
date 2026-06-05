@@ -33,6 +33,11 @@ const MAX_REALTIME_PHYSICAL_SIZE = 3072;
 const PINCH_MAX_RENDER_DPR = 3;
 const HIGH_MAX_RENDER_DPR = 3.5;
 const RENDER_DPR_STEPS = [1, 1.5, 2, 2.5, 3, 3.5];
+const PINCH_RENDER_MIN_INTERVAL_MS = 32;
+const EXPORT_MAX_SIDE = 4096;
+const EXPORT_TARGET_CELL_SIZE = 72;
+const EXPORT_MIN_CELL_SIZE = 18;
+const EXPORT_MAX_CELL_SIZE = 96;
 
 Page({
   data: {
@@ -163,6 +168,8 @@ Page({
   _originalGridData: null,
   _originalColorPalette: null,
   _renderTimer: null,
+  _pinchRenderTimer: null,
+  _lastPinchRenderAt: 0,
   _pendingChangedCells: new Set(),
   _colorUsageMap: new Map(),
   _nonWhiteCount: 0,
@@ -195,6 +202,7 @@ Page({
   _isCompositing: false,
   _localSaveTimer: null,
   _isRestoringLocalDraft: false,
+  _hasUnsavedChanges: false,
 
   _getActiveTransformTarget() {
     if (this.data.activeLayer === 'background' && !this.data.locked && this.data.backgroundImage) {
@@ -523,13 +531,26 @@ Page({
     this._lastCanvasTouchEventAt = Date.now();
     this._pendingWxsPinchRenderState = state;
 
-    if (this._pinchResizeRafId) return;
-    this._pinchResizeRafId = this._scheduleGestureFrame(() => {
-      this._pinchResizeRafId = null;
-      const pendingState = this._pendingWxsPinchRenderState;
-      this._pendingWxsPinchRenderState = null;
-      this._renderRealtimePinchResolution(pendingState);
-    });
+    this._requestRealtimePinchRender();
+  },
+
+  _requestRealtimePinchRender(force = false) {
+    if (this._pinchResizeRafId || this._pinchRenderTimer) return;
+
+    const now = Date.now();
+    const elapsed = now - (this._lastPinchRenderAt || 0);
+    const delay = force ? 0 : Math.max(0, PINCH_RENDER_MIN_INTERVAL_MS - elapsed);
+
+    this._pinchRenderTimer = setTimeout(() => {
+      this._pinchRenderTimer = null;
+      this._pinchResizeRafId = this._scheduleGestureFrame(() => {
+        this._pinchResizeRafId = null;
+        const pendingState = this._pendingWxsPinchRenderState;
+        this._pendingWxsPinchRenderState = null;
+        this._lastPinchRenderAt = Date.now();
+        this._renderRealtimePinchResolution(pendingState);
+      });
+    }, delay);
   },
 
   _renderRealtimePinchResolution(state = {}) {
@@ -574,7 +595,12 @@ Page({
       this._cancelGestureFrame(this._pinchResizeRafId);
       this._pinchResizeRafId = null;
     }
+    if (this._pinchRenderTimer) {
+      clearTimeout(this._pinchRenderTimer);
+      this._pinchRenderTimer = null;
+    }
     this._pendingWxsPinchRenderState = null;
+    this._lastPinchRenderAt = Date.now();
     this._renderRealtimePinchResolution(state);
     this._endRenderGesture();
 
@@ -843,8 +869,8 @@ Page({
         indicesPacked: this._packPixelIndices(pixelSnapshot.indices)
       } : null,
       gridSize: this.data.gridSize,
-      canvasOffsetX: pinchRenderState.canvasOffsetX == null ? this.data.canvasOffsetX : pinchRenderState.canvasOffsetX,
-      canvasOffsetY: pinchRenderState.canvasOffsetY == null ? this.data.canvasOffsetY : pinchRenderState.canvasOffsetY,
+      canvasOffsetX: this.data.canvasOffsetX,
+      canvasOffsetY: this.data.canvasOffsetY,
       canvasScale: this.data.canvasScale,
       backgroundOffsetX: this.data.backgroundOffsetX,
       backgroundOffsetY: this.data.backgroundOffsetY,
@@ -1125,6 +1151,7 @@ Page({
     const { storageKey, source } = options;
     const info = wx.getSystemInfoSync();
     this._rpxToPx = (Number(info.windowWidth) || 375) / 750;
+    this._dpr = Math.max(1, Number(info.pixelRatio) || 1);
     const statusBarHeight = info.statusBarHeight || 20;
     const menuButton = wx.getMenuButtonBoundingClientRect();
     const capsuleHeight = menuButton.height || 32;
@@ -1184,19 +1211,21 @@ Page({
       if (!brandNames.length) throw new Error('empty brands');
 
       const brandList = brandNames.map((name) => name.toUpperCase());
-      const firstBrand = brandList[0];
+
+      // 使用源数据中已有的品牌（来自 _loadDrawData 或初始数据），否则用 API 首个品牌
+      const currentBrand = String(this.data.brand || '').toUpperCase();
+      const matchedBrand = brandList.includes(currentBrand) ? currentBrand : brandList[0];
+      const brandIndex = brandList.indexOf(matchedBrand);
 
       this.setData({
         brandList: brandList,
-        brand: firstBrand,
-        brandIndex: 0,
+        brand: matchedBrand,
+        brandIndex: brandIndex >= 0 ? brandIndex : 0,
         _brandKitsMap: data
       });
 
-      // 加载第一个品牌的默认色卡
-      this.loadPaletteColors(firstBrand);
+      this.loadPaletteColors(matchedBrand);
     }).catch(() => {
-      // 失败时使用默认值
       console.error('加载品牌列表失败，使用默认值');
       this.setData({
         brandList: [],
@@ -1213,20 +1242,26 @@ Page({
     // 先获取品牌ID
     request.get('/bead/brand-list').then((brandList) => {
       if (!brandList || !brandList.length) throw new Error('empty brand list');
-      
+
       // 查找匹配的品牌
       const brand = brandList.find(b => b.name.toLowerCase() === brandName.toLowerCase());
       if (!brand) throw new Error('brand not found');
-      
+
       // 保存品牌ID
       this._currentBrandId = brand.id;
-      
+
       // 根据品牌ID获取套餐列表
       return request.get(`/bead/brands/${brand.id}/kits`);
     }).then((kits) => {
       if (!kits || !kits.length) throw new Error('empty kits');
 
-      // 如果从编辑模式进入，根据 colorCount 选择匹配的色卡套餐
+      // 从源数据中提取颜色ID，用于精准匹配套餐
+      const sourceColorIds = this._getSourceColorIds();
+      if (sourceColorIds.length > 0) {
+        return this._matchKitByColorIds(kits, sourceColorIds);
+      }
+
+      // 无源颜色ID时（新建画布），用 colorCount 匹配
       let selectedKit = kits[0];
       const targetColorCount = this._editSourceColorCount;
       if (targetColorCount > 0) {
@@ -1234,7 +1269,6 @@ Page({
         if (exactMatch) {
           selectedKit = exactMatch;
         } else {
-          // 找最接近但不小于 targetColorCount 的套餐
           const sorted = [...kits].sort((a, b) => (a.colorCount || 0) - (b.colorCount || 0));
           const larger = sorted.find(k => (k.colorCount || 0) >= targetColorCount);
           if (larger) selectedKit = larger;
@@ -1242,20 +1276,69 @@ Page({
         }
       }
 
-      // 保存套餐列表，选择匹配的套餐
       this.setData({
         kitList: kits,
         selectedKitId: selectedKit.id,
         selectedKitName: selectedKit.name
       });
 
-      // 加载匹配套餐的色号
       return this.loadKitColors(selectedKit.id);
     }).catch((err) => {
       console.error('加载套餐列表失败:', err);
-      // 失败时使用默认颜色
       this.setData({ colors: DEFAULT_COLORS });
       this._updateColorRows();
+    });
+  },
+
+  /**
+   * 从源色板中提取颜色ID列表
+   */
+  _getSourceColorIds() {
+    const palette = this._originalColorPalette;
+    if (!palette || !palette.length) return [];
+    return palette
+      .filter(c => c && (c.id || c.name))
+      .map(c => c.id || c.name);
+  },
+
+  /**
+   * 通过颜色ID匹配最合适的套餐
+   * 加载所有候选套餐的颜色，计算与源颜色ID的重叠数，选最佳匹配
+   */
+  _matchKitByColorIds(kits, sourceColorIds) {
+    const sourceSet = new Set(sourceColorIds.map(id => String(id).toUpperCase()));
+
+    // 先按 colorCount 过滤：优先精确匹配，其次接近的
+    const targetColorCount = sourceColorIds.length;
+    const exactMatches = kits.filter(k => (k.colorCount || 0) === targetColorCount);
+    const candidates = exactMatches.length > 0 ? exactMatches : kits;
+
+    // 并行加载所有候选套餐的颜色
+    return Promise.all(candidates.map(kit =>
+      request.get(`/bead/kits/${kit.id}/colors`).then(colors => {
+        const kitColorIds = new Set(
+          (colors || []).map(c => String(c.code || c.name || '').toUpperCase()).filter(Boolean)
+        );
+        const matchCount = sourceColorIds.filter(id => kitColorIds.has(id)).length;
+        return { kit, matchCount, totalMatched: kitColorIds.size };
+      }).catch(() => ({ kit, matchCount: 0, totalMatched: 0 }))
+    )).then(results => {
+      // 按匹配数降序排列
+      results.sort((a, b) => b.matchCount - a.matchCount);
+      const best = results[0];
+      const selectedKit = best && best.matchCount > 0 ? best.kit : kits[0];
+
+      console.log('[kit匹配] 最佳套餐:', selectedKit.name,
+        '匹配颜色数:', best ? best.matchCount : 0,
+        '/', sourceColorIds.length);
+
+      this.setData({
+        kitList: kits,
+        selectedKitId: selectedKit.id,
+        selectedKitName: selectedKit.name
+      });
+
+      return this.loadKitColors(selectedKit.id);
     });
   },
 
@@ -1333,22 +1416,32 @@ Page({
   },
 
   onReady() {
-    // 标准做法：在 onReady 时获取并缓存容器尺寸
     wx.createSelectorQuery()
       .select('.canvas-area')
       .boundingClientRect()
       .exec((res) => {
         if (res && res[0]) {
-          this._canvasAreaRect = res[0];
+          const rect = res[0];
+          this._canvasAreaRect = rect;
+
+          // 同步 canvas-area 尺寸到 data，供画布组件和渲染器使用
+          this.setData({
+            canvasAreaWidth: rect.width,
+            canvasAreaHeight: rect.height,
+            canvasAreaLeft: rect.left || 0,
+            canvasAreaTop: rect.top || 0,
+            minCanvasScale: this._minScale || 0.5,
+            maxCanvasScale: this._getMaxScale()
+          });
+
           // 如果画布已经初始化，立即居中
           if (this.data.canvasWidth > 0) {
             const centered = this._getCenteredCanvasOffset(
               this.data.canvasWidth,
               this.data.canvasHeight,
               this.data.canvasScale || 1,
-              res[0]
+              rect
             );
-            
             this.setData({
               canvasOffsetX: centered.x,
               canvasOffsetY: centered.y,
@@ -1384,6 +1477,10 @@ Page({
       this._cancelGestureFrame(this._pinchResizeRafId);
       this._pinchResizeRafId = null;
     }
+    if (this._pinchRenderTimer) {
+      clearTimeout(this._pinchRenderTimer);
+      this._pinchRenderTimer = null;
+    }
     if (this._renderScheduler && typeof this._renderScheduler.destroy === 'function') {
       this._renderScheduler.destroy();
     }
@@ -1400,6 +1497,10 @@ Page({
 
   _saveLocalRecoveryDraft() {
     if (this._isRestoringLocalDraft) return;
+    if (!this._shouldKeepLocalRecoveryDraft()) {
+      this._clearLocalRecoveryDraft();
+      return;
+    }
     // 手势中不保存（已在 _scheduleLocalRecoveryDraft 中过滤）
     try {
       const payload = this._buildLocalRecoverySnapshot();
@@ -1460,6 +1561,10 @@ Page({
       payload = null;
     }
     if (!payload || !payload.state) return;
+    if (!this._recoveryStateHasContent(payload.state)) {
+      this._clearLocalRecoveryDraft();
+      return;
+    }
 
     wx.showModal({
       title: '发现未完成作品',
@@ -1471,6 +1576,7 @@ Page({
           this._isRestoringLocalDraft = true;
           this._restoreState(payload.state);
           this._isRestoringLocalDraft = false;
+          this._hasUnsavedChanges = true;
         } else {
           this._clearLocalRecoveryDraft();
         }
@@ -1567,12 +1673,15 @@ Page({
         return;
       }
 
-      const layout = this._getSnappedCanvasLayout(gridSize);
+      const centeredGrid = this._centerGridDataForEditing(gridData, gridSize);
+      const editGridSize = centeredGrid.gridSize;
+      const editGridData = centeredGrid.gridData;
+      const layout = this._getSnappedCanvasLayout(editGridSize);
       const canvasSize = layout.canvasSize;
       const cellSize = layout.cellSize;
       this._layoutRenderDpr = layout.renderDpr;
       this._renderResolutionKey = '';
-      const hexGridData = gridData.map(row => row.map(idx => {
+      const hexGridData = editGridData.map(row => row.map(idx => {
         if (idx === -1) return null;
         const color = colorPalette[idx];
         if (!color) return '#FFFFFF';
@@ -1584,9 +1693,9 @@ Page({
       const colors = Array.from(usedColors);
       if (!colors.includes('#FFFFFF')) colors.unshift('#FFFFFF');
     this._gridData = hexGridData;
-    this._pixelStore = PixelStore.fromGridData(hexGridData);
+      this._pixelStore = PixelStore.fromGridData(hexGridData);
       this._rebuildColorStatsFromGrid();
-      this._originalGridData = gridData;
+      this._originalGridData = editGridData;
       this._originalColorPalette = colorPalette;
       this._cellSize = cellSize;
       
@@ -1614,7 +1723,7 @@ Page({
       
       const initialColor = colors[1] || colors[0] || '#FF6B35';
       this.setData({ 
-        gridSize, 
+        gridSize: editGridSize,
         canvasWidth: canvasSize, 
         canvasHeight: canvasSize,
         coordinateCellSize: layout.coordinateCellSize,
@@ -1656,6 +1765,7 @@ Page({
       if (bgState && bgState.backgroundImage) {
         this._updateBackgroundImageInfo(bgState.backgroundImage);
       }
+      this._hasUnsavedChanges = false;
       
       storage.remove(storageKey);
     } catch (e) {
@@ -1663,6 +1773,36 @@ Page({
       wx.showToast({ title: '数据加载失败', icon: 'none' });
       this._initData();
     }
+  },
+
+  _centerGridDataForEditing(gridData, gridSize) {
+    const rows = Array.isArray(gridData) ? gridData.length : 0;
+    const cols = rows
+      ? gridData.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0)
+      : 0;
+    const targetSize = Math.max(1, Number(gridSize) || 0, rows, cols);
+
+    if (rows === targetSize && cols === targetSize && gridData.every(row => Array.isArray(row) && row.length === targetSize)) {
+      return { gridSize: targetSize, gridData };
+    }
+
+    const offsetY = Math.floor((targetSize - rows) / 2);
+    const offsetX = Math.floor((targetSize - cols) / 2);
+    const centered = Array.from({ length: targetSize }, () => Array(targetSize).fill(-1));
+
+    for (let rowIndex = 0; rowIndex < rows; rowIndex++) {
+      const row = gridData[rowIndex];
+      if (!Array.isArray(row)) continue;
+      for (let colIndex = 0; colIndex < row.length && colIndex < targetSize; colIndex++) {
+        const y = rowIndex + offsetY;
+        const x = colIndex + offsetX;
+        if (y >= 0 && y < targetSize && x >= 0 && x < targetSize) {
+          centered[y][x] = row[colIndex];
+        }
+      }
+    }
+
+    return { gridSize: targetSize, gridData: centered };
   },
 
   _loadDraftForEdit(draftId) {
@@ -1785,6 +1925,7 @@ Page({
   },
 
   _initData() {
+    this._hasUnsavedChanges = false;
     this._applyGridSize(this.data.gridSize, false);
   },
 
@@ -2220,7 +2361,8 @@ Page({
 
     if (this.data.backgroundImage) {
       const currentBackgroundScale = Math.max(Number(this.data.backgroundScale) || 1, 0.0001);
-      const nextBackgroundScale = currentBackgroundScale * scaleRatio;
+      let nextBackgroundScale = currentBackgroundScale * scaleRatio;
+      nextBackgroundScale = Math.max(minScale, Math.min(maxScale, nextBackgroundScale));
       updates.backgroundScale = nextBackgroundScale;
       updates.backgroundOffsetX = anchorX - (anchorX - this.data.backgroundOffsetX) * scaleRatio;
       updates.backgroundOffsetY = anchorY - (anchorY - this.data.backgroundOffsetY) * scaleRatio;
@@ -2556,11 +2698,17 @@ Page({
       const baseBackgroundScale = this._touchStartBackgroundScale || this.data.backgroundScale;
       const lockRatio = this._lockScaleRatio || (baseScale > 0 ? (baseBackgroundScale / baseScale) : 1);
 
-      let nextScale = baseScale * scaleChange;
-      nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
+      let rawScale = baseScale * scaleChange;
+      let nextScale = Math.max(minScale, Math.min(maxScale, rawScale));
+      let nextBackgroundScale = nextScale * lockRatio;
+      if (nextBackgroundScale > maxScale) {
+        nextBackgroundScale = maxScale;
+        nextScale = nextBackgroundScale / lockRatio;
+      } else if (nextBackgroundScale < minScale) {
+        nextBackgroundScale = minScale;
+        nextScale = nextBackgroundScale / lockRatio;
+      }
       const scaleChanged = Math.abs(nextScale - baseScale) > 0.0001;
-
-      const nextBackgroundScale = Math.max(minScale, Math.min(maxScale, nextScale * lockRatio));
 
       const canvasScaleRatio = nextScale / baseScale;
       const bgScaleRatio = nextBackgroundScale / baseBackgroundScale;
@@ -3977,6 +4125,8 @@ Page({
     }).then((result) => {
       const newBoxId = result && result.id ? result.id : (result && result.boxId ? result.boxId : (result && result.box && result.box.id ? result.box.id : null));
       this.setData({ loading: false, editingBoxId: newBoxId || this.data.editingBoxId || '' });
+      this._hasUnsavedChanges = false;
+      this._clearLocalRecoveryDraft();
       wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
       showCapacityFullIfNeeded(result, { type: 'box' });
     }).catch((err) => {
@@ -4032,6 +4182,7 @@ Page({
         source: 'draft'
       });
       this._hasUnsavedChanges = false;
+      this._clearLocalRecoveryDraft();
       wx.showToast({ title: saveMode === 'overwrite' ? '已覆盖原草稿' : (saveMode === 'link-box' ? '已关联保存' : '已保存'), icon: 'success' });
       showCapacityFullIfNeeded(savedDraft, { type: 'draft' });
     }).catch((err) => {
@@ -4045,6 +4196,63 @@ Page({
     if (!this._pixelStore) return false;
     const usage = this._pixelStore.getColorUsageMap();
     return usage.size > 0;
+  },
+
+  _hasSourceRecord() {
+    const { source, sourceRecordType, editingDraftId, editingBoxId, editingHistoryId, editingTaskId } = this.data;
+    return !!(
+      sourceRecordType ||
+      editingDraftId ||
+      editingBoxId ||
+      editingHistoryId ||
+      editingTaskId ||
+      (source && source !== 'blank')
+    );
+  },
+
+  _hasRecoverableCanvasContent() {
+    return this._hasDrawableContent() || !!this.data.backgroundImage;
+  },
+
+  _shouldKeepLocalRecoveryDraft() {
+    return this._hasRecoverableCanvasContent() || (this._hasUnsavedChanges && this._hasSourceRecord());
+  },
+
+  _recoveryStateHasContent(state) {
+    if (!state || typeof state !== 'object') return false;
+    if (state.backgroundImage) return true;
+
+    const packed = state.pixelSnapshot && state.pixelSnapshot.indicesPacked;
+    if (typeof packed === 'string') {
+      for (let i = 0; i < packed.length; i++) {
+        if (packed.charCodeAt(i) !== 0) return true;
+      }
+    }
+
+    const indices = state.pixelSnapshot && state.pixelSnapshot.indices;
+    if (indices && typeof indices.length === 'number') {
+      for (let i = 0; i < indices.length; i++) {
+        if (indices[i]) return true;
+      }
+    }
+
+    if (Array.isArray(state.gridData)) {
+      return state.gridData.some((row) => Array.isArray(row) && row.some((cell) => {
+        if (cell === null || cell === undefined || cell === '' || cell === -1) return false;
+        return true;
+      }));
+    }
+
+    return false;
+  },
+
+  _shouldConfirmExit() {
+    if (!this._hasUnsavedChanges) return false;
+    if (this._hasRecoverableCanvasContent() || this._hasSourceRecord()) return true;
+
+    this._hasUnsavedChanges = false;
+    this._clearLocalRecoveryDraft();
+    return false;
   },
 
   _buildColorStats() {
@@ -4134,8 +4342,29 @@ Page({
     const baseWidth = Math.max(1, Number(this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
     const baseHeight = Math.max(1, Number(this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
     const systemDpr = Math.max(1, this._dpr || this._getSystemPixelRatio());
-    const maxExportSide = 4096;
+    const maxExportSide = EXPORT_MAX_SIDE;
     return Math.max(1, Math.min(systemDpr * this._getInitialQualityScale(), maxExportSide / baseWidth, maxExportSide / baseHeight));
+  },
+
+  _getExportBoardLayout() {
+    const gridSize = Math.max(1, Number(this.data.gridSize) || 1);
+    const maxCellSize = Math.max(1, Math.floor(EXPORT_MAX_SIDE / (gridSize + 2)));
+    const cellSize = Math.max(
+      EXPORT_MIN_CELL_SIZE,
+      Math.min(EXPORT_TARGET_CELL_SIZE, EXPORT_MAX_CELL_SIZE, maxCellSize)
+    );
+    const canvasSize = cellSize * gridSize;
+    const boardInset = cellSize;
+
+    return {
+      gridSize,
+      cellSize,
+      canvasWidth: canvasSize,
+      canvasHeight: canvasSize,
+      boardInset,
+      boardCanvasWidth: canvasSize + boardInset * 2,
+      boardCanvasHeight: canvasSize + boardInset * 2
+    };
   },
 
   _exportFullBoardTempFilePath() {
@@ -4158,29 +4387,29 @@ Page({
               return;
             }
 
-            const width = Math.max(1, Number(this.data.boardCanvasWidth || this.data.canvasWidth) || 1);
-            const height = Math.max(1, Number(this.data.boardCanvasHeight || this.data.canvasHeight) || 1);
-            const dpr = this._getExportDpr();
-            resize2dCanvas({ canvas, ctx, width, height, dpr });
+            const exportLayout = this._getExportBoardLayout();
+            const width = exportLayout.boardCanvasWidth;
+            const height = exportLayout.boardCanvasHeight;
+            resize2dCanvas({ canvas, ctx, width, height, dpr: 1 });
             ctx.clearRect(0, 0, width, height);
 
             drawBoard(ctx, {
-              width: this.data.canvasWidth,
-              height: this.data.canvasHeight,
-              gridSize: this.data.gridSize,
+              width: exportLayout.canvasWidth,
+              height: exportLayout.canvasHeight,
+              gridSize: exportLayout.gridSize,
               gridData: this._gridData,
               showGrid: true,
-              dpr,
+              dpr: 1,
               hasBackground: !!this.data.backgroundImage,
-              viewScale: dpr,
+              viewScale: 1,
               colorCodeMap: this._getOverlayColorCodeMap(),
               getCellColor: (row, col) => this._getPixelColor(row, col),
-              boardInset: this.data.boardInset || 0
+              boardInset: exportLayout.boardInset
             });
 
             exportCanvasToTempFilePath(canvas, {
-              width: canvas.width,
-              height: canvas.height,
+              width,
+              height,
               sourceWidth: width,
               sourceHeight: height,
               fileType: 'png',
@@ -4663,7 +4892,7 @@ Page({
   },
 
   onBack() {
-    if (!this._hasUnsavedChanges) {
+    if (!this._shouldConfirmExit()) {
       wx.navigateBack({ delta: 1 });
       return;
     }
@@ -4889,11 +5118,19 @@ Page({
       return;
     }
     
-    // 问题3修复：锁定/解锁时不改变任何位置，只改变锁定状态
     const willLock = !this.data.locked;
-    
-    // 只改变锁定状态，不修改任何位置参数
-    this.setData({ locked: willLock });
+
+    if (willLock) {
+      // 锁定时同步背景与画布的 scale 和偏移，避免初始比例偏差导致联合缩放时不同步
+      this.setData({
+        locked: true,
+        backgroundScale: this.data.canvasScale,
+        backgroundOffsetX: this.data.canvasOffsetX,
+        backgroundOffsetY: this.data.canvasOffsetY
+      });
+    } else {
+      this.setData({ locked: false });
+    }
     
     const lockStatus = willLock ? '已锁定' : '已解锁';
     wx.showToast({ 

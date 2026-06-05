@@ -203,4 +203,5 @@
       <text wx:else>立即充值</text>
     </view>
   </view>
+  <login-modal id="login-modal" />
 </view>

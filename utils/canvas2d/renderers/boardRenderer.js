@@ -23,6 +23,16 @@ function alignToScreenPixel(value, viewScale, dpr) {
   return Math.round(value * scale * renderDpr) / (scale * renderDpr);
 }
 
+function fillClippedText(ctx, text, x, y, clipX, clipY, clipW, clipH) {
+  if (!ctx || !clipW || !clipH) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(clipX, clipY, clipW, clipH);
+  ctx.clip();
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
 function drawGridLineRects(ctx, width, height, gridSize, cellSize, viewScale, dpr) {
   const metrics = getLineMetrics(cellSize, viewScale, dpr);
   const uniformLineWidth = metrics.thin;
@@ -123,16 +133,28 @@ function drawCoordinateFrame(ctx, options) {
     return;
   }
 
-  const visualCell = inset * viewScale;
+  const labelCellSize = Math.max(1, Math.min(inset, cellW, cellH));
+  const visualCell = labelCellSize * viewScale;
   const digitCount = String(gridSize).length;
   const maxByCell = visualCell * 0.58;
   const maxByLength = visualCell / Math.max(1.15, digitCount * 0.68);
   const visualFontSize = Math.max(6, Math.min(12, maxByCell, maxByLength));
-  const fontSize = Math.max(1, Math.round((visualFontSize / viewScale) * 4) / 4);
+  let fontSize = Math.max(1, Math.round((visualFontSize / viewScale) * 4) / 4);
   ctx.fillStyle = '#A1887F';
   ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+
+  const maxLabelWidth = Math.max(1, labelCellSize * 0.84);
+  const maxLabelHeight = Math.max(1, labelCellSize * 0.68);
+  const maxLabel = String(gridSize);
+  const measuredWidth = ctx.measureText ? ctx.measureText(maxLabel).width : 0;
+  if (measuredWidth > maxLabelWidth || fontSize > maxLabelHeight) {
+    const widthRatio = measuredWidth > 0 ? maxLabelWidth / measuredWidth : 1;
+    const heightRatio = maxLabelHeight / fontSize;
+    fontSize = Math.max(1, Math.floor(fontSize * Math.min(widthRatio, heightRatio) * 4) / 4);
+    ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif`;
+  }
 
   for (let i = 1; i <= gridSize; i++) {
     const label = String(i);
@@ -142,10 +164,12 @@ function drawCoordinateFrame(ctx, options) {
     const bottomY = alignToScreenPixel(inset + height + inset / 2, viewScale, dpr);
     const leftX = alignToScreenPixel(inset / 2, viewScale, dpr);
     const rightX = alignToScreenPixel(inset + width + inset / 2, viewScale, dpr);
-    ctx.fillText(label, x, topY);
-    ctx.fillText(label, x, bottomY);
-    ctx.fillText(label, leftX, y);
-    ctx.fillText(label, rightX, y);
+    const labelLeft = inset + (i - 1) * cellW;
+    const labelTop = inset + (i - 1) * cellH;
+    fillClippedText(ctx, label, x, topY, labelLeft, 0, cellW, inset);
+    fillClippedText(ctx, label, x, bottomY, labelLeft, inset + height, cellW, inset);
+    fillClippedText(ctx, label, leftX, y, 0, labelTop, inset, cellH);
+    fillClippedText(ctx, label, rightX, y, inset + width, labelTop, inset, cellH);
   }
 
   ctx.restore();

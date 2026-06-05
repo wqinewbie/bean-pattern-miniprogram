@@ -516,6 +516,7 @@
       </view>
     </view>
   </view>
+  <login-modal id="login-modal" />
 </view>
 
 <canvas type="2d" id="tempCanvas2d" style="position: fixed; left: -9999px; top: -9999px; width: 1px; height: 1px;"></canvas>

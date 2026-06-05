@@ -293,6 +293,11 @@
 /* ─── 滚动区域 ─── */
 .scroll-body { flex: 1; }
 
+.tabbar-scroll-spacer {
+  height: calc(180rpx + env(safe-area-inset-bottom));
+  flex-shrink: 0;
+}
+
 /* ─── VIP 卡 ─── */
 .vip-card {
   margin: 0 40rpx 40rpx;

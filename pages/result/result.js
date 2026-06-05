@@ -19,6 +19,17 @@ const PATTERN_EXPORT_MODE = '2d'; // 可选: 'legacy' | '2d'
 // Canvas 2D 缓存
 const canvasCache = {};
 
+function releaseCanvas2dComp(comp) {
+  if (!comp) return;
+  if (typeof comp.release === 'function') {
+    comp.release();
+  } else if (typeof comp.resizeWithDpr === 'function') {
+    comp.resizeWithDpr(1, 1, 1);
+  } else if (typeof comp.resizeSync === 'function') {
+    comp.resizeSync(1, 1);
+  }
+}
+
 // 获取 Canvas 2D 实例的辅助函数
 async function getCanvas2d(pageInstance, canvasId, width, height) {
   const targetWidth = Math.max(1, Math.floor(Number(width) || 1));
@@ -210,6 +221,7 @@ Page({
     const urlColorStats = colorStats ? decodeURIComponent(colorStats) : '';
     const mirrorOn = String(mirrorOnOption || '0') === '1';
     const routeResultToken = resultToken ? decodeURIComponent(resultToken) : '';
+    this._routeResultToken = routeResultToken;
 
     // 优先读取全局内存数据（generating 已经准备好的完整结果）
     const app = getApp();
@@ -453,14 +465,12 @@ Page({
 
     this._warmOriginalImage(ui.originalUrl || '');
     if (meta.mirrorOn && ui.originalUrl) {
-      this.ensureMirroredOriginalUrl(ui.originalUrl, (mirrored) => {
-        if (!mirrored) return;
-        const update = { mirroredOriginalUrl: mirrored };
-        if (this.data.activeTab === 'original') {
-          update.currentPreviewUrl = mirrored;
-        }
-        this.setData(update);
-      });
+      // ui.originalUrl 已经是上传到 COS 的镜像后图片（干净 URL，无 imageMogr2 参数）
+      const update = { mirroredOriginalUrl: ui.originalUrl };
+      if (this.data.activeTab === 'original') {
+        update.currentPreviewUrl = ui.originalUrl;
+      }
+      this.setData(update);
     }
     if (render.generatePatternPreview && hasAnyPattern) {
       setTimeout(() => this.generatePatternPreviewImage(true), render.previewDelay || 80);
@@ -1400,13 +1410,20 @@ Page({
 
     this._mirroredOriginalGenerating = true;
 
-    // 优先走 COS 在线镜像转换，避免本地 canvas 偶发白图
-    if (/^https?:\/\//i.test(url)) {
-      const mirroredByCos = url + (url.includes('?') ? '&' : '?') + 'imageMogr2/flop';
-      console.log('[result][mirror-preview] use cos mirror url', { mirroredByCos });
-      this.setData({ mirroredOriginalUrl: mirroredByCos });
-      this._mirroredOriginalGenerating = false;
-      if (typeof done === 'function') done(mirroredByCos);
+    // 走 canvas 本地翻转，COS imageMogr2 URL 在微信 <image> 组件中可能渲染异常
+    if (/^https?:\/\//i.test(url) && !/^https:\/\/tmp\//i.test(url) && !/^wxfile:\/\//i.test(url)) {
+      this._ensureMirroredOriginalByCanvas(url, (result) => {
+        if (result) {
+          if (typeof done === 'function') done(result);
+          return;
+        }
+        // canvas 失败回退到 COS
+        const mirroredByCos = url + (url.includes('?') ? '&' : '?') + 'imageMogr2/flip/horizontal';
+        console.log('[result][mirror-preview] canvas failed, fallback to cos', { mirroredByCos });
+        this.setData({ mirroredOriginalUrl: mirroredByCos });
+        this._mirroredOriginalGenerating = false;
+        if (typeof done === 'function') done(mirroredByCos);
+      });
       return;
     }
 
@@ -1557,7 +1574,9 @@ Page({
         query.select('.preview-wrap').boundingClientRect((rect) => {
           const exportSize = resultExportSize((rect && rect.width) || 0);
 
-          if (typeof comp.resizeSync === 'function') {
+          if (typeof comp.resizeWithDpr === 'function') {
+            comp.resizeWithDpr(exportSize, exportSize, 1);
+          } else if (typeof comp.resizeSync === 'function') {
             comp.resizeSync(exportSize, exportSize);
           }
 
@@ -1574,6 +1593,7 @@ Page({
                 hasPath: !!path,
                 via: 'hidden-export-comp'
               });
+              releaseCanvas2dComp(comp);
               resolve(path);
             })
             .catch((err) => {
@@ -1582,6 +1602,7 @@ Page({
                 errMsg: err && err.message ? err.message : String(err || ''),
                 via: 'hidden-export-comp'
               });
+              releaseCanvas2dComp(comp);
               reject(err || new Error('result export failed'));
             });
         }).exec();
@@ -1654,7 +1675,9 @@ Page({
       const layoutPreview = drawPatternWithAxes(ctx, gridData, colorPalette, gridRows, boardSize, drawOptions);
 
       // 第二步：根据实际尺寸 resize Canvas（长方形）
-      if (typeof comp.resizeSync === 'function') {
+      if (typeof comp.resizeWithDpr === 'function') {
+        comp.resizeWithDpr(layoutPreview.totalWidth, layoutPreview.totalHeight, 1);
+      } else if (typeof comp.resizeSync === 'function') {
         comp.resizeSync(layoutPreview.totalWidth, layoutPreview.totalHeight);
       }
 
@@ -1685,6 +1708,7 @@ Page({
           height: layout.totalHeight,
           withWatermark
         });
+        releaseCanvas2dComp(comp);
         return path;
       }).catch((err) => {
         this._traceFlow('patternTemp:export:failed', {
@@ -1693,6 +1717,7 @@ Page({
           height: layout.totalHeight,
           withWatermark
         });
+        releaseCanvas2dComp(comp);
         throw err;
       });
     });
@@ -2218,12 +2243,10 @@ Page({
       this.setData({ generatingTimeout: true });
     }, 60000);
 
-    let sourceMirroredForSampling = false;
     const prepareImageForSampling = (imgUrl) => {
       if (!mirrorOn || !imgUrl) return Promise.resolve(imgUrl);
       return new Promise((resolve) => {
         this.ensureMirroredOriginalUrl(imgUrl, (mirroredUrl) => {
-          sourceMirroredForSampling = !!mirroredUrl;
           resolve(mirroredUrl || imgUrl);
         });
       });
@@ -2260,10 +2283,7 @@ Page({
         return this._mergeSimilarMappedColors(mappedResult, similarityThreshold);
       })
       .then((mappedResult) => {
-        let mappedPixelData = mappedResult.mappedPixelData || [];
-        if (mirrorOn && !sourceMirroredForSampling && Array.isArray(mappedPixelData) && mappedPixelData.length) {
-          mappedPixelData = mappedPixelData.map((row) => Array.isArray(row) ? row.slice().reverse() : row);
-        }
+        const mappedPixelData = mappedResult.mappedPixelData || [];
         const colorStats = mappedResult.colorStats || [];
         this._traceFlow('imageFlow:merge-ok', {
           mappedLen: mappedPixelData.length,
@@ -2280,7 +2300,7 @@ Page({
           });
           console.log('[result] buildResult 开始，cosImageUrl:', cosImageUrl, 'length:', cosImageUrl ? cosImageUrl.length : 0);
 
-          const displayOriginalUrl = sourceImageUrl || cosImageUrl || '';
+          const displayOriginalUrl = cosImageUrl || sourceImageUrl || '';
           const resultData = {
             id: 'BP' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6).toUpperCase(),
             resultToken: 'RT' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10),
@@ -2464,6 +2484,49 @@ Page({
       clearTimeout(this._patternRenderTimeout);
       this._patternRenderTimeout = null;
     }
+
+    ['#resultExport2dComp', '#patternExport2dComp', '#resultCanvas2dComp'].forEach((selector) => {
+      releaseCanvas2dComp(this.selectComponent(selector));
+    });
+
+    Object.keys(canvasCache).forEach((key) => {
+      const cached = canvasCache[key];
+      if (cached && cached.ctx && cached.canvas) {
+        try {
+          cached.ctx.setTransform(1, 0, 0, 1, 0, 0);
+          cached.ctx.clearRect(0, 0, cached.canvas.width || 1, cached.canvas.height || 1);
+          cached.canvas.width = 1;
+          cached.canvas.height = 1;
+        } catch (_) {}
+      }
+      delete canvasCache[key];
+    });
+
+    const app = getApp();
+    if (this._routeResultToken && app && app.globalData && app.globalData.resultDataMap) {
+      delete app.globalData.resultDataMap[this._routeResultToken];
+      try { storage.remove('resultData:' + this._routeResultToken); } catch (_) {}
+    }
+    if (app && app.globalData && app.globalData.pendingResultData) {
+      const pendingToken = app.globalData.pendingResultData.resultToken || '';
+      if (!this._routeResultToken || pendingToken === this._routeResultToken) {
+        app.globalData.pendingResultData = null;
+      }
+    }
+
+    this.setData({
+      mappedPixelData: [],
+      gridData: [],
+      rgbData: [],
+      colorPalette: [],
+      colorStats: [],
+      canvas2dReadyMap: {},
+      renderedPatternUrl: '',
+      renderedResultUrl: '',
+      currentPreviewUrl: '',
+      warmedOriginalUrl: '',
+      mirroredOriginalUrl: ''
+    });
   },
 
   onCanvas2dReady(e) {

@@ -1,5 +1,6 @@
 const request = require('../../utils/request');
 const { hasSession } = require('../../utils/profile-guard');
+const loginTrigger = require('../../utils/login-trigger');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const { API_BASE_URL } = require('../../utils/config');
 
@@ -59,9 +60,13 @@ Page({
   _swipeRaf: null,
   _renderedThumbKeys: null,
   _thumbRenderTimer: null,
+  _patternById: null,
+  _patternRenderDataById: null,
 
   onLoad() {
     this._renderedThumbKeys = new Set();
+    this._patternById = {};
+    this._patternRenderDataById = {};
     this.calcNavTop();
   },
   onShow() {
@@ -129,7 +134,7 @@ Page({
 
     if (!hasSession()) {
       wx.showToast({ title: '请先登录', icon: 'none' });
-      wx.switchTab({ url: '/pages/index/index' });
+      loginTrigger.showLogin();
       this.setData({ loading: false, loadingMore: false });
       return Promise.resolve();
     }
@@ -139,6 +144,10 @@ Page({
       pageSize: this.data.pageSize
     })
       .then((res) => {
+        if (reset) {
+          this._patternById = {};
+          this._patternRenderDataById = {};
+        }
         const newItems = (Array.isArray(res.list) ? res.list : []).map(item => {
           let mappedPixelData = [];
           try {
@@ -171,7 +180,7 @@ Page({
             });
           }
 
-          return {
+          const listItem = {
             id: item.id,
             name: item.name || ('图纸#' + item.id),
             gridSize: item.gridSize,
@@ -182,7 +191,6 @@ Page({
             sourceClass: this.getPatternSourceClass(sourceType),
             draftId: item.draftId || null,
             historyId: item.historyId || null,
-            mappedPixelData,
             sourceUrl: isAiSource ? '' : resolvedSourceUrl,
             coverUrl: isAiSource ? '' : (resolvedCoverUrl || resolvedSourceUrl),
             createdAt: this.formatTime(item.createdAt),
@@ -191,6 +199,15 @@ Page({
             isDraftSource,
             hasCanvasCover: hasMappedData && (isDraftSource || isAiSource || !resolvedCoverUrl),
           };
+          this._patternById[String(listItem.id)] = listItem;
+          if (hasMappedData) {
+            this._patternRenderDataById[String(listItem.id)] = {
+              gridSize: listItem.gridSize || 64,
+              mappedPixelData,
+              updatedAt: item.updatedAt || item.createdAt || ''
+            };
+          }
+          return listItem;
         });
 
         const patterns = reset ? newItems : [...this.data.patterns, ...newItems];
@@ -235,7 +252,8 @@ Page({
   },
 
   onItemTap(e) {
-    const item = e.currentTarget.dataset.item;
+    const item = this._getPatternById(e.currentTarget.dataset.id);
+    if (!item) return;
     const isAi = item.sourceType === 'AI' || (item.sourceLabel === 'AI生成') ? '&isAi=1' : '';
     wx.navigateTo({
       url: '/pages/preview/preview?boxId=' + item.id + isAi
@@ -260,6 +278,8 @@ Page({
           request.delete('/box/delete/' + id)
             .then(() => {
               const patterns = this.data.patterns.filter(p => String(p.id) !== String(id));
+              if (this._patternById) delete this._patternById[String(id)];
+              if (this._patternRenderDataById) delete this._patternRenderDataById[String(id)];
               this.setData({ patterns }, () => {
                 this.applyFilter();
                 if (this._renderedThumbKeys) this._renderedThumbKeys.clear();
@@ -277,7 +297,8 @@ Page({
   closeSwipe() {
     const offsets = { ...this.data.swipedOffsets };
     Object.keys(offsets).forEach(k => { offsets[k] = 0; });
-    this.setData({ swipedOffsets: offsets, touchItemId: null, touchLastX: 0, isSwiping: false });
+    this._pendingSwipeOffset = null;
+    this.setData({ swipedOffsets: offsets, touchItemId: null, touchLastX: 0, isSwiping: false, swipeOffset: 0 });
   },
 
   formatTime(timeStr) {
@@ -338,7 +359,8 @@ Page({
 
   onRename(e) {
     if (this._renaming) return;
-    const item = e.currentTarget.dataset.item;
+    const item = this._getPatternById(e.currentTarget.dataset.id);
+    if (!item) return;
     this.closeSwipe();
     wx.showModal({
       title: '重命名',
@@ -359,6 +381,9 @@ Page({
                 }
                 return p;
               });
+              if (this._patternById && this._patternById[String(item.id)]) {
+                this._patternById[String(item.id)].name = newName;
+              }
               this.setData({ patterns }, () => {
                 this.applyFilter();
               });
@@ -391,6 +416,7 @@ Page({
       isSwiping: true,
       swipeOffset: offsets[String(id)] || 0,
     });
+    this._pendingSwipeOffset = null;
   },
 
   onTouchMove(e) {
@@ -421,12 +447,13 @@ Page({
     const snapOpen = Math.abs(currentOffset) > threshold;
     this.setData({
       [`swipedOffsets.${id}`]: snapOpen ? -this.data.swipeOpenPx : 0,
-      swipeOffset: 0,
+      swipeOffset: snapOpen ? -this.data.swipeOpenPx : 0,
       touchItemId: null,
       touchStartX: 0,
       touchLastX: 0,
       isSwiping: false,
     });
+    this._pendingSwipeOffset = null;
   },
 
   _scheduleSwipeOffset(offset) {
@@ -438,8 +465,7 @@ Page({
       if (!id || this._pendingSwipeOffset === null) return;
       const next = this._pendingSwipeOffset;
       this.setData({
-        swipeOffset: next,
-        [`swipedOffsets.${id}`]: next
+        swipeOffset: next
       });
     };
     if (wx.nextTick) {
@@ -462,6 +488,11 @@ Page({
       return name.includes(kw);
     });
     this.setData({ filteredPatterns: filtered });
+  },
+
+  _getPatternById(id) {
+    const key = String(id || '');
+    return (this._patternById && this._patternById[key]) || (this.data.patterns || []).find(p => String(p.id) === key) || null;
   },
 
   scheduleRenderThumbnails(delay = 0) {
@@ -499,10 +530,13 @@ Page({
   },
 
   _getThumbRenderKey(item, mode) {
-    return `${mode}:${item.id}:${item.gridSize}:${item.updatedAt || item.createdAt || ''}`;
+    const renderData = this._patternRenderDataById && this._patternRenderDataById[String(item.id)];
+    return `${mode}:${item.id}:${item.gridSize}:${(renderData && renderData.updatedAt) || item.updatedAt || item.createdAt || ''}`;
   },
 
   _renderOneThumbnail(item, mode) {
+    const renderData = this._patternRenderDataById && this._patternRenderDataById[String(item.id)];
+    if (!renderData || !renderData.mappedPixelData || !renderData.mappedPixelData.length) return;
     const canvasId = mode === 'thumb' ? '#boxThumbCanvas' + item.id : '#boxListCanvas' + item.id;
     const renderKey = this._getThumbRenderKey(item, mode);
     const query = wx.createSelectorQuery();
@@ -522,14 +556,14 @@ Page({
         ctx.setTransform ? ctx.setTransform(dpr, 0, 0, dpr, 0, 0) : ctx.scale(dpr, dpr);
         ctx.imageSmoothingEnabled = false;
 
-        this._drawThumbnailGrid(ctx, item, size);
+        this._drawThumbnailGrid(ctx, renderData, size);
         this._renderedThumbKeys.add(renderKey);
       });
   },
 
-  _drawThumbnailGrid(ctx, item, size) {
-    const gridSize = Number(item.gridSize || 64);
-    const mappedPixelData = item.mappedPixelData || [];
+  _drawThumbnailGrid(ctx, renderData, size) {
+    const gridSize = Number(renderData.gridSize || 64);
+    const mappedPixelData = renderData.mappedPixelData || [];
     const sampleStep = Math.max(1, Math.ceil(gridSize / THUMB_MAX_SAMPLE_GRID));
     const blockSize = size / Math.ceil(gridSize / sampleStep);
 

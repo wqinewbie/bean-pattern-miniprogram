@@ -32,9 +32,9 @@
     <!-- 缩略图模式 -->
     <view wx:elif="{{viewMode === 'thumb'}}" class="patterns-grid">
       <view wx:for="{{filteredPatterns}}" wx:key="id" class="pattern-card">
-        <view class="pattern-thumb" bindtap="onItemTap" data-item="{{item}}">
+        <view class="pattern-thumb" bindtap="onItemTap" data-id="{{item.id}}">
           <canvas wx:if="{{item.hasCanvasCover}}" id="boxThumbCanvas{{item.id}}" class="thumb-canvas" type="2d"/>
-          <image wx:elif="{{item.sourceUrl || item.coverUrl}}" class="thumb-img" src="{{item.sourceUrl || item.coverUrl}}" mode="aspectFill" />
+          <image wx:elif="{{item.sourceUrl || item.coverUrl}}" class="thumb-img" src="{{item.sourceUrl || item.coverUrl}}" mode="aspectFill" lazy-load="true" />
           <view wx:else class="thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
           <view wx:if="{{item.sourceLabel}}" class="source-badge source-badge--{{item.sourceClass}}">
             <image wx:if="{{item.sourceClass==='ai'}}" class="source-icon" src="/assets/icons/lucide-sparkles-brown.svg" mode="aspectFit"/>
@@ -47,7 +47,7 @@
           <view class="pattern-name-row">
             <text class="pattern-name">{{item.name || '未命名作品'}}</text>
             <view class="pattern-name-actions">
-              <view class="icon-btn icon-btn--rename" catchtap="onRename" data-item="{{item}}">
+              <view class="icon-btn icon-btn--rename" catchtap="onRename" data-id="{{item.id}}">
                 <text class="icon-btn-emoji">✏️</text>
               </view>
               <view class="icon-btn icon-btn--delete" catchtap="onDelete" data-id="{{item.id}}">
@@ -64,7 +64,7 @@
       <view wx:for="{{filteredPatterns}}" wx:key="id" class="list-item-wrapper">
         <!-- 操作按钮背景层 -->
         <view class="list-actions-bg">
-          <view class="list-action-bg list-action-bg--rename" catchtap="onRename" data-item="{{item}}">
+          <view class="list-action-bg list-action-bg--rename" catchtap="onRename" data-id="{{item.id}}">
             <text>重命名</text>
           </view>
           <view class="list-action-bg list-action-bg--delete" catchtap="onDelete" data-id="{{item.id}}">
@@ -72,15 +72,15 @@
           </view>
         </view>
         <!-- 滑动层 -->
-        <view class="list-item {{touchItemId === item.id && isSwiping ? 'swiping' : ''}}"
-              style="transform: translateX({{swipedOffsets[item.id] || 0}}px);"
+        <view class="list-item {{touchItemId == item.id && isSwiping ? 'swiping' : ''}}"
+              style="transform: translateX({{touchItemId == item.id ? swipeOffset : (swipedOffsets[item.id] || 0)}}px);"
               bindtouchstart="onTouchStart"
               bindtouchmove="onTouchMove"
               bindtouchend="onTouchEnd"
               data-id="{{item.id}}">
-          <view class="list-item-main" bindtap="onItemTap" data-item="{{item}}">
+          <view class="list-item-main" bindtap="onItemTap" data-id="{{item.id}}">
             <canvas wx:if="{{item.hasCanvasCover}}" id="boxListCanvas{{item.id}}" class="list-thumb thumb-canvas" type="2d"/>
-            <image wx:elif="{{item.sourceUrl || item.coverUrl}}" class="list-thumb" src="{{item.sourceUrl || item.coverUrl}}" mode="aspectFill" />
+            <image wx:elif="{{item.sourceUrl || item.coverUrl}}" class="list-thumb" src="{{item.sourceUrl || item.coverUrl}}" mode="aspectFill" lazy-load="true" />
             <view wx:else class="list-thumb list-thumb--ph">{{item.gridSize || 64}}</view>
             <view class="list-info">
               <text class="list-name">{{item.name || '未命名作品'}}</text>
@@ -103,4 +103,5 @@
 
     <view style="height: 48rpx;"></view>
   </scroll-view>
+  <login-modal id="login-modal" />
 </view>

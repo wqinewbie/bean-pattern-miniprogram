@@ -80,10 +80,9 @@ page {
 }
 
 .canvas-wrapper {
+  position: relative;
   width: 100%;
   height: 100%;
-  will-change: transform;
-  transform-origin: center center;
 }
 
 .focus-panel {
@@ -100,6 +99,8 @@ page {
   flex-direction: column;
   transition: height 0.12s ease-out;
   overflow: hidden;
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .focus-panel-handle {
@@ -244,6 +245,17 @@ page {
   white-space: nowrap;
 }
 
+.cards-section--compact {
+  flex: 0 0 116rpx;
+  min-height: 116rpx;
+  padding-bottom: 24rpx;
+}
+
+.cards-section--expanded {
+  flex: 1;
+  min-height: 0;
+}
+
 .cards-grid {
   gap: 16rpx;
   padding: 0;
@@ -261,7 +273,9 @@ page {
 
 .cards-grid--expanded {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(8, 1fr);
+  gap: 14rpx;
+  padding: 4rpx 0 28rpx;
   white-space: normal;
 }
 
@@ -309,8 +323,102 @@ page {
 }
 
 .card-item--done {
-  opacity: 0.6;
-  filter: grayscale(0.2);
+  /* 去掉整体变灰，改用 bead 级别的橙色边框 + 微深背景 */
+}
+
+.card-item--done.card-item--active {
+  /* 完成态选中时保留橙色边框，仅缩放反馈 */
+  transform: scale(0.97);
+  border-color: #FF9800;
+}
+
+.card-item--done .card-bead {
+  border-color: #FF9800;
+  border-width: 5rpx;
+  box-shadow: inset 0 0 0 1000rpx rgba(0, 0, 0, 0.12);
+}
+
+/* 展开模式 - 色号图底部颜色汇总风格 */
+.cards-grid--expanded .card-item {
+  aspect-ratio: 1;
+  padding: 0;
+  border: none;
+  border-radius: 12rpx;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.cards-grid--expanded .card-item:active {
+  transform: scale(0.93);
+}
+
+.cards-grid--expanded .card-item--active {
+  transform: scale(1.06);
+  box-shadow: none;
+  border-color: transparent;
+}
+
+.cards-grid--expanded .card-item--active .card-bead {
+  box-shadow: 0 0 0 4rpx #FF9800, 0 4rpx 16rpx rgba(255, 152, 0, 0.3);
+}
+
+.cards-grid--expanded .card-item--done.card-item--active .card-bead {
+  box-shadow: inset 0 0 0 1000rpx rgba(0, 0, 0, 0.12);
+}
+
+.cards-grid--expanded .card-item--done {
+  /* 去掉整体变灰 */
+}
+
+.cards-grid--expanded .card-bead {
+  width: 100%;
+  height: 100%;
+  border-radius: 12rpx;
+  border: none;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4rpx;
+}
+
+.cards-grid--expanded .card-item--done .card-bead {
+  border: 4rpx solid #FF9800;
+  box-shadow: inset 0 0 0 1000rpx rgba(0, 0, 0, 0.12);
+}
+
+.cards-grid--expanded .card-id {
+  font-size: 24rpx;
+  font-weight: 800;
+  text-shadow: none;
+  line-height: 1.2;
+}
+
+.cards-grid--expanded .card-count-badge {
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.cards-grid--expanded .card-info {
+  display: none;
+}
+
+.cards-grid--expanded .card-check {
+  position: absolute;
+  right: 2rpx;
+  bottom: 2rpx;
+  width: auto;
+  height: auto;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1.2;
+  text-shadow: 0 1rpx 3rpx rgba(0, 0, 0, 0.35);
 }
 
 .card-bead {
@@ -333,6 +441,12 @@ page {
   border-width: 3rpx;
 }
 
+.cards-grid--compact .card-item--done .card-bead {
+  border-color: #FF9800;
+  border-width: 4rpx;
+  box-shadow: inset 0 0 0 1000rpx rgba(0, 0, 0, 0.12);
+}
+
 .card-id {
   font-size: 24rpx;
   font-weight: 800;
@@ -340,31 +454,35 @@ page {
 }
 
 .card-check {
-  font-size: 24rpx;
+  font-size: 26rpx;
   font-weight: 800;
   color: #FFFFFF;
   position: absolute;
-  right: -6rpx;
-  bottom: -6rpx;
-  width: 34rpx;
-  height: 34rpx;
-  background: #22c55e;
-  border-radius: 50%;
+  right: 2rpx;
+  bottom: 2rpx;
+  width: auto;
+  height: auto;
+  background: transparent;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 12rpx rgba(34, 197, 94, 0.5);
+  text-shadow: 0 1rpx 4rpx rgba(0, 0, 0, 0.35);
+  box-shadow: none;
 }
 
 .cards-grid--compact .card-check {
-  position: static;
+  position: absolute;
+  right: 2rpx;
+  bottom: 2rpx;
   width: auto;
   height: auto;
   background: transparent;
   border-radius: 0;
   box-shadow: none;
   color: #FFFFFF;
-  text-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.4);
+  font-size: 22rpx;
+  text-shadow: 0 1rpx 3rpx rgba(0, 0, 0, 0.35);
 }
 
 .card-info {

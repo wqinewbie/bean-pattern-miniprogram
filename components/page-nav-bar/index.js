@@ -6,7 +6,10 @@ Component({
     title:    { type: String, value: '' },
     subtitle: { type: String, value: '' },
     showBack: { type: Boolean, value: true },
-    bgColor:  { type: String, value: '#FFF9ED' }
+    bgColor:  { type: String, value: '#FFF9ED' },
+    titleColor: { type: String, value: '#5D4037' },
+    subtitleColor: { type: String, value: '#A1887F' },
+    backIcon: { type: String, value: '/assets/icons/lucide-arrow-left-brown.svg' }
   },
   data: {
     navTop: 0,

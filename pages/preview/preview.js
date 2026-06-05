@@ -10,6 +10,17 @@ const { previewSize, resultExportSize, patternExportSize } = require('../../util
 const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
 const { getWatermarkConfig } = require('../../utils/watermark-helper');
 
+function releaseCanvas2dComp(comp) {
+  if (!comp) return;
+  if (typeof comp.release === 'function') {
+    comp.release();
+  } else if (typeof comp.resizeWithDpr === 'function') {
+    comp.resizeWithDpr(1, 1, 1);
+  } else if (typeof comp.resizeSync === 'function') {
+    comp.resizeSync(1, 1);
+  }
+}
+
 Page({
   data: {
     sourceType: 'BOX',
@@ -80,6 +91,23 @@ Page({
     }
     this.loadDetail(sourceType, id);
   },
+
+  onUnload() {
+    ['#resultExport2dComp', '#patternExport2dComp', '#resultCanvas2dComp', '#patternCanvas2dComp'].forEach((selector) => {
+      releaseCanvas2dComp(this.selectComponent(selector));
+    });
+    this.setData({
+      mappedPixelData: [],
+      gridData: [],
+      colorPalette: [],
+      canvas2dReadyMap: {},
+      renderedPatternUrl: '',
+      renderedResultUrl: '',
+      currentPreviewUrl: '',
+      mirroredOriginalUrl: ''
+    });
+  },
+
   async loadWatermarkConfig() {
     try {
       const { appName, watermarkConfig } = await getWatermarkConfig();
@@ -142,7 +170,7 @@ Page({
       }
       const hasPatternData = parsedGridData.length > 0 && parsedColorPalette.length > 0;
       const recordSourceType = String(data.sourceType || data.source || data.type || '').toUpperCase();
-      const isAiStyle = recordSourceType.includes('AI');
+      const isAiStyle = this.data.isAiStyle || recordSourceType.includes('AI');
       const originalUrl = (sourceType === 'DRAFT') ? '' : (data.sourceUrl || data.coverUrl || '');
       const totalBeads = parsedColorPalette.reduce((sum, c) => sum + (c.count || 0), 0);
       const renderedPatternUrl = data.renderedPatternUrl || '';
@@ -204,7 +232,7 @@ Page({
     if (this.data.mirroredOriginalUrl) return;
 
     if (/^https?:\/\//i.test(originalUrl)) {
-      const mirrored = originalUrl + (originalUrl.includes('?') ? '&' : '?') + 'imageMogr2/flop';
+      const mirrored = originalUrl + (originalUrl.includes('?') ? '&' : '?') + 'imageMogr2/flip/horizontal';
       this.setData({ mirroredOriginalUrl: mirrored });
       if (this.data.activeTab === 'original') {
         this.setData({ currentPreviewUrl: mirrored });
@@ -261,13 +289,15 @@ Page({
         watermark: watermarkConfig || null
       };
       const layoutPreview = drawPatternWithAxes(ctx, gridData, colorPalette, currentSize, boardSize, drawOptions);
-      comp.resizeSync(layoutPreview.totalWidth, layoutPreview.totalHeight);
+      if (typeof comp.resizeWithDpr === 'function') comp.resizeWithDpr(layoutPreview.totalWidth, layoutPreview.totalHeight, 1);
+      else comp.resizeSync(layoutPreview.totalWidth, layoutPreview.totalHeight);
       const layout = drawPatternWithAxes(ctx, gridData, colorPalette, currentSize, boardSize, drawOptions);
       return comp.exportTempFilePath({ x: 0, y: 0, width: layout.totalWidth, height: layout.totalHeight });
     }).then((tempFilePath) => {
+      releaseCanvas2dComp(this.selectComponent('#patternExport2dComp'));
       if (tempFilePath) { this.setData({ renderedPatternUrl: tempFilePath }); console.log('[preview] pattern preview generated'); }
       this._patternPreviewGenerating = false;
-    }).catch((err) => { console.error('[preview] _generatePatternPreview2d failed', err); this._patternPreviewGenerating = false; });
+    }).catch((err) => { releaseCanvas2dComp(this.selectComponent('#patternExport2dComp')); console.error('[preview] _generatePatternPreview2d failed', err); this._patternPreviewGenerating = false; });
   },
 
   onSaveToMyPatterns() {
@@ -358,10 +388,12 @@ Page({
     console.log('[preview] _exportResultWith2d start');
     waitCanvas2dReady(this, 'resultExport2dComp', { timeout: 5000 }).then(({ comp, ctx, canvas }) => {
       const exportSize = resultExportSize(currentSize);
-      comp.resizeSync(exportSize, exportSize);
+      if (typeof comp.resizeWithDpr === 'function') comp.resizeWithDpr(exportSize, exportSize, 1);
+      else comp.resizeSync(exportSize, exportSize);
       renderResult(ctx, { gridData, colorPalette, gridSize: gridData.length }, { width: exportSize, height: exportSize });
       return comp.exportTempFilePath({ x: 0, y: 0, width: exportSize, height: exportSize });
     }).then((tempFilePath) => {
+      releaseCanvas2dComp(this.selectComponent('#resultExport2dComp'));
       if (tempFilePath) { this.setData({ renderedResultUrl: tempFilePath }); this._saveToAlbum(tempFilePath); } else throw new Error('导出失败');
     }).catch((err) => { console.error('[preview] _exportResultWith2d failed', err); this.setData({ savingToAlbum: false }); wx.showToast({ title: '保存失败', icon: 'none' }); });
   },
@@ -383,10 +415,12 @@ Page({
         watermark: watermarkConfig || null
       };
       const layoutPreview = drawPatternWithAxes(ctx, gridData, colorPalette, currentSize, boardSize, drawOptions);
-      comp.resizeSync(layoutPreview.totalWidth, layoutPreview.totalHeight);
+      if (typeof comp.resizeWithDpr === 'function') comp.resizeWithDpr(layoutPreview.totalWidth, layoutPreview.totalHeight, 1);
+      else comp.resizeSync(layoutPreview.totalWidth, layoutPreview.totalHeight);
       const layout = drawPatternWithAxes(ctx, gridData, colorPalette, currentSize, boardSize, drawOptions);
       return comp.exportTempFilePath({ x: 0, y: 0, width: layout.totalWidth, height: layout.totalHeight });
     }).then((tempFilePath) => {
+      releaseCanvas2dComp(this.selectComponent('#patternExport2dComp'));
       if (tempFilePath) { this.setData({ renderedPatternUrl: tempFilePath }); this._saveToAlbum(tempFilePath); } else throw new Error('导出失败');
     }).catch((err) => { console.error('[preview] _exportPatternWith2d failed', err); this.setData({ savingToAlbum: false }); wx.showToast({ title: '保存失败', icon: 'none' }); });
   },

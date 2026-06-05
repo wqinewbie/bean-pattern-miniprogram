@@ -1,7 +1,8 @@
 const request = require('../../utils/request');
-const { requireLogin, cacheProfile, hasSession } = require('../../utils/profile-guard');
+const { cacheProfile, hasSession } = require('../../utils/profile-guard');
 const popupManager = require('../../utils/popup-manager');
 const storage = require('../../utils/storage');
+const loginTrigger = require('../../utils/login-trigger');
 
 const app = getApp();
 
@@ -17,9 +18,6 @@ Page({
   data: {
     loading: false,
     loadingText: '处理中...',
-    showLoginModal: false,
-    isFirstLogin: true,
-    loginSubmitting: false,
     nickName: '',
     avatarUrl: '',
     isLoggedIn: false,
@@ -66,17 +64,19 @@ Page({
     const vipExpire = storage.get(storage.KEYS.VIP_EXPIRE, '');
     const isVip = vipExpire && new Date(vipExpire) > new Date();
     const magicCount = storage.get(storage.KEYS.MAGIC_COUNT, 0);
+    const bannerAutoplay = this.data.bannerList.length > 1;
     this.setData({
       isLoggedIn: loggedIn,
       nickName,
       avatarUrl,
       isVip,
-      magicCount
+      magicCount,
+      bannerAutoplay
     });
+
     if (!loggedIn) {
-      this.openLoginModal();
+      loginTrigger.showLogin();
     } else {
-      this.closeLoginModal();
       this.refreshUserProfile();
     }
   },
@@ -120,33 +120,6 @@ Page({
       });
   },
 
-  openLoginModal() {
-    if (this._loginModalTimer) clearTimeout(this._loginModalTimer);
-    const everRegistered = storage.get(storage.KEYS.EVER_REGISTERED, '');
-    this._loginModalTimer = setTimeout(() => {
-      this._loginModalTimer = null;
-      if (hasSession()) return;
-      this.setData({
-        showLoginModal: true,
-        isFirstLogin: !everRegistered,
-      });
-    }, 400);
-  },
-
-  closeLoginModal() {
-    const app = getApp();
-    if (app && typeof app.suppressSilentLogin === 'function') {
-      app.suppressSilentLogin();
-    }
-    if (this._loginModalTimer) {
-      clearTimeout(this._loginModalTimer);
-      this._loginModalTimer = null;
-    }
-    if (this.data.showLoginModal || this.data.loginSubmitting) {
-      this.setData({ showLoginModal: false, loginSubmitting: false });
-    }
-  },
-
   loadBanners() {
     const pickText = (value, fallback) => {
       if (typeof value !== 'string') return fallback;
@@ -163,7 +136,6 @@ Page({
           return { ...item };
         });
         if (!list.length) {
-          this._clearBannerResumeTimer();
           this.setData({
             bannerList: [],
             activeBanner: 0,
@@ -203,13 +175,6 @@ Page({
       .catch(() => {});
   },
 
-  _clearBannerResumeTimer() {
-    if (this._bannerResumeTimer) {
-      clearTimeout(this._bannerResumeTimer);
-      this._bannerResumeTimer = null;
-    }
-  },
-
   loadTutorials() {
     request.get('/tutorial/list')
       .then((data) => {
@@ -228,7 +193,10 @@ Page({
   },
 
   onBannerChange(e) {
-    const current = (e.detail && typeof e.detail.current === 'number') ? e.detail.current : 0;
+    const detail = e.detail || {};
+    const current = typeof detail.current === 'number' ? detail.current : 0;
+    const { source } = detail;
+    if (source !== 'autoplay' && source !== 'touch') return;
     if (current === this.data.activeBanner) return;
     this.setData({ activeBanner: current });
   },
@@ -302,7 +270,7 @@ Page({
   // 领取Banner礼品
   async claimBannerGift(bannerId, config) {
     if (!this.checkLogin()) {
-      this._loginCallback = () => this.claimBannerGift(bannerId, config);
+      loginTrigger.showLogin(() => this.claimBannerGift(bannerId, config));
       return;
     }
 
@@ -344,81 +312,9 @@ Page({
     }
   },
 
-  onQuickWxLogin() {
-    if (this.data.loginSubmitting) return;
-    this.setData({ loginSubmitting: true });
-
-    new Promise((resolve, reject) => {
-      wx.login({
-        success: (res) => {
-          if (!res.code) {
-            reject(new Error('NO_CODE'));
-            return;
-          }
-          resolve(res.code);
-        },
-        fail: (err) => reject(err || new Error('WX_LOGIN_FAILED')),
-      });
-    })
-      .then((code) => request.post('/auth/login', { code }))
-      .then((ret) => {
-        const sessionId = ret && ret.sessionId;
-        if (!sessionId) throw new Error('NO_SESSION');
-
-        storage.set(storage.KEYS.SESSION_ID, sessionId);
-        storage.set(storage.KEYS.EVER_REGISTERED, true);
-        if (app && typeof app.resumeSilentLogin === 'function') {
-          app.resumeSilentLogin();
-        }
-
-        const profile = ret.profile || {};
-        if (profile.nickName) storage.set(storage.KEYS.NICK_NAME, profile.nickName);
-        if (profile.avatarUrl) storage.set(storage.KEYS.AVATAR_URL, profile.avatarUrl);
-        cacheProfile(profile);
-
-        const vipExpire = profile.vipExpireAt || profile.vipExpire || '';
-        if (vipExpire) storage.set(storage.KEYS.VIP_EXPIRE, vipExpire);
-        const isVip = vipExpire && new Date(vipExpire) > new Date();
-        const aiQuota = Number(profile.aiQuota !== undefined ? profile.aiQuota : profile.magicCount);
-        const magicCount = Number.isNaN(aiQuota) ? 0 : aiQuota;
-        storage.set(storage.KEYS.MAGIC_COUNT, magicCount);
-
-        this.setData({
-          nickName: profile.nickName || this.data.nickName,
-          avatarUrl: profile.avatarUrl || this.data.avatarUrl,
-          showLoginModal: false,
-          isFirstLogin: false,
-          isLoggedIn: true,
-          isVip,
-          magicCount,
-        });
-
-        wx.showToast({ title: '登录成功', icon: 'success' });
-        if (app && typeof app.fetchWatermarkConfig === 'function') {
-          app.fetchWatermarkConfig();
-        }
-
-        if (typeof this._loginCallback === 'function') {
-          const cb = this._loginCallback;
-          this._loginCallback = null;
-          setTimeout(() => cb(), 100);
-        }
-      })
-      .catch(() => {
-        wx.showToast({ title: '登录失败，请重试', icon: 'none' });
-      })
-      .finally(() => {
-        this.setData({ loginSubmitting: false });
-      });
-  },
-
-  onCloseLoginModal() {
-    this.closeLoginModal();
-  },
-
   checkLogin() {
-    if (requireLogin({ silentToast: true })) return true;
-    this.openLoginModal();
+    if (hasSession()) return true;
+    loginTrigger.showLogin();
     return false;
   },
 
@@ -457,11 +353,12 @@ Page({
   },
 
   onHide() {
-    this._clearBannerResumeTimer();
+    if (this.data.bannerList.length > 1) {
+      this.setData({ bannerAutoplay: false });
+    }
   },
 
   onUnload() {
-    this._clearBannerResumeTimer();
     if (this._loginModalTimer) clearTimeout(this._loginModalTimer);
     this._loginModalTimer = null;
     this._loginCallback = null;

@@ -27,9 +27,9 @@
     <!-- 缩略图模式 -->
     <view wx:elif="{{viewMode === 'thumb'}}" class="patterns-grid">
       <view wx:for="{{filteredHistory}}" wx:key="id" class="pattern-card">
-        <view class="pattern-thumb" bindtap="onItemTap" data-item="{{item}}">
+        <view class="pattern-thumb" bindtap="onItemTap" data-id="{{item.id}}">
           <canvas wx:if="{{item.hasCanvasCover}}" id="histThumbCanvas{{item.id}}" class="thumb-canvas" type="2d"/>
-          <image wx:elif="{{item.sourceUrl}}" class="thumb-img" src="{{item.sourceUrl}}" mode="aspectFill" />
+          <image wx:elif="{{item.sourceUrl}}" class="thumb-img" src="{{item.sourceUrl}}" mode="aspectFill" lazy-load="true" />
           <view wx:else class="thumb-ph">{{item.gridSize || 64}}x{{item.gridSize || 64}}</view>
           <view wx:if="{{item.boxId}}" class="source-badge source-badge--saved">
             <text>已保存</text>
@@ -60,14 +60,14 @@
           </view>
         </view>
         <!-- 滑动层 -->
-        <view class="list-item {{touchItemId === item.id && isSwiping ? 'swiping' : ''}}"
-              style="transform: translateX({{swipedOffsets[item.id] || 0}}px);"
+        <view class="list-item {{touchItemId == item.id && isSwiping ? 'swiping' : ''}}"
+              style="transform: translateX({{touchItemId == item.id ? swipeOffset : (swipedOffsets[item.id] || 0)}}px);"
               bindtouchstart="onTouchStart"
               bindtouchmove="onTouchMove"
               bindtouchend="onTouchEnd"
               data-id="{{item.id}}">
-          <view class="list-item-main" bindtap="onItemTap" data-item="{{item}}">
-            <image wx:if="{{item.sourceUrl}}" class="list-thumb" src="{{item.sourceUrl}}" mode="aspectFill" />
+          <view class="list-item-main" bindtap="onItemTap" data-id="{{item.id}}">
+            <image wx:if="{{item.sourceUrl}}" class="list-thumb" src="{{item.sourceUrl}}" mode="aspectFill" lazy-load="true" />
             <view wx:else class="list-thumb list-thumb--ph">{{item.gridSize || 64}}</view>
             <view class="list-info">
               <text class="list-name">{{item.name || ('记录#'+item.id)}}</text>
@@ -96,4 +96,5 @@
     <bead-canvas2d id="resultCanvas2dComp" canvasId="historyResultCanvas2d" width="1024" height="1024" />
     <bead-canvas2d id="patternCanvas2dComp" canvasId="historyPatternCanvas2d" width="2048" height="2048" />
   </view>
+  <login-modal id="login-modal" />
 </view>

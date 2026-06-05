@@ -1,5 +1,6 @@
 const request = require('./request');
 const storage = require('./storage');
+const loginTrigger = require('./login-trigger');
 
 function hasText(v) {
   return !!(v && String(v).trim());
@@ -29,7 +30,7 @@ function cacheProfile(profile) {
 }
 
 function openProfilePage() {
-  wx.switchTab({ url: '/pages/index/index' });
+  loginTrigger.showLogin();
 }
 
 function requireLogin(options = {}) {

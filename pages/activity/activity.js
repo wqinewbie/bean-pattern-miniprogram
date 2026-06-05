@@ -1,4 +1,6 @@
 const request = require('../../utils/request');
+const { hasSession } = require('../../utils/profile-guard');
+const loginTrigger = require('../../utils/login-trigger');
 
 Page({
   data: {
@@ -186,6 +188,13 @@ Page({
     this.countdownTimer = setInterval(updateCountdown, 1000);
   },
 
+  // 检查登录状态
+  checkLogin() {
+    if (hasSession()) return true;
+    loginTrigger.showLogin();
+    return false;
+  },
+
   // 点击操作按钮
   onActionButton() {
     const { buttonAction, buttonUrl, participated, canParticipate } = this.data;
@@ -208,6 +217,10 @@ Page({
 
     switch (buttonAction) {
       case 'CLAIM':
+        if (!this.checkLogin()) {
+          loginTrigger.showLogin(() => this.claimGift());
+          return;
+        }
         this.claimGift();
         break;
       case 'NAVIGATE':

@@ -495,7 +495,8 @@ Page({
   closeSwipe() {
     const offsets = { ...this.data.swipedOffsets };
     Object.keys(offsets).forEach(k => { offsets[k] = 0; });
-    this.setData({ swipedOffsets: offsets, touchItemId: null, touchLastX: 0, isSwiping: false });
+    this._pendingSwipeOffset = null;
+    this.setData({ swipedOffsets: offsets, touchItemId: null, touchLastX: 0, isSwiping: false, swipeOffset: 0 });
   },
 
   onTouchStart(e) {
@@ -514,6 +515,7 @@ Page({
       isSwiping: true,
       swipeOffset: offsets[String(id)] || 0,
     });
+    this._pendingSwipeOffset = null;
   },
 
   onTouchMove(e) {
@@ -538,8 +540,7 @@ Page({
       if (!id || this._pendingSwipeOffset === null) return;
       const next = this._pendingSwipeOffset;
       this.setData({
-        swipeOffset: next,
-        [`swipedOffsets.${id}`]: next
+        swipeOffset: next
       });
     };
     if (wx.nextTick) {
@@ -559,11 +560,12 @@ Page({
     const snapOpen = Math.abs(currentOffset) > threshold;
     this.setData({
       [`swipedOffsets.${id}`]: snapOpen ? -this.data.swipeOpenPx : 0,
-      swipeOffset: 0,
+      swipeOffset: snapOpen ? -this.data.swipeOpenPx : 0,
       touchItemId: null,
       touchStartX: 0,
       touchLastX: 0,
       isSwiping: false,
     });
+    this._pendingSwipeOffset = null;
   },
 });

@@ -63,6 +63,7 @@
   "usingComponents": {
     "global-popup": "/components/popup/index",
     "bead-canvas2d": "/components/bead-canvas2d/index",
-    "app-select": "/components/app-select/index"
+    "app-select": "/components/app-select/index",
+    "login-modal": "/components/login-modal/index"
   }
 }

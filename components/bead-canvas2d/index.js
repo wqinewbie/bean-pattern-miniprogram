@@ -78,13 +78,14 @@ Component({
         this._ctx = info.ctx;
         this._dpr = info.dpr;
 
-        resize2dCanvas({
+        const resized = resize2dCanvas({
           canvas: this._canvas,
           ctx: this._ctx,
           width: this.data.width,
           height: this.data.height,
           dpr: this._dpr
         });
+        if (resized && resized.dpr) this._dpr = resized.dpr;
 
         this.setData({ ready: true, dpr: this._dpr });
         this.triggerEvent('ready', {
@@ -151,28 +152,30 @@ Component({
       const nextHeight = Number(height) || this.data.height;
       const nextDpr = Math.max(1, Number(dpr) || this._dpr || 1);
       this._dpr = nextDpr;
-      resize2dCanvas({
+      const resized = resize2dCanvas({
         canvas: this._canvas,
         ctx: this._ctx,
         width: nextWidth,
         height: nextHeight,
         dpr: nextDpr
       });
-      this.setData({ width: nextWidth, height: nextHeight, dpr: nextDpr });
+      if (resized && resized.dpr) this._dpr = resized.dpr;
+      this.setData({ width: nextWidth, height: nextHeight, dpr: this._dpr });
     },
 
     _doResize(width, height) {
       if (this._destroyed || !this._canvas || !this._ctx) return;
       const nextWidth = Number(width) || this.data.width;
       const nextHeight = Number(height) || this.data.height;
-      resize2dCanvas({
+      const resized = resize2dCanvas({
         canvas: this._canvas,
         ctx: this._ctx,
         width: nextWidth,
         height: nextHeight,
         dpr: this._dpr || 1
       });
-      this.setData({ width: nextWidth, height: nextHeight });
+      if (resized && resized.dpr) this._dpr = resized.dpr;
+      this.setData({ width: nextWidth, height: nextHeight, dpr: this._dpr });
     },
 
     clear() {
@@ -196,6 +199,26 @@ Component({
         dpr: this._dpr || 1,
         ready: !!(this.data.ready && this._canvas && this._ctx && !this._destroyed)
       };
+    },
+
+    release() {
+      if (this._resizeTimer) {
+        clearTimeout(this._resizeTimer);
+        this._resizeTimer = null;
+      }
+      if (!this._canvas || !this._ctx || this._destroyed) return;
+      this._ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this._ctx.clearRect(0, 0, this._canvas.width || 1, this._canvas.height || 1);
+      this._dpr = 1;
+      resize2dCanvas({
+        canvas: this._canvas,
+        ctx: this._ctx,
+        width: 1,
+        height: 1,
+        dpr: 1,
+        maxPhysicalSize: 0
+      });
+      this.setData({ width: 1, height: 1, dpr: 1 });
     },
 
     async exportTempFilePath(options) {

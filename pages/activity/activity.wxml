@@ -125,7 +125,10 @@
     </view>
 
     <!-- 底部操作栏 -->
-    <view class="action-bar">
+
+  <login-modal id="login-modal" />
+
+  <view class="action-bar">
       <button
         class="action-button {{canParticipate && !participated ? 'active' : 'disabled'}}"
         bindtap="onActionButton"
