@@ -16,7 +16,6 @@ Page({
 
   data: {
     uploadedImage: '',
-    aiInstruction: '',
     isGenerating: false,
 
     // 魔法风格（从后台获取）
@@ -586,10 +585,6 @@ Page({
     this.setData({ previewX: x, previewY: y, previewScale: scale });
   },
 
-  onAiInstructionInput(e) {
-    this.setData({ aiInstruction: e.detail.value });
-  },
-
   onStyleTap(e) {
     this.setData({ selectedStyle: e.currentTarget.dataset.style });
   },
@@ -711,7 +706,6 @@ Page({
         return this.callAiGenerate({
           imageUrl,
           style: selectedStyle,
-          prompt: this.data.aiInstruction || '',
           sizeMode: sizeMode,
           gridMin: gridRange.gridMin,
           gridMax: gridRange.gridMax,

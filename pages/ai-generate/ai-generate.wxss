@@ -188,35 +188,6 @@
   width: 2rpx;
 }
 
-/* ─── AI 指令卡片 ─── */
-.ai-instruction-card {
-  background: #fff;
-  border-radius: 28rpx;
-  padding: 0;
-  border: 4rpx solid #F3E5F5;
-  box-shadow: 0 8rpx 30rpx rgba(156,39,176,0.05);
-  margin: 0 auto 28rpx;
-  box-sizing: border-box;
-  width: 640rpx;
-}
-
-.ai-instruction-input {
-  width: 100%;
-  min-height: 64rpx;
-  font-size: 28rpx;
-  font-weight: 500;
-  color: #5D4037;
-  line-height: 1.35;
-  background: transparent;
-  box-sizing: border-box;
-  padding: 18rpx 24rpx;
-}
-
-.ai-instruction-input::-webkit-input-placeholder {
-  color: #D0B8A1;
-  font-weight: 400;
-}
-
 /* ─── Section ─── */
 .section {
   margin-bottom: 32rpx;

@@ -38,18 +38,6 @@
       </view>
     </view>
 
-    <!-- AI 指令（可选） -->
-    <view class="ai-instruction-card">
-      <textarea
-        class="ai-instruction-input"
-        placeholder="AI指令（可选）例如：去除背景..."
-        value="{{aiInstruction}}"
-        bindinput="onAiInstructionInput"
-        maxlength="100"
-        auto-height
-      />
-    </view>
-
     <!-- 魔法风格选择 -->
     <view class="section">
       <view class="section-header">
