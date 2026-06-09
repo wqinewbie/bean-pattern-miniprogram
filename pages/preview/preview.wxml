@@ -6,7 +6,7 @@
     nav-top="{{navTop}}"
     bgColor="{{isAiStyle ? '#050505' : '#FFF9ED'}}"
     titleColor="{{isAiStyle ? '#FFD54F' : '#5D4037'}}"
-    subtitleColor="{{isAiStyle ? 'rgba(224,224,224,0.62)' : '#A1887F'}}"
+    subtitleColor="{{isAiStyle ? 'rgba(255,213,79,0.7)' : '#A1887F'}}"
     backIcon="{{isAiStyle ? '/assets/icons/lucide-arrow-left-gold.svg' : '/assets/icons/lucide-arrow-left-brown.svg'}}"
     bind:back="onBack"/>
 
@@ -57,6 +57,11 @@
       </view>
 
       <!-- 操作按钮 -->
+      <view wx:if="{{isAiStyle}}" class="vip-ribbon">
+        <text class="vip-text">AI</text>
+        <text wx:if="{{aiStyleTag && aiStyleTag !== 'AI'}}" class="vip-style">{{aiStyleTag}}</text>
+      </view>
+
       <view class="action-stack" wx:if="{{hasPatternData}}">
         <view class="action-btn action-btn--edit" bindtap="handleToggleEditMode">
           <text>进入图纸编辑模式</text>

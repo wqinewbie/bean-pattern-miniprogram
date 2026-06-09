@@ -220,6 +220,8 @@ page {
   position: absolute;
   top: 0;
   right: 28rpx;
+  min-width: 80rpx;
+  max-width: 160rpx;
   background: linear-gradient(180deg, #FFD54F 0%, #FF9800 50%, #D68400 100%);
   padding: 16rpx 20rpx 24rpx;
   border-radius: 0 0 16rpx 16rpx;
@@ -240,6 +242,20 @@ page {
   font-size: 20rpx;
   font-weight: 900;
   letter-spacing: 0.3em;
+}
+
+.vip-style {
+  max-width: 120rpx;
+  margin-top: 6rpx;
+  color: #3E2723;
+  font-size: 18rpx;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 操作按钮 */

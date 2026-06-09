@@ -79,6 +79,7 @@ Page({
             historyId,
             aiImageUrl: taskData.aiImageUrl || '',
             originalImageUrl: taskData.originalImageUrl || taskData.imageUrl || taskData.sourceUrl || taskData.inputImageUrl || '',
+            aiStyle: taskData.aiStyle || taskData.style || '',
             sizeMode: taskData.sizeMode || 'default',
             brand: taskData.brand || 'MARD',
             colorCount: taskData.colorCount || 0,

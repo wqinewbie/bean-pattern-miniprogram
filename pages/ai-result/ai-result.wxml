@@ -66,6 +66,7 @@
       <view class="vip-ribbon">
         <text class="vip-icon">✨</text>
         <text class="vip-text">AI</text>
+        <text wx:if="{{aiStyleTag && aiStyleTag !== 'AI'}}" class="vip-style">{{aiStyleTag}}</text>
         <view class="vip-dot"></view>
       </view>
 

@@ -12,6 +12,7 @@ Page({
   data: {
     taskId: '',
     aiImageUrl: '',
+    aiStyleTag: 'AI',
     originalImageUrl: '',
     displayOriginalUrl: '',
     resultImageUrl: '',
@@ -58,7 +59,8 @@ Page({
     const originalImageUrl = decodeURIComponent(options.originalImageUrl || '');
     const displayOriginalUrl = this.resolveDisplayOriginalUrl(originalImageUrl, aiImageUrl);
 
-    this.setData({ taskId, historyId, sizeMode, brand, mirror, aiImageUrl, originalImageUrl, displayOriginalUrl });
+    const aiStyleTag = options.aiStyle ? decodeURIComponent(options.aiStyle) : 'AI';
+    this.setData({ taskId, historyId, sizeMode, brand, mirror, aiImageUrl, originalImageUrl, displayOriginalUrl, aiStyleTag });
 
     // 1. 优先从 globalData 读取（generating 页面预加载）
     const resultToken = options.resultToken || '';
@@ -88,6 +90,7 @@ Page({
       taskId: prepared.taskId || meta.taskId,
       historyId: prepared.historyId || meta.historyId || null,
       aiImageUrl: prepared.aiImageUrl || meta.aiImageUrl,
+      aiStyleTag: prepared.aiStyle || prepared.style || meta.aiStyle || 'AI',
       originalImageUrl: prepared.originalImageUrl || meta.originalImageUrl || '',
       displayOriginalUrl: this.resolveDisplayOriginalUrl(prepared.originalImageUrl || meta.originalImageUrl, prepared.aiImageUrl || meta.aiImageUrl),
       sizeMode: prepared.sizeMode || meta.sizeMode,
@@ -120,12 +123,14 @@ Page({
       const gridSize = Number(taskData.finalGridWidth || taskData.finalGridHeight || 48);
       const historyId = taskData.historyId || null;
       const aiImageUrl = taskData.aiImageUrl || '';
+      const aiStyleTag = taskData.aiStyle || taskData.style || 'AI';
       const originalImageUrl = taskData.originalImageUrl || taskData.imageUrl || taskData.sourceUrl || taskData.inputImageUrl || '';
 
       this.setData({
         taskId,
         historyId,
         aiImageUrl,
+        aiStyleTag,
         originalImageUrl,
         displayOriginalUrl: this.resolveDisplayOriginalUrl(originalImageUrl, aiImageUrl),
         sizeMode: taskData.sizeMode || 'default',
@@ -437,7 +442,7 @@ Page({
     if (!ok) return;
 
     const finalName = this.data.patternName.trim() || 'AI作品-' + Date.now();
-    const { taskId, aiImageUrl, resultImageUrl, colorNumberImageUrl, gridSize, brand, colorList, totalBeads, mappedPixelData, historyId } = this.data;
+    const { taskId, aiImageUrl, resultImageUrl, colorNumberImageUrl, gridSize, brand, colorList, totalBeads, mappedPixelData, historyId, aiStyleTag } = this.data;
     const sourceUrl = this.getSourceUrlForExport();
 
     wx.showLoading({ title: '保存中...', mask: true });
@@ -455,6 +460,7 @@ Page({
         totalBeads: totalBeads,
         mappedPixelData: JSON.stringify(mappedPixelData),
         colorList: colorList,
+        aiStyle: aiStyleTag && aiStyleTag !== 'AI' ? aiStyleTag : '',
         historyId: historyId || null
       };
 
