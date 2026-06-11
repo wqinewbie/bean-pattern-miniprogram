@@ -657,8 +657,8 @@ Page({
 
   getGridRange(sizeMode) {
     return sizeMode === 'small'
-      ? { gridMin: 24, gridMax: 40 }
-      : { gridMin: 30, gridMax: 80 };
+      ? { gridMin: 24, gridMax: 200 }
+      : { gridMin: 30, gridMax: 200 };
   },
 
   onGenerate() {
