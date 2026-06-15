@@ -81,6 +81,8 @@ Page({
             originalImageUrl: taskData.originalImageUrl || taskData.imageUrl || taskData.sourceUrl || taskData.inputImageUrl || '',
             aiStyle: taskData.aiStyle || taskData.style || '',
             sizeMode: taskData.sizeMode || 'default',
+            sizePreset: taskData.sizePreset || '',
+            sizePresetName: taskData.sizePresetName || '',
             brand: taskData.brand || 'MARD',
             colorCount: taskData.colorCount || 0,
             mirror: !!(taskData.mirror),

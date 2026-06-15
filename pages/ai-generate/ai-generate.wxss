@@ -327,24 +327,38 @@
 
 .size-mode-buttons {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 16rpx;
   width: 100%;
   box-sizing: border-box;
 }
 
 .size-mode-btn {
-  height: 80rpx;
+  min-height: 96rpx;
   border-radius: 24rpx;
-  font-size: 28rpx;
-  font-weight: 800;
   color: #fff;
   background: #CE93D8;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 6rpx;
   transition: all 0.3s;
   box-sizing: border-box;
+  padding: 10rpx 8rpx;
+}
+
+.size-mode-name {
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.size-mode-desc {
+  font-size: 20rpx;
+  font-weight: 600;
+  line-height: 1.1;
+  opacity: 0.92;
 }
 
 .size-mode-btn--active {

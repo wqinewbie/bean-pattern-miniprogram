@@ -23,7 +23,13 @@ Page({
     selectedStyle: '',
 
     // 图纸参数
-    sizeMode: 'default',
+    sizeMode: 'standard',
+    sizePreset: 'standard',
+    sizePresets: [
+      { presetKey: 'small', name: '小图', description: '40格以内', recommended: 0 },
+      { presetKey: 'standard', name: '标准', description: '80格以内', recommended: 1 },
+      { presetKey: 'detailed', name: '精细', description: '104格以内', recommended: 0 }
+    ],
     brands: [],
     brandIndex: 0,
     colorSets: [{ value: 0, label: '全部色号' }],
@@ -88,6 +94,7 @@ Page({
     });
     this.loadBrandsFromServer();
     this.loadMagicStyles();
+    this.loadSizePresets();
 
     // 添加页面进入时的滚动提示动画
     this.addScrollHintAnimation();
@@ -185,6 +192,33 @@ Page({
         magicStyles: [],
         selectedStyle: ''
       });
+    });
+  },
+
+  loadSizePresets() {
+    request.get('/ai/size-presets').then((data) => {
+      const list = Array.isArray(data) ? data : [];
+      const normalized = list.map(item => ({
+        presetKey: item.presetKey || item.key || '',
+        name: item.name || '',
+        description: item.description || '',
+        recommended: Number(item.recommended) || 0,
+        gridMin: item.gridMin,
+        gridMax: item.gridMax
+      })).filter(item => item.presetKey && item.name);
+      if (!normalized.length) return;
+      const currentExists = normalized.some(item => item.presetKey === this.data.sizePreset);
+      const recommended = normalized.find(item => item.recommended);
+      const nextPreset = currentExists
+        ? this.data.sizePreset
+        : ((recommended && recommended.presetKey) || normalized[0].presetKey);
+      this.setData({
+        sizePresets: normalized,
+        sizePreset: nextPreset,
+        sizeMode: nextPreset
+      });
+    }).catch((err) => {
+      console.error('加载AI尺寸档位失败', err);
     });
   },
 
@@ -589,8 +623,9 @@ Page({
     this.setData({ selectedStyle: e.currentTarget.dataset.style });
   },
 
-  onSizeModeTap(e) {
-    this.setData({ sizeMode: e.currentTarget.dataset.mode });
+  onSizePresetTap(e) {
+    const preset = e.currentTarget.dataset.preset;
+    this.setData({ sizePreset: preset, sizeMode: preset });
   },
 
   _updateBrandOptionsSelect() {
@@ -655,14 +690,8 @@ Page({
     this.setData({ isMirrored: !this.data.isMirrored });
   },
 
-  getGridRange(sizeMode) {
-    return sizeMode === 'small'
-      ? { gridMin: 24, gridMax: 200 }
-      : { gridMin: 30, gridMax: 200 };
-  },
-
   onGenerate() {
-    const { uploadedImage, selectedStyle, sizeMode, brandIndex, brands, colorSetValue, isMirrored, magicCount } = this.data;
+    const { uploadedImage, selectedStyle, sizePreset, brandIndex, brands, colorSetValue, isMirrored, magicCount } = this.data;
 
     if (!uploadedImage) {
       wx.showToast({ title: '请先上传图片', icon: 'none' });
@@ -697,7 +726,6 @@ Page({
       const brand = brands[brandIndex];
       const colorCount = Number(colorSetValue) || 0;
 
-      const gridRange = this.getGridRange(sizeMode);
       wx.showLoading({ title: '正在上传图片...', mask: true });
 
       this.uploadImage(uploadedImage).then(imageUrl => {
@@ -706,9 +734,7 @@ Page({
         return this.callAiGenerate({
           imageUrl,
           style: selectedStyle,
-          sizeMode: sizeMode,
-          gridMin: gridRange.gridMin,
-          gridMax: gridRange.gridMax,
+          sizePreset: sizePreset,
           brand: brand,
           colorCount: colorCount,
           mirror: isMirrored

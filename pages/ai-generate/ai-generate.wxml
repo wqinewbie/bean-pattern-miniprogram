@@ -70,6 +70,12 @@
         <view class="param-group">
           <text class="param-label">图纸尺寸</text>
           <view class="size-mode-buttons">
+            <view wx:for="{{sizePresets}}" wx:key="presetKey" class="size-mode-btn {{sizePreset===item.presetKey?'size-mode-btn--active':''}}" bindtap="onSizePresetTap" data-preset="{{item.presetKey}}">
+              <text class="size-mode-name">{{item.name}}</text>
+              <text class="size-mode-desc">{{item.description}}</text>
+            </view>
+          </view>
+          <view wx:if="{{false}}" class="size-mode-buttons">
             <view class="size-mode-btn {{sizeMode==='default'?'size-mode-btn--active':''}}" bindtap="onSizeModeTap" data-mode="default">
               默认尺寸
             </view>
@@ -78,6 +84,9 @@
             </view>
           </view>
           <view class="param-hint-box">
+            <text class="param-hint">系统会在所选范围内自动匹配合适格数，并保证最终图纸不超过上限</text>
+          </view>
+          <view wx:if="{{false}}" class="param-hint-box">
             <text class="param-hint">{{sizeMode==='default'?'默认则根据图片自动匹配尺寸(区间在30~80)':'小图模式会将拼豆尺寸控制在 40 以内'}}</text>
           </view>
         </view>
