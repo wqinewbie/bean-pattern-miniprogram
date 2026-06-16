@@ -171,8 +171,9 @@ Page({
       }
       const hasPatternData = parsedGridData.length > 0 && parsedColorPalette.length > 0;
       const recordSourceType = String(data.sourceType || data.source || data.type || '').toUpperCase();
-      const isAiStyle = this.data.isAiStyle || recordSourceType.includes('AI');
-      const originalUrl = (sourceType === 'DRAFT') ? '' : (data.sourceUrl || data.coverUrl || '');
+      const aiStyleTag = data.aiStyle || data.style || 'AI';
+      const isAiStyle = this.data.isAiStyle || recordSourceType.includes('AI') || !!(data.aiStyle || data.originalImageUrl || data.inputImageUrl);
+      const originalUrl = (sourceType === 'DRAFT') ? '' : (data.originalImageUrl || data.inputImageUrl || data.sourceUrl || data.coverUrl || '');
       const totalBeads = parsedColorPalette.reduce((sum, c) => sum + (c.count || 0), 0);
       const renderedPatternUrl = data.renderedPatternUrl || '';
       const returnedBoxId = data.boxId ? String(data.boxId) : (this.data.boxId || null);
@@ -182,7 +183,6 @@ Page({
       let activeTab = 'pattern';
       if (sourceType === 'DRAFT' || isAiStyle) activeTab = hasPatternData ? 'result' : 'pattern';
       else { if (hasPatternData) activeTab = 'result'; else if (originalUrl) activeTab = 'original'; }
-      const aiStyleTag = data.aiStyle || data.style || 'AI';
       this.setData({ name: data.name || '', originalUrl, currentPreviewUrl: originalUrl, currentSize: data.gridSize || 64, brandName: (data.brand || 'MARD').toUpperCase(), colorCount: data.colorCount || parsedColorPalette.length, mappedPixelData: parsedMappedPixelData, gridData: parsedGridData, colorPalette: parsedColorPalette, totalBeads, hasPatternData, hasResultData: hasPatternData, renderedPatternUrl, patternRendered: !!renderedPatternUrl, activeTab, boxId: returnedBoxId, draftId: returnedDraftId, isSaved, canEnterFocusMode, loading: false, isHydrated: true, initialLoading: hasPatternData ? true : false, isAiStyle, aiStyleTag }, () => { if (hasPatternData && !renderedPatternUrl) setTimeout(() => this._generatePatternPreview2d(), 200); this.ensureMirroredOriginalUrl(); });
     }).catch((err) => {
       const message = (err && err.message) ? err.message : '加载失败';
@@ -315,13 +315,14 @@ Page({
   onCloseNameModal() { this.setData({ showNameModal: false }); },
 
   onConfirmSavePattern() {
-    const { patternNameInput, historyId, draftId, sourceType, mappedPixelData, currentSize, brandName, colorCount, originalUrl, aiStyleTag } = this.data;
+    const { patternNameInput, historyId, draftId, sourceType, mappedPixelData, currentSize, brandName, colorCount, originalUrl, aiStyleTag, isAiStyle } = this.data;
     if (this.data.savingToBox) return;
     const name = (patternNameInput || '').trim() || generatePatternName();
     this.setData({ savingToBox: true });
+    const normalizedSourceType = isAiStyle ? 'AI' : (sourceType === 'DRAFT' ? 'DRAW' : 'LOCAL');
     const saveRequest = sourceType === 'DRAFT' && draftId
       ? request.post('/draft/to-box', { draftId: Number(draftId), name })
-      : request.post('/box/save', { name, sourceType: sourceType || 'LOCAL', brand: brandName, colorCount, gridSize: currentSize, mappedPixelData: JSON.stringify(mappedPixelData), historyId: historyId || null, draftId: draftId || null, sourceUrl: originalUrl || '', aiStyle: aiStyleTag && aiStyleTag !== 'AI' ? aiStyleTag : '' });
+      : request.post('/box/save', { name, sourceType: normalizedSourceType, brand: brandName, colorCount, gridSize: currentSize, mappedPixelData: JSON.stringify(mappedPixelData), historyId: historyId || null, draftId: draftId || null, sourceUrl: originalUrl || '', aiStyle: aiStyleTag && aiStyleTag !== 'AI' ? aiStyleTag : '' });
     saveRequest.then((box) => {
       const newBoxId = box && box.id ? String(box.id) : (box && box.boxId ? String(box.boxId) : (box && box.box && box.box.id ? String(box.box.id) : null));
       this.setData({ isSaved: true, boxId: newBoxId, canEnterFocusMode: true, showNameModal: false, savingToBox: false });
