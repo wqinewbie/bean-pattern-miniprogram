@@ -28,6 +28,7 @@ Page({
     bannerList: [],
     activeBanner: 0,
     bannerAutoplay: true,
+    bannerClaiming: false,
     currentBanner: {
       title: '初夏限定拼豆',
       subTitle: '一键生成专属图纸',
@@ -269,6 +270,7 @@ Page({
 
   // 领取Banner礼品
   async claimBannerGift(bannerId, config) {
+    if (this.data.bannerClaiming) return;
     if (!this.checkLogin()) {
       loginTrigger.showLogin(() => this.claimBannerGift(bannerId, config));
       return;
@@ -276,6 +278,7 @@ Page({
 
     wx.showLoading({ title: '领取中...', mask: true });
 
+    this.setData({ bannerClaiming: true });
     try {
       const result = await request.post('/banner/claim', { bannerId });
       wx.hideLoading();
@@ -299,12 +302,16 @@ Page({
                 wx.showToast({ title: redeemErr.message || '兑换失败', icon: 'none' });
               }
             }
+            this.setData({ bannerClaiming: false });
             this.onShow();
           }
         });
+      } else {
+        this.setData({ bannerClaiming: false });
       }
     } catch (err) {
       wx.hideLoading();
+      this.setData({ bannerClaiming: false });
       wx.showToast({
         title: err.message || '领取失败',
         icon: 'none'

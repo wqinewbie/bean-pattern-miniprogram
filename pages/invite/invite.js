@@ -6,6 +6,9 @@ Page({
   data: {
     inviteCode: '',
     inputCode: '',
+    registeredCount: 0,
+    paidCount: 0,
+    nextReward: null,
     statusBarHeight: 20,
     navHeight: 32,
     capsuleWidth: 87
@@ -45,7 +48,12 @@ Page({
     request.get('/invite/my-code')
       .then((data) => {
         const inviteCode = data && data.inviteCode ? data.inviteCode : ''
-        this.setData({ inviteCode })
+        this.setData({
+          inviteCode,
+          registeredCount: data && data.registeredCount != null ? data.registeredCount : 0,
+          paidCount: data && data.paidCount != null ? data.paidCount : 0,
+          nextReward: data && data.nextReward ? data.nextReward : null
+        })
         if (inviteCode) storage.set(storage.KEYS.MY_INVITE_CODE, inviteCode)
       })
       .catch(() => {})

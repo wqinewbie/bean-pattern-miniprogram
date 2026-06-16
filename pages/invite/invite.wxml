@@ -47,28 +47,30 @@
       <button class="ghost-btn full-btn" bindtap="onSaveInputCode">立即绑定邀请码</button>
     </view>
 
-    <view class="section-card tips-card">
+    <view class="section-card stats-card">
       <view class="section-head section-head--compact">
         <view>
-          <text class="section-title">邀请说明</text>
-          <text class="section-subtitle">以下规则会影响任务统计与奖励发放</text>
+          <text class="section-title">邀请进度</text>
+          <text class="section-subtitle">邀请好友注册与首充均可获得奖励</text>
         </view>
         <view class="section-icon section-icon--orange">📌</view>
       </view>
 
-      <view class="tips-list">
-        <view class="tip-item">
-          <view class="tip-dot"></view>
-          <text class="tip-text">未绑定过邀请关系的用户，可通过好友分享链接或手动填写邀请码完成绑定。</text>
+      <view class="stats-grid">
+        <view class="stat-item">
+          <text class="stat-value">{{registeredCount}}</text>
+          <text class="stat-label">已邀请注册</text>
         </view>
-        <view class="tip-item">
-          <view class="tip-dot"></view>
-          <text class="tip-text">邀请注册任务统计成功注册的好友人数。</text>
+        <view class="stat-divider"></view>
+        <view class="stat-item">
+          <text class="stat-value">{{paidCount}}</text>
+          <text class="stat-label">已邀请首充</text>
         </view>
-        <view class="tip-item">
-          <view class="tip-dot"></view>
-          <text class="tip-text">邀请充值任务统计好友首次支付成功人数。</text>
-        </view>
+      </view>
+
+      <view wx:if="{{nextReward}}" class="reward-tip">
+        <text class="reward-tip-text">{{nextReward.description}}</text>
+        <text wx:if="{{nextReward.rewardText}}" class="reward-tip-highlight">{{nextReward.rewardText}}</text>
       </view>
     </view>
   </view>
