@@ -3,6 +3,7 @@ const vipApi = require('../../utils/vip-api');
 const { requireLogin, refreshWechatSession } = require('../../utils/profile-guard');
 const storage = require('../../utils/storage');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
+const analytics = require('../../utils/analytics');
 
 Page({
   data: {
@@ -68,6 +69,10 @@ Page({
   },
 
   onShow() {
+    analytics.track('recharge_center_view', {
+      source: 'vip_page',
+      is_vip: this.data.isVip
+    });
     this.loadVipInfo();
 
     if (this.data.vipTab === 'orders') {
@@ -454,6 +459,12 @@ Page({
       currentPrice,
       originalPrice: currentPrice
     });
+    analytics.track('vip_product_click', {
+      product_id: selectedPackage.code || selectedPackage.id,
+      price: currentPrice,
+      vip_days: selectedPackage.durationDays || 0,
+      source: 'vip_page'
+    });
     this.recalculatePrice();
   },
 
@@ -473,6 +484,13 @@ Page({
       currentPrice,
       originalPrice: currentPrice,
       selectedCardHasVipPrice: this.data.isVip && !!selectedPackage.isVipPrice
+    });
+    analytics.track('card_product_click', {
+      product_id: selectedPackage.code || selectedPackage.id,
+      price: currentPrice,
+      quota_count: selectedPackage.count || 0,
+      discount: this.data.isVip && selectedPackage.isVipPrice ? 'vip' : 'none',
+      source: 'vip_page'
     });
     this.recalculatePrice();
   },
@@ -594,9 +612,21 @@ Page({
         if (!orderNo) {
           throw new Error('创建订单失败');
         }
+        analytics.track('payment_create_result', {
+          result: 'success',
+          order_id: orderNo,
+          product_type: 'vip',
+          amount: this.data.currentPrice
+        });
         if (data.mock && status === 'PAID') {
           this.setData({ isPaying: false });
           wx.showToast({ title: '模拟支付成功', icon: 'success' });
+          analytics.track('payment_result', {
+            result: 'success',
+            order_id: orderNo,
+            amount: this.data.currentPrice,
+            product_type: 'vip'
+          }, { immediate: true });
           setTimeout(() => this.loadVipInfo(), 500);
           return;
         }
@@ -619,6 +649,11 @@ Page({
       .catch((err) => {
         this.setData({ isPaying: false });
         wx.showToast({ title: err.message || '创建订单失败', icon: 'none' });
+        analytics.track('payment_create_result', {
+          result: 'fail',
+          fail_reason: 'server_error',
+          product_type: 'vip'
+        }, { immediate: true });
       });
   },
 
@@ -642,9 +677,21 @@ Page({
         if (!orderNo) {
           throw new Error('创建订单失败');
         }
+        analytics.track('payment_create_result', {
+          result: 'success',
+          order_id: orderNo,
+          product_type: 'ai_card',
+          amount: this.data.currentPrice
+        });
         if (data.mock && status === 'PAID') {
           this.setData({ isPaying: false });
           wx.showToast({ title: '模拟支付成功', icon: 'success' });
+          analytics.track('payment_result', {
+            result: 'success',
+            order_id: orderNo,
+            amount: this.data.currentPrice,
+            product_type: 'ai_card'
+          }, { immediate: true });
           setTimeout(() => this.loadVipInfo(), 500);
           return;
         }
@@ -667,6 +714,11 @@ Page({
       .catch((err) => {
         this.setData({ isPaying: false });
         wx.showToast({ title: err.message || '创建订单失败', icon: 'none' });
+        analytics.track('payment_create_result', {
+          result: 'fail',
+          fail_reason: 'server_error',
+          product_type: 'ai_card'
+        }, { immediate: true });
       });
   },
 
@@ -702,6 +754,12 @@ Page({
         });
         if (err.errMsg && err.errMsg.indexOf('cancel') !== -1) {
           wx.showToast({ title: '支付已取消', icon: 'none' });
+          analytics.track('payment_result', {
+            result: 'cancel',
+            fail_reason: 'payment_cancel',
+            order_id: orderNo,
+            product_type: this.data.vipTab === 'vip' ? 'vip' : 'ai_card'
+          }, { immediate: true });
         } else {
           const detail = err && (err.errMsg || err.errCode || JSON.stringify(err));
           wx.showModal({
@@ -709,6 +767,12 @@ Page({
             content: detail ? String(detail).slice(0, 500) : 'Ժ',
             showCancel: false
           });
+          analytics.track('payment_result', {
+            result: 'fail',
+            fail_reason: 'payment_fail',
+            order_id: orderNo,
+            product_type: this.data.vipTab === 'vip' ? 'vip' : 'ai_card'
+          }, { immediate: true });
         }
       }
     });
@@ -785,6 +849,11 @@ Page({
           this.setData({ isPaying: false });
           wx.hideLoading();
           wx.showToast({ title: '购买成功', icon: 'success', duration: 2000 });
+          analytics.track('payment_result', {
+            result: 'success',
+            order_id: orderNo,
+            product_type: this.data.vipTab === 'vip' ? 'vip' : 'ai_card'
+          }, { immediate: true });
           setTimeout(() => {
             this.loadVipInfo();
             this.loadOrders(true);
@@ -861,4 +930,3 @@ Page({
     wx.navigateBack();
   },
 });
-

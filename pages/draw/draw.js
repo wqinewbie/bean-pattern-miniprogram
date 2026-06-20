@@ -15,6 +15,7 @@ const CanvasRenderer = require('./module/canvasRenderer');
 const ColorBarManager = require('./module/colorBarManager');
 const Magnifier = require('./module/magnifier');
 const ToolEngine = require('./module/toolEngine');
+const analytics = require('../../utils/analytics');
 
 // 画板内置基础色板（工具层默认，非拼豆品牌色）
 const DEFAULT_COLORS = ['#FFFFFF','#000000','#FF0000','#00FF00','#0000FF','#FFFF00','#FF6B35','#FF69B4','#00CED1','#9370DB','#FFA500','#008B8B','#DC143C','#32CD32','#4169E1','#FFD700','#808080','#2F4F4F','#FF6B6B','#90EE90','#87CEEB','#DDA0DD','#F0E68C','#E6E6FA'];
@@ -4128,10 +4129,25 @@ Page({
       this._hasUnsavedChanges = false;
       this._clearLocalRecoveryDraft();
       wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+      analytics.track('draw_save_result', {
+        result: 'success',
+        pattern_id: newBoxId || '',
+        pattern_source: 'draw'
+      }, { immediate: true });
+      analytics.track('pattern_box_save_result', {
+        result: 'success',
+        pattern_id: newBoxId || '',
+        pattern_source: 'draw'
+      });
       showCapacityFullIfNeeded(result, { type: 'box' });
     }).catch((err) => {
       this.setData({ loading: false });
       showRequestErrorToast(err, '保存失败');
+      analytics.track('draw_save_result', {
+        result: 'fail',
+        fail_reason: 'server_error',
+        pattern_source: 'draw'
+      }, { immediate: true });
     });
   },
 
@@ -4184,10 +4200,25 @@ Page({
       this._hasUnsavedChanges = false;
       this._clearLocalRecoveryDraft();
       wx.showToast({ title: saveMode === 'overwrite' ? '已覆盖原草稿' : (saveMode === 'link-box' ? '已关联保存' : '已保存'), icon: 'success' });
+      analytics.track('draw_save_result', {
+        result: 'success',
+        pattern_id: savedId || '',
+        pattern_source: 'draw'
+      }, { immediate: true });
+      analytics.track('draft_save_result', {
+        result: 'success',
+        pattern_id: savedId || '',
+        pattern_source: 'draw'
+      });
       showCapacityFullIfNeeded(savedDraft, { type: 'draft' });
     }).catch((err) => {
       this.setData({ loading: false });
       showRequestErrorToast(err, '保存失败');
+      analytics.track('draw_save_result', {
+        result: 'fail',
+        fail_reason: 'server_error',
+        pattern_source: 'draw'
+      }, { immediate: true });
     });
   },
 
@@ -5024,6 +5055,10 @@ Page({
     }
     
     this.setData({ tool: tool });
+    analytics.track('draw_tool_use', {
+      tool_name: tool,
+      canvas_size: this.data.gridSize
+    });
     
     // 切换到非画笔工具时，关闭对称功能
     if (tool !== 'pen' && this.data.symmetry) {

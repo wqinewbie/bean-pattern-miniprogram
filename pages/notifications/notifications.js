@@ -1,5 +1,6 @@
 const request = require('../../utils/request');
 const storage = require('../../utils/storage');
+const analytics = require('../../utils/analytics');
 
 Page({
   data: {
@@ -53,6 +54,10 @@ Page({
     const actionType = String(item.actionType || 'NONE').toUpperCase();
     const actionValue = item.actionValue || '';
     if (!actionValue || actionType === 'NONE') return;
+    analytics.track('notification_open', {
+      notification_type: item.notificationType || item.type || actionType.toLowerCase(),
+      target_page: actionValue
+    }, { immediate: true });
 
     if (actionType === 'PAGE' || actionType === 'NAVIGATE') {
       if (String(actionValue).indexOf('/pages/') === 0) {

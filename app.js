@@ -1,6 +1,9 @@
 const request = require('./utils/request');
 const storage = require('./utils/storage');
 const store = require('./utils/store');
+const analytics = require('./utils/analytics');
+
+analytics.installPageTracking();
 
 App({
   globalData: {
@@ -29,6 +32,7 @@ App({
 
   onLaunch(options) {
     this.captureInviteCode(options);
+    analytics.captureLaunch(options);
     const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     this.preloadTabPages();
     if (sessionId) {
@@ -39,8 +43,13 @@ App({
 
   onShow(options) {
     this.captureInviteCode(options);
+    analytics.captureLaunch(options);
     const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
     if (sessionId) this.prefetchProfileData();
+  },
+
+  onHide() {
+    analytics.flush();
   },
 
   pruneResultDataMap(options = {}) {

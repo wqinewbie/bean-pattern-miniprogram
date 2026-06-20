@@ -5,6 +5,7 @@ const previewGesture = require('../../mixins/preview-gesture');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const core = require('../../utils/canvas2d/core');
 const vipApi = require('../../utils/vip-api');
+const analytics = require('../../utils/analytics');
 
 Page({
   syncTabBar() {
@@ -384,10 +385,19 @@ Page({
       });
 
       this.initPreviewMetrics(croppedPath);
+      analytics.track('ai_image_upload_result', {
+        result: 'success',
+        source: 'ai_generate'
+      });
     }).catch(err => {
       wx.hideLoading();
       console.error('裁剪失败:', err);
       wx.showToast({ title: '裁剪失败', icon: 'none' });
+      analytics.track('ai_image_upload_result', {
+        result: 'fail',
+        fail_reason: 'upload_fail',
+        source: 'ai_generate'
+      });
     });
   },
 
@@ -690,8 +700,29 @@ Page({
     this.setData({ isMirrored: !this.data.isMirrored });
   },
 
+  onRewardedAdClick() {
+    analytics.track('rewarded_ad_click', {
+      source: 'ai_generate',
+      daily_used_count: 0
+    });
+    wx.showToast({ title: '广告功能即将开放', icon: 'none' });
+    analytics.track('rewarded_ad_result', {
+      result: 'fail',
+      fail_reason: 'server_error',
+      quota_reward: 0,
+      source: 'ai_generate'
+    }, { immediate: true });
+  },
+
   onGenerate() {
     const { uploadedImage, selectedStyle, sizePreset, brandIndex, brands, colorSetValue, isMirrored, magicCount } = this.data;
+    analytics.track('ai_generate_click', {
+      ai_quota: magicCount,
+      style_id: selectedStyle,
+      size: sizePreset,
+      has_prompt: false,
+      source: 'ai_generate'
+    });
 
     if (!uploadedImage) {
       wx.showToast({ title: '请先上传图片', icon: 'none' });
@@ -707,6 +738,10 @@ Page({
       if (!ok) return;
 
       if (magicCount <= 0) {
+        analytics.track('quota_empty_panel_view', {
+          source: 'ai_generate',
+          ai_quota: magicCount
+        }, { immediate: true });
         wx.showModal({
           title: '魔法次数不足',
           content: 'AI魔法次数已用完，购买次卡或开通会员即可继续使用',
@@ -725,6 +760,7 @@ Page({
 
       const brand = brands[brandIndex];
       const colorCount = Number(colorSetValue) || 0;
+      const analyticsStartAt = Date.now();
 
       wx.showLoading({ title: '正在上传图片...', mask: true });
 
@@ -748,6 +784,12 @@ Page({
         wx.hideLoading();
         console.error('生成失败', err);
         wx.showToast({ title: err.message || '生成失败', icon: 'none' });
+        analytics.track('ai_generate_result', {
+          result: 'fail',
+          fail_reason: 'generate_fail',
+          duration_ms: Date.now() - analyticsStartAt,
+          source: 'ai_generate'
+        }, { immediate: true });
       });
     });
   },

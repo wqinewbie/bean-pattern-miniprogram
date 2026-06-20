@@ -3,6 +3,7 @@ const request = require('../../utils/request');
 const { drawImmersiveBase, drawImmersiveText, drawImmersiveGridLines, getTextColor } = require('../../utils/canvas2d/renderers/immersiveRenderer');
 const { getScheduler } = require('../../utils/canvas2d/renderScheduler');
 const storage = require('../../utils/storage');
+const analytics = require('../../utils/analytics');
 
 const PINCH_PREVIEW_RENDER_INTERVAL_MS = 96;
 const PINCH_PREVIEW_SCALE_DELTA = 0.08;
@@ -777,6 +778,11 @@ Page({
     this.setData({ completedMap: newMap }, () => {
       this._updateLists();
       this._renderCanvas();
+      analytics.track('focus_progress_mark', {
+        pattern_id: this._boxId || '',
+        progress_percent: this._calcProgressPercent(newMap),
+        marked_count: Object.keys(newMap).length
+      });
       this._saveProgress();
     });
   },
@@ -896,13 +902,41 @@ Page({
     });
     const focusProgress = JSON.stringify({ completedMap });
     
+    const progressPercent = focusTotalCells > 0 ? Math.round(focusCompletedCells / focusTotalCells * 100) : 0;
     request.post('/box/progress', {
       boxId: boxId,
       focusProgress,
       progressData: focusProgress,
       focusCompletedCells,
       focusTotalCells
-    }).catch(() => {});
+    }).then(() => {
+      analytics.track('focus_progress_save_result', {
+        result: 'success',
+        pattern_id: boxId,
+        progress_percent: progressPercent
+      });
+    }).catch(() => {
+      analytics.track('focus_progress_save_result', {
+        result: 'fail',
+        fail_reason: 'server_error',
+        pattern_id: boxId,
+        progress_percent: progressPercent
+      });
+    });
+  },
+
+  _calcProgressPercent(completedMap) {
+    const { gridData } = this.data;
+    let total = 0;
+    let completed = 0;
+    (gridData || []).forEach((row) => {
+      (row || []).forEach((cell) => {
+        if (!cell) return;
+        total += 1;
+        if (completedMap && completedMap[cell.id]) completed += 1;
+      });
+    });
+    return total > 0 ? Math.round(completed / total * 100) : 0;
   },
 
   // ========== 触摸事件（Canvas 变换缩放，不动 CSS） ==========

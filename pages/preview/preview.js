@@ -9,6 +9,7 @@ const { waitCanvas2dReady } = require('../../utils/canvas2d/controller');
 const { previewSize, resultExportSize, patternExportSize } = require('../../utils/canvas2d/size-strategies');
 const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
 const { getWatermarkConfig } = require('../../utils/watermark-helper');
+const analytics = require('../../utils/analytics');
 
 function releaseCanvas2dComp(comp) {
   if (!comp) return;
@@ -211,6 +212,10 @@ Page({
 
   onTabChange(e) {
     const tab = e.currentTarget.dataset.tab;
+    analytics.track('preview_tab_switch', {
+      tab_name: tab,
+      pattern_source: this.data.sourceType || ''
+    });
     if (tab === 'original') {
       const url = (this.data.mirrorOn && this.data.mirroredOriginalUrl) || this.data.originalUrl || '';
       this.setData({ activeTab: tab, currentPreviewUrl: url });
@@ -320,6 +325,11 @@ Page({
     const name = (patternNameInput || '').trim() || generatePatternName();
     this.setData({ savingToBox: true });
     const normalizedSourceType = isAiStyle ? 'AI' : (sourceType === 'DRAFT' ? 'DRAW' : 'LOCAL');
+    analytics.track('preview_save_click', {
+      pattern_source: normalizedSourceType.toLowerCase(),
+      pattern_id: historyId || draftId || '',
+      target_container: 'pattern_box'
+    });
     const saveRequest = sourceType === 'DRAFT' && draftId
       ? request.post('/draft/to-box', { draftId: Number(draftId), name })
       : request.post('/box/save', { name, sourceType: normalizedSourceType, brand: brandName, colorCount, gridSize: currentSize, mappedPixelData: JSON.stringify(mappedPixelData), historyId: historyId || null, draftId: draftId || null, sourceUrl: originalUrl || '', aiStyle: aiStyleTag && aiStyleTag !== 'AI' ? aiStyleTag : '' });
@@ -327,11 +337,24 @@ Page({
       const newBoxId = box && box.id ? String(box.id) : (box && box.boxId ? String(box.boxId) : (box && box.box && box.box.id ? String(box.box.id) : null));
       this.setData({ isSaved: true, boxId: newBoxId, canEnterFocusMode: true, showNameModal: false, savingToBox: false });
       wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+      analytics.track('pattern_box_save_result', {
+        result: 'success',
+        pattern_id: newBoxId || '',
+        pattern_source: normalizedSourceType.toLowerCase()
+      }, { immediate: true });
       showCapacityFullIfNeeded(box, { type: 'box' });
       const pages = getCurrentPages();
       const prevPage = pages.length > 1 ? pages[pages.length - 2] : null;
       if (prevPage) prevPage._needsRefresh = true;
-    }).catch((err) => { this.setData({ savingToBox: false }); showRequestErrorToast(err, '保存失败，请重试'); });
+    }).catch((err) => {
+      this.setData({ savingToBox: false });
+      showRequestErrorToast(err, '保存失败，请重试');
+      analytics.track('pattern_box_save_result', {
+        result: 'fail',
+        fail_reason: 'server_error',
+        pattern_source: normalizedSourceType.toLowerCase()
+      }, { immediate: true });
+    });
   },
 
   _showCapacityFullIfNeeded(result) {
@@ -358,6 +381,10 @@ Page({
     }
 
     const storageKey = 'draw_edit_' + Date.now();
+    analytics.track('preview_edit_click', {
+      pattern_source: sourceType || '',
+      pattern_id: boxId || draftId || ''
+    });
     storage.setJSON(storageKey, {
       gridSize: currentSize,
       gridData,

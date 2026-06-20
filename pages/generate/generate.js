@@ -4,6 +4,7 @@ const { ensureProfileComplete } = require('../../utils/profile-guard');
 const previewGesture = require('../../mixins/preview-gesture');
 const { init2dCanvas, resize2dCanvas } = require('../../utils/canvas2d/core');
 const { exportCanvasToTempFilePath } = require('../../utils/canvas2d/export');
+const analytics = require('../../utils/analytics');
 
 const MIN_GRID_SIZE = 24;
 const MAX_GRID_SIZE = 200;
@@ -278,6 +279,7 @@ Page({
   },
 
   onChooseImage() {
+    analytics.track('convert_image_upload_click', { source: 'generate' });
     wx.chooseMedia({
       count: 1,
       mediaType: ['image'],
@@ -295,6 +297,7 @@ Page({
           previewScale: 1
         });
         this.initPreviewMetrics(imageUrl);
+        analytics.track('convert_image_upload_result', { result: 'success', source: 'generate' });
       }
     });
   },
@@ -622,6 +625,12 @@ Page({
       const mirrorOn = !!this.data.mirrorOn;
 
       this._flowId = 'flow_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      analytics.track('convert_param_confirm', {
+        size: gridSize,
+        bead_brand: brand,
+        color_count: colorCount,
+        source: 'generate'
+      }, { immediate: true });
 
       this.exportVisibleImage()
         .then((visibleImageUrl) => {

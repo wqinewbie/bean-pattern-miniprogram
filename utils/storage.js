@@ -21,6 +21,8 @@ const KEYS = {
   DRAFTS: 'drafts',
   WATERMARK_ENABLED: 'watermarkEnabled',
   WATERMARK_TEXT: 'watermarkText',
+  ANALYTICS_SESSION_ID: 'analyticsSessionId',
+  ANALYTICS_QUEUE: 'analyticsQueue',
 };
 
 function get(key, defaultValue) {

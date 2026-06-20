@@ -4,6 +4,7 @@ const { cacheProfile, requireLogin } = require('../../utils/profile-guard');
 const storage = require('../../utils/storage');
 const store = require('../../utils/store');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
+const analytics = require('../../utils/analytics');
 
 const DEFAULT_NICKNAME = '魔法师小豆';
 const EMPTY_STATS = { total: 0, success: 0, ai: 0, saved: 0 };
@@ -549,6 +550,11 @@ Page({
 
   // ─── 弹框控制 ───
   onShowMagicPanel() {
+    analytics.track('quota_panel_view', {
+      source: 'profile',
+      ai_quota: this.data.magicCount,
+      is_vip: this.data.isVip
+    });
     this.setData({ showMagicPanel: true }, () => this.updateTabBarVisibility());
   },
 
@@ -562,6 +568,10 @@ Page({
   },
 
   onShowTaskPanel() {
+    analytics.track('task_panel_view', {
+      source: 'profile',
+      task_count: (this.data.tasks || []).length
+    });
     this.setData({ showTaskPanel: true }, () => this.updateTabBarVisibility());
     // 加载签到状态和任务列表
     this.loadCheckinStatus();
@@ -569,6 +579,10 @@ Page({
   },
 
   onShowTaskPanelFromMagic() {
+    analytics.track('task_panel_view', {
+      source: 'quota_panel',
+      task_count: (this.data.tasks || []).length
+    });
     this.setData({ showMagicPanel: false, showTaskPanel: true }, () => this.updateTabBarVisibility());
     this.loadCheckinStatus();
     this.loadTasksFromServer();
@@ -750,6 +764,12 @@ Page({
     request.post('/gift/use', { giftId: gift.id, redeemNow })
       .then((result) => {
         wx.showToast({ title: redeemNow ? '兑换成功' : '使用成功', icon: 'success' });
+        analytics.track('reward_grant_result', {
+          result: 'success',
+          reward_type: giftCategory === 'COUPON' ? 'coupon' : 'gift',
+          reward_value: 1,
+          scene: 'gift_panel'
+        }, { immediate: true });
         this.applyGiftUseResult(result);
         this.markGiftUsedLocally(gift.id);
         this.refreshGiftState();
@@ -1065,6 +1085,12 @@ Page({
         request.post('/task/claim-benefit', { taskCode: task.taskCode })
           .then(() => {
             wx.showToast({ title: '领取成功！', icon: 'success' });
+            analytics.track('reward_grant_result', {
+              result: 'success',
+              reward_type: task.rewardType || 'gift',
+              reward_value: task.rewardValue || 1,
+              scene: task.taskCode || task.handlerType || 'task'
+            }, { immediate: true });
             this.markTaskClaimedLocally(task.taskCode);
             this.refreshProfileQuietly();
           })
@@ -1088,6 +1114,12 @@ Page({
         request.post('/task/claim-benefit', { taskCode: task.taskCode })
           .then(() => {
             wx.showToast({ title: '礼包已入包', icon: 'success' });
+            analytics.track('reward_grant_result', {
+              result: 'success',
+              reward_type: task.rewardType || 'gift',
+              reward_value: task.rewardValue || 1,
+              scene: task.taskCode || task.handlerType || 'task'
+            }, { immediate: true });
             this.markTaskClaimedLocally(task.taskCode);
             this.refreshProfileQuietly();
           })
@@ -1109,6 +1141,12 @@ Page({
         request.post('/task/claim', { progressId: task.progressId })
           .then(() => {
             wx.showToast({ title: '领取成功！', icon: 'success' });
+            analytics.track('reward_grant_result', {
+              result: 'success',
+              reward_type: task.rewardType || 'gift',
+              reward_value: task.rewardValue || 1,
+              scene: task.taskCode || task.handlerType || 'task'
+            }, { immediate: true });
             this.markTaskClaimedLocally(task.taskCode);
             this.refreshProfileQuietly();
           })
@@ -1129,6 +1167,12 @@ Page({
       request.post('/task/claim', { progressId: task.progressId })
         .then(() => {
           wx.showToast({ title: '领取成功！', icon: 'success' });
+          analytics.track('reward_grant_result', {
+            result: 'success',
+            reward_type: task.rewardType || 'gift',
+            reward_value: task.rewardValue || 1,
+            scene: task.taskCode || task.handlerType || 'task'
+          }, { immediate: true });
           this.markTaskClaimedLocally(task.taskCode);
           this.refreshProfileQuietly();
         })

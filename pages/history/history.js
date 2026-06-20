@@ -2,6 +2,7 @@ const request = require('../../utils/request');
 const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
+const analytics = require('../../utils/analytics');
 
 const THUMB_RENDER_BATCH_SIZE = 4;
 const THUMB_MAX_SAMPLE_GRID = 80;
@@ -398,6 +399,15 @@ Page({
       request.post('/history/to-box', { historyId: item.id })
         .then((result) => {
           wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+          analytics.track('history_restore_click', {
+            pattern_id: item.id,
+            expired_status: item.expired ? 'expired' : 'active'
+          });
+          analytics.track('pattern_box_save_result', {
+            result: 'success',
+            pattern_id: item.id,
+            pattern_source: 'history'
+          }, { immediate: true });
           showCapacityFullIfNeeded(result, { type: 'box' });
           this.loadHistory();
         })
@@ -423,6 +433,12 @@ Page({
                 this.applyFilter();
               });
               wx.showToast({ title: '已删除', icon: 'success' });
+              analytics.track('pattern_delete_result', {
+                result: 'success',
+                container_type: 'history',
+                pattern_id: id,
+                pattern_source: 'history'
+              }, { immediate: true });
             })
             .catch(() => wx.showToast({ title: '操作失败', icon: 'none' }));
         }

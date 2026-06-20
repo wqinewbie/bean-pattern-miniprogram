@@ -3,6 +3,7 @@ const { ensureProfileComplete } = require('../../utils/profile-guard');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const { generateDraftName } = require('../../utils/name-helper');
 const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
+const analytics = require('../../utils/analytics');
 
 Page({
   data: {
@@ -434,6 +435,12 @@ Page({
           request.delete('/draft/delete/' + id)
             .then(() => {
               wx.showToast({ title: '已删除', icon: 'success' });
+              analytics.track('pattern_delete_result', {
+                result: 'success',
+                container_type: 'draft',
+                pattern_id: id,
+                pattern_source: 'draft'
+              }, { immediate: true });
               this.loadDraftRule();
               this.loadDrafts(true);
             })

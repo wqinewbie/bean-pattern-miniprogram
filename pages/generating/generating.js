@@ -3,6 +3,7 @@
  * 功能：轮询 AI 任务状态，成功后跳转到 ai-result 页面
  */
 const request = require('../../utils/request');
+const analytics = require('../../utils/analytics');
 
 Page({
   data: {
@@ -27,6 +28,7 @@ Page({
     }
 
     this.setData({ taskId });
+    this._analyticsStartAt = Date.now();
     this.startPolling(taskId);
 
     this._timeoutTimer = setTimeout(() => {
@@ -59,6 +61,13 @@ Page({
       if (status === 'SUCCESS') {
         clearTimeout(this._timeoutTimer);
         clearTimeout(this._pollingTimer);
+        analytics.track('ai_generate_result', {
+          result: 'success',
+          duration_ms: Date.now() - (this._analyticsStartAt || Date.now()),
+          task_id: taskId,
+          pattern_id: taskData.historyId || '',
+          pattern_source: 'ai_generate'
+        }, { immediate: true });
 
         const resultToken = 'ai_' + taskId + '_' + Date.now();
         const mappedPixelData = taskData.mappedPixelData || [];
@@ -114,6 +123,13 @@ Page({
       } else if (status === 'FAILED') {
         clearTimeout(this._timeoutTimer);
         clearTimeout(this._pollingTimer);
+        analytics.track('ai_generate_result', {
+          result: 'fail',
+          fail_reason: 'generate_fail',
+          duration_ms: Date.now() - (this._analyticsStartAt || Date.now()),
+          task_id: taskId,
+          pattern_source: 'ai_generate'
+        }, { immediate: true });
 
         wx.showToast({
           title: taskData.errorMessage || '生成失败',

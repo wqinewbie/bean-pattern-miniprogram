@@ -181,7 +181,7 @@
         <text class="btn-sub">剩余魔法 {{magicCount}} 次</text>
       </view>
     </view>
-    <view class="ad-btn">
+    <view class="ad-btn" bindtap="onRewardedAdClick">
       <text class="ad-icon">📹</text>
       <text>看广告领取免费魔法次数</text>
     </view>

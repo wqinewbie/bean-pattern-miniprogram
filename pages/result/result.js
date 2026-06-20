@@ -13,6 +13,7 @@ const { isTempPath, isValidRemoteUrl, needsUpload, getPathType } = require('../.
 const { generatePatternName } = require('../../utils/name-helper');
 const { getWatermarkConfig } = require('../../utils/watermark-helper');
 const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
+const analytics = require('../../utils/analytics');
 
 const PATTERN_EXPORT_MODE = '2d'; // 可选: 'legacy' | '2d'
 
@@ -1833,6 +1834,10 @@ Page({
     }
 
     const storageKey = 'draw_edit_' + Date.now();
+    analytics.track('preview_edit_click', {
+      pattern_source: sourceType || (boxId ? 'box' : (historyId ? 'history' : (draftId ? 'draft' : 'free_convert'))),
+      pattern_id: boxId || historyId || draftId || taskId || ''
+    });
     storage.setJSON(storageKey, {
       gridSize,
       gridData,
@@ -1911,6 +1916,11 @@ Page({
 
     const postBoxSave = (sourceUrl) => {
       const mappedPixelData = this._getMappedForPersistence();
+      analytics.track('preview_save_click', {
+        pattern_source: sourceType || 'free_convert',
+        pattern_id: historyId || '',
+        target_container: 'pattern_box'
+      });
       request.post('/box/save', {
         name: name,
         sourceType: sourceType || 'LOCAL',
@@ -1935,11 +1945,21 @@ Page({
             savingToBox: false
           });
           wx.showToast({ title: '已保存到图纸箱', icon: 'success' });
+          analytics.track('pattern_box_save_result', {
+            result: 'success',
+            pattern_id: newBoxId || '',
+            pattern_source: sourceType || 'free_convert'
+          }, { immediate: true });
           this._showCapacityFullIfNeeded(box);
         })
         .catch((err) => {
           this.setData({ savingToBox: false });
           showRequestErrorToast(err, '保存失败，请重试');
+          analytics.track('pattern_box_save_result', {
+            result: 'fail',
+            fail_reason: 'server_error',
+            pattern_source: sourceType || 'free_convert'
+          }, { immediate: true });
         });
     };
 
@@ -2226,6 +2246,7 @@ Page({
 
   startImageGenerateInResult(imageUrl, gridSize, brand, colorCount, pixelationMode, similarityThreshold, mirrorOn, flowId) {
     this._flowId = flowId || this._flowId || '';
+    const analyticsStartAt = Date.now();
     this._setGeneratingText('正在采样图片...');
     this._traceFlow('imageFlow:start', {
       imageUrlType: getPathType(imageUrl),
@@ -2372,6 +2393,14 @@ Page({
           }
 
           console.log('[result] 准备调用 buildResult，cosUrl:', cosUrl, 'length:', cosUrl ? cosUrl.length : 0);
+          analytics.track('convert_generate_result', {
+            result: 'success',
+            duration_ms: Date.now() - analyticsStartAt,
+            pattern_source: 'free_convert',
+            size: gridSize,
+            bead_brand: brand,
+            color_count: colorCount
+          }, { immediate: true });
           buildResult(cosUrl);
         }).catch((err) => {
           console.error('[result] startImageGenerateInResult upload error', err);
@@ -2383,6 +2412,15 @@ Page({
           errMsg: err && err.message ? err.message : String(err || '')
         });
         this._finishGeneratingOverlay();
+        analytics.track('convert_generate_result', {
+          result: 'fail',
+          fail_reason: 'generate_fail',
+          duration_ms: Date.now() - analyticsStartAt,
+          pattern_source: 'free_convert',
+          size: gridSize,
+          bead_brand: brand,
+          color_count: colorCount
+        }, { immediate: true });
         if (err && err.message === 'PROFILE_INCOMPLETE') {
           wx.navigateBack({ delta: 1 });
           return;

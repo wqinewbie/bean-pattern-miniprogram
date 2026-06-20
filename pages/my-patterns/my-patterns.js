@@ -3,6 +3,7 @@ const { hasSession } = require('../../utils/profile-guard');
 const loginTrigger = require('../../utils/login-trigger');
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const { API_BASE_URL } = require('../../utils/config');
+const analytics = require('../../utils/analytics');
 
 const THUMB_RENDER_BATCH_SIZE = 4;
 const THUMB_MAX_SAMPLE_GRID = 80;
@@ -286,6 +287,12 @@ Page({
                 this.scheduleRenderThumbnails(60);
               });
               wx.showToast({ title: '已删除', icon: 'success' });
+              analytics.track('pattern_delete_result', {
+                result: 'success',
+                container_type: 'pattern_box',
+                pattern_id: id,
+                pattern_source: 'box'
+              }, { immediate: true });
             })
             .finally(() => this.loadPatternRule())
             .catch(() => wx.showToast({ title: '操作失败', icon: 'none' }));

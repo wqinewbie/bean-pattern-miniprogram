@@ -1,6 +1,7 @@
 const { getSafeAreaLayout } = require('../../utils/safe-area');
 const { hasSession } = require('../../utils/profile-guard');
 const loginTrigger = require('../../utils/login-trigger');
+const analytics = require('../../utils/analytics');
 
 Page({
   syncTabBar() {
@@ -24,6 +25,7 @@ Page({
   },
 
   onChooseImage() {
+    analytics.track('convert_image_upload_click', { source: 'convert' });
     if (!hasSession()) {
       loginTrigger.showLogin();
       return;
@@ -34,11 +36,14 @@ Page({
       sourceType: ['album', 'camera'],
       success: (res) => {
         const filePath = res.tempFiles[0].tempFilePath;
+        analytics.track('convert_image_upload_result', { result: 'success', source: 'convert' }, { immediate: true });
         wx.navigateTo({
           url: '/pages/generate/generate?imageUrl=' + encodeURIComponent(filePath)
         });
       },
-      fail: () => {}
+      fail: () => {
+        analytics.track('convert_image_upload_result', { result: 'cancel', fail_reason: 'unknown', source: 'convert' });
+      }
     });
   }
 });

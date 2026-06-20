@@ -1,6 +1,7 @@
 const request = require('../../utils/request')
 const { getSafeAreaLayout } = require('../../utils/safe-area')
 const storage = require('../../utils/storage')
+const analytics = require('../../utils/analytics')
 
 Page({
   data: {
@@ -75,11 +76,21 @@ Page({
         storage.remove(storage.KEYS.PENDING_INVITE_CODE)
         wx.hideLoading()
         wx.showToast({ title: '绑定成功', icon: 'success' })
+        analytics.track('invite_bind_result', {
+          result: 'success',
+          inviter_user_id: '',
+          source: 'invite'
+        }, { immediate: true })
         this.setData({ inputCode: '' })
       })
       .catch((err) => {
         wx.hideLoading()
         wx.showToast({ title: err.message || '绑定失败', icon: 'none' })
+        analytics.track('invite_bind_result', {
+          result: 'fail',
+          fail_reason: 'server_error',
+          source: 'invite'
+        }, { immediate: true })
       })
   },
 
