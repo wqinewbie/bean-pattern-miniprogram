@@ -14,6 +14,7 @@ const { generatePatternName } = require('../../utils/name-helper');
 const { getWatermarkConfig } = require('../../utils/watermark-helper');
 const { showCapacityFullIfNeeded, showRequestErrorToast } = require('../../utils/capacity-toast');
 const analytics = require('../../utils/analytics');
+const appConfig = require('../../utils/config');
 
 const PATTERN_EXPORT_MODE = '2d'; // 可选: 'legacy' | '2d'
 
@@ -2273,8 +2274,9 @@ Page({
       });
     };
 
-    let samplingImageUrl = imageUrl;
-    prepareImageForSampling(imageUrl)
+    const runLegacyFlow = () => {
+      let samplingImageUrl = imageUrl;
+      prepareImageForSampling(imageUrl)
       .then((path) => {
         samplingImageUrl = path;
         this._traceFlow('imageFlow:sample-ready', {
@@ -2432,6 +2434,104 @@ Page({
           success: () => wx.navigateBack({ delta: 1 })
         });
       });
+    };
+
+    if (appConfig && appConfig.USE_EXPERIMENTAL_PATTERN_PROCESSING) {
+      let experimentalSourceImageUrl = imageUrl;
+      this._setGeneratingText('正在生成优化图纸...');
+      prepareImageForSampling(imageUrl)
+        .then((path) => {
+          experimentalSourceImageUrl = path;
+          this._traceFlow('imageFlow:experimental-start', {
+            imageUrlType: getPathType(path),
+            gridSize,
+            brand,
+            colorCount,
+            similarityThreshold,
+            mirrorOn
+          });
+          return request.postPatternExperiment(path, {
+            brand,
+            colorCount: Number(colorCount || 0),
+            gridSize: Number(gridSize || 48),
+            similarityThreshold: Number(similarityThreshold || 0),
+            mirror: !!mirrorOn
+          });
+        })
+        .then((processed) => {
+          const mappedPixelData = processed && processed.mappedPixelData ? processed.mappedPixelData : [];
+          const colorStats = processed && processed.colorList ? processed.colorList : [];
+          const converted = this._deriveLegacyFromMapped(mappedPixelData);
+          const finalGridSize = (processed && processed.metrics && processed.metrics.rows)
+            ? Math.max(Number(processed.metrics.rows || 0), Number(processed.metrics.cols || 0))
+            : gridSize;
+
+          const buildExperimentalResult = (cosImageUrl) => {
+            const resultData = {
+              id: 'BP' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6).toUpperCase(),
+              resultToken: 'RT' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10),
+              gridSize: finalGridSize,
+              brand,
+              colorCount: colorStats.length,
+              sourceType: 'LOCAL',
+              mirrorOn: !!mirrorOn,
+              originalUrl: cosImageUrl || experimentalSourceImageUrl || '',
+              sourceUrl: cosImageUrl || '',
+              mappedPixelData,
+              colorStats,
+              gridData: (processed && processed.gridData) || converted.gridData || [],
+              colorPalette: (processed && processed.colorPalette) || converted.colorPalette || [],
+              rgbData: converted.rgbData || []
+            };
+
+            return request.post('/history/save', {
+              sourceType: 'LOCAL',
+              brand,
+              colorCount: colorStats.length,
+              name: '记录#' + Date.now(),
+              gridSize: finalGridSize,
+              mappedPixelData: JSON.stringify(mappedPixelData),
+              sourceUrl: cosImageUrl || ''
+            }).then((history) => {
+              if (history && history.id) resultData.historyId = history.id;
+            }).catch((err) => {
+              console.error('[result] experimental history save failed', err);
+            }).finally(() => {
+              analytics.track('convert_generate_result', {
+                result: 'success',
+                duration_ms: Date.now() - analyticsStartAt,
+                pattern_source: 'free_convert_experimental',
+                size: finalGridSize,
+                bead_brand: brand,
+                color_count: colorStats.length
+              }, { immediate: true });
+              this._traceFlow('imageFlow:experimental-load', {
+                mappedLen: mappedPixelData.length,
+                colorStatsLen: colorStats.length,
+                gridSize: finalGridSize
+              });
+              this.loadDataFromMemory(resultData);
+            });
+          };
+
+          return uploadImageIfNeeded(experimentalSourceImageUrl)
+            .then(buildExperimentalResult)
+            .catch((err) => {
+              console.error('[result] experimental upload failed', err);
+              return buildExperimentalResult('');
+            });
+        })
+        .catch((err) => {
+          console.warn('[result] experimental processing failed, fallback to legacy flow', err);
+          this._traceFlow('imageFlow:experimental-fallback', {
+            errMsg: err && err.message ? err.message : String(err || '')
+          });
+          runLegacyFlow();
+        });
+      return;
+    }
+
+    runLegacyFlow();
   },
 
   _rgbToHex(r, g, b) {

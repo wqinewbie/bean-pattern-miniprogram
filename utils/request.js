@@ -164,4 +164,41 @@ function uploadImage(filePath) {
   });
 }
 
-module.exports = { request, get, post, put, delete: del, uploadImage, ERROR_CODES, ERROR_MESSAGES };
+function postPatternExperiment(filePath, params) {
+  return new Promise((resolve, reject) => {
+    const sessionId = storage.get(storage.KEYS.SESSION_ID, '');
+    const fullUrl = `${API_BASE_URL}/pattern/experimental/process`;
+    const formData = {};
+    Object.keys(params || {}).forEach((key) => {
+      if (params[key] !== undefined && params[key] !== null) {
+        formData[key] = String(params[key]);
+      }
+    });
+
+    wx.uploadFile({
+      url: fullUrl,
+      filePath,
+      name: 'file',
+      formData,
+      timeout: 60000,
+      header: { 'X-Session-Id': sessionId },
+      success: (res) => {
+        try {
+          const body = JSON.parse(res.data);
+          if (body && body.code === 0) {
+            resolve(body.data);
+          } else {
+            reject(new Error((body && body.message) || '实验图纸生成失败'));
+          }
+        } catch (e) {
+          reject(new Error('解析实验图纸结果失败'));
+        }
+      },
+      fail: (err) => {
+        reject(new Error(err.errMsg || '网络错误'));
+      }
+    });
+  });
+}
+
+module.exports = { request, get, post, put, delete: del, uploadImage, postPatternExperiment, ERROR_CODES, ERROR_MESSAGES };
